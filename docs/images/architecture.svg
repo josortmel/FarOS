@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" width="1200" height="560" role="img" aria-labelledby="t d">
+  <title id="t">Architecture: one door, one writer</title>
+  <desc id="d">The desktop app and the agents both go through the same HTTP API. The daemon is the only process that writes the database. Inside it run the scheduler, the runner that launches harnesses, and the verifier.</desc>
+
+  <rect width="1200" height="560" fill="#FBF8F4"/>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4A4340"/>
+    </marker>
+    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#C2410C"/>
+    </marker>
+    <style>
+      .lbl { font: 600 14px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #1A1614; }
+      .sub { font: 400 12px ui-monospace, "Geist Mono", Consolas, monospace; fill: #6B625C; }
+      .k   { font: 500 12.5px ui-monospace, "Geist Mono", Consolas, monospace; fill: #4A4340; }
+      .ko  { font: 600 13px ui-monospace, "Geist Mono", Consolas, monospace; fill: #C2410C; }
+      .n   { font: 400 13.5px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #4A4340; }
+      .em  { font: 600 13.5px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #C2410C; }
+      /* #6B625C y no #8A7F77: a 11.5px hacen falta 4.5:1 y el claro daba 3.68 */
+      .cap { font: 600 11.5px ui-monospace, Consolas, monospace; fill: #6B625C; letter-spacing: .08em; }
+    </style>
+  </defs>
+
+  <!-- ===== The two entry points, drawn at the SAME height on purpose: the diagram
+           has to say that neither one is the primary one ===== -->
+  <text class="cap" x="16" y="34">WHO ASKS</text>
+
+  <rect x="150" y="50" width="290" height="62" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+  <text class="lbl" x="295" y="76" text-anchor="middle">Desktop app</text>
+  <text class="sub" x="295" y="96" text-anchor="middle">Electron · a person clicking</text>
+
+  <rect x="760" y="50" width="290" height="62" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+  <text class="lbl" x="905" y="76" text-anchor="middle">Agents</text>
+  <text class="sub" x="905" y="96" text-anchor="middle">MCP tools · a model deciding</text>
+
+  <!-- they converge on the SAME point — that is the whole drawing -->
+  <path d="M 295 118 L 295 150 L 600 150 L 600 176" fill="none" stroke="#4A4340" stroke-width="1.5" marker-end="url(#a)"/>
+  <path d="M 905 118 L 905 150 L 600 150" fill="none" stroke="#4A4340" stroke-width="1.5"/>
+
+  <!-- ===== The single door ===== -->
+  <rect x="380" y="180" width="440" height="52" rx="4" fill="#FFF3EA" stroke="#C2410C" stroke-width="1.5"/>
+  <text class="ko" x="600" y="212" text-anchor="middle">HTTP  ·  the same /api for both</text>
+
+  <line x1="600" y1="232" x2="600" y2="266" stroke="#4A4340" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- ===== The daemon ===== -->
+  <text class="cap" x="16" y="296">WHAT RUNS</text>
+  <rect x="150" y="270" width="900" height="96" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+  <text class="lbl" x="172" y="296">Daemon</text>
+  <text class="sub" x="240" y="296">FastAPI · one event loop</text>
+
+  <rect x="172" y="308" width="196" height="42" rx="3" fill="#F6F1EB" stroke="#E5DCD3"/>
+  <text class="k" x="270" y="334" text-anchor="middle">state machine</text>
+
+  <rect x="392" y="308" width="196" height="42" rx="3" fill="#F6F1EB" stroke="#E5DCD3"/>
+  <text class="k" x="490" y="334" text-anchor="middle">scheduler</text>
+
+  <rect x="612" y="308" width="196" height="42" rx="3" fill="#F6F1EB" stroke="#E5DCD3"/>
+  <text class="k" x="710" y="334" text-anchor="middle">runner</text>
+
+  <rect x="832" y="308" width="196" height="42" rx="3" fill="#F6F1EB" stroke="#E5DCD3"/>
+  <text class="k" x="930" y="334" text-anchor="middle">verifier</text>
+
+  <!-- ===== What the daemon launches, and the database ===== -->
+  <path d="M 905 366 L 905 418" fill="none" stroke="#4A4340" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="760" y="422" width="290" height="52" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+  <text class="lbl" x="905" y="444" text-anchor="middle">Harness subprocess</text>
+  <text class="sub" x="905" y="463" text-anchor="middle">headless · isolated cwd · no identity</text>
+
+  <path d="M 295 366 L 295 418" fill="none" stroke="#C2410C" stroke-width="1.8" marker-end="url(#ao)"/>
+  <rect x="150" y="422" width="290" height="52" rx="4" fill="#FFF3EA" stroke="#C2410C" stroke-width="1.5"/>
+  <text class="lbl" x="295" y="444" text-anchor="middle" fill="#7C2D12">SQLite</text>
+  <text class="sub" x="295" y="463" text-anchor="middle" fill="#9A4A20">the daemon is the only writer</text>
+
+  <!-- ===== The sentence this drawing exists to say. It goes at the BOTTOM, full
+           width — not wedged between two boxes. The first version put it in the
+           leftover gap and it fell off the canvas. A gap is not a place. ===== -->
+  <line x1="16" y1="500" x2="1184" y2="500" stroke="#DED5CC"/>
+  <text class="n" x="16" y="530">
+    <tspan>A person and an agent do not get </tspan><tspan class="em">two different APIs</tspan><tspan>. Every MCP tool calls the same endpoint the interface calls — parity by construction, not by discipline.</tspan>
+  </text>
+</svg>

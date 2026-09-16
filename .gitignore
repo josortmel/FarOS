@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+# Node / Electron
+app/node_modules/
+app/dist/
+# PyInstaller
+build/dist/
+build/work/
+build/*.log
+# Datos y artefactos locales
+*.db
+*.db-wal
+*.db-shm
+archive/*.tgz
+e2e/test-results/
+e2e/playwright-report/

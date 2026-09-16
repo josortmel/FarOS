@@ -1,0 +1,59 @@
+{
+  "harnesses": [
+    "claude-cli",
+    "opencode"
+  ],
+  "models": [
+    {
+      "alias": "haiku",
+      "label": "Haiku 4.5",
+      "tier": "cheap"
+    },
+    {
+      "alias": "sonnet",
+      "label": "Sonnet 5",
+      "tier": "mid"
+    },
+    {
+      "alias": "opus",
+      "label": "Opus 4.8",
+      "tier": "high"
+    }
+  ],
+  "permission_modes": [
+    "dontAsk",
+    "acceptEdits",
+    "plan",
+    "bypassPermissions"
+  ],
+  "evidence_types": [
+    "file_path",
+    "command_output",
+    "memory_id",
+    "peer_attestation",
+    "run_output"
+  ],
+  "verification_levels": [
+    "self",
+    "peer",
+    "auto"
+  ],
+  "defaults": {
+    "model": "haiku",
+    "timeout_s": 1800,
+    "permission_mode": "dontAsk",
+    "schedule": {
+      "type": "manual"
+    },
+    "verification_level": "auto"
+  },
+  "agents": [
+    "owner",
+    "alice",
+    "bob",
+    "carol",
+    "dave"
+  ],
+  "docs_dir": "$FAROS_HOME/docs",
+  "owner": "owner"
+}

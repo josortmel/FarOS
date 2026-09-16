@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faros"
+version = "3.3.0"
+description = "A ticket board where agents propose, execute and verify each other's work"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
+authors = [{ name = "josortmel" }]
+keywords = ["agents", "orchestration", "mcp", "task-board"]
+
+# Medido, no recordado: estas cuatro son las unicas dependencias de terceros
+# que importa el paquete. El resto de imports son stdlib.
+#   grep -rhoE "^(import|from) [a-z_]+" faros/  ->  fastapi, httpx, mcp,
+#   uvicorn  (+ argparse asyncio ctypes dataclasses datetime json logging os
+#   pathlib re secrets shutil sqlite3 subprocess sys threading time typing
+#   urllib, todos de la biblioteca estandar)
+# Los minimos son las versiones con las que corre de verdad hoy, no un
+# rango inventado hacia atras que nadie ha probado.
+# Los TOPES importan tanto como los minimos, y esto lo aprendimos caro el
+# 16-sep: `mcp>=1.27` sin tope instala mcp 2.x en un venv limpio, y en 2.x
+# FastMCP se renombro, asi que `from mcp.server.fastmcp import FastMCP`
+# (mcp_server.py:30) revienta con ModuleNotFoundError. Un investigador que
+# clonara y siguiera el README se comia el crash en el primer comando.
+# Lo midio Prima en un venv limpio, no lo dedujimos.
+#   mcp<2      -> MEDIDO: 2.x rompe hoy.
+#   los otros  -> PRUDENCIA, no medida: son dependencias vivas y un limite
+#                 inferior sin limite superior no es una restriccion, es una
+#                 apuesta a que nadie publique un major.
+dependencies = [
+  "fastapi>=0.118,<1",
+  "uvicorn>=0.42,<1",
+  "httpx>=0.28,<1",
+  "mcp>=1.27,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0"]
+
+# SIN [project.scripts] a proposito. Lo escribi primero como
+# `faros-daemon = "faros.daemon:main"` y al comprobarlo NO EXISTE
+# `main()`: daemon.py solo tiene un bloque `if __name__ == "__main__"`.
+# Declarar un script que revienta al invocarlo es peor que no declarar
+# ninguno, y refactorizar el arranque del daemon la vispera de publicar no
+# se paga. Se arranca con `python -m faros.daemon`, que es lo que dice el
+# README y lo que de verdad funciona. (Decia agenticos.daemon hasta el #302:
+# el comentario se quedo en el nombre viejo despues del rename y contradecia
+# al README en el mismo fichero.)
+
+[tool.setuptools]
+# MEDIDO, NO DEDUCIDO (#302, 16-sep): esto declaraba `agenticos` cuando el
+# rename ya habia movido el paquete a `faros/`, y los shims agenticos/ NO
+# viajan al repo publico. Resultado: `pip install -e .` —LA PRIMERA LINEA DEL
+# README— reventaba en un clon limpio con "Failed to build when getting
+# requirements to build editable". Aqui no reventaba nunca, porque aqui los
+# shims existen.
+# Lo encontre ejecutando los comandos del README contra el arbol PARIDO, en un
+# venv nuevo. Leyendo el fichero parecia correcto: el comentario explicaba
+# ademas, con buenos argumentos, por que el paquete seguia llamandose
+# agenticos — y ya no era verdad. Un comentario que envejece miente con mas
+# autoridad que el codigo.
+packages = ["faros", "faros.harness"]
+
+[tool.pytest.ini_options]
+# `pytest` a secas desde la raiz REVENTABA en recoleccion (comprobado, no
+# supuesto): tests/test_workflows.py y e2e/test_workflows.py comparten
+# basename y no hay __init__.py, asi que pytest aborta con "import file
+# mismatch" — un ERROR de coleccion, que es peor que un test en rojo para
+# quien clona y escribe `pytest`.
+testpaths = ["tests"]
+markers = [
+  "judge: invoca un juez LLM real (cuesta dinero y no es determinista). Correr con -m judge",
+]
+# Por defecto la suite NO llama a ningun modelo. Un `pytest` recien clonado
+# tiene que salir verde y gratis; lo que depende de un juez LLM se pide a
+# proposito. Medido: ~6% de falsos negativos en esa suite (L56), o sea que
+# dejarla por defecto es enseniarle un rojo aleatorio a quien acaba de llegar.
+addopts = "-m 'not judge'"

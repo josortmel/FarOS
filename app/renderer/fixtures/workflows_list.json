@@ -1,0 +1,58 @@
+[
+  {
+    "id": 1,
+    "name": "platform-v3",
+    "status": "active",
+    "coordinator": "dave",
+    "kind": "build",
+    "pct_global": 62,
+    "open_findings": 2,
+    "phases_summary": [
+      {
+        "phase": "1-core",
+        "pct": 100
+      },
+      {
+        "phase": "2-ui",
+        "pct": 40
+      }
+    ],
+    "created_at": "2026-08-17T09:00:00"
+  },
+  {
+    "id": 2,
+    "name": "website-refresh",
+    "status": "active",
+    "coordinator": "bob",
+    "kind": "build",
+    "pct_global": 18,
+    "open_findings": 0,
+    "phases_summary": [
+      {
+        "phase": "1-design",
+        "pct": 18
+      }
+    ],
+    "created_at": "2026-09-10T09:00:00"
+  },
+  {
+    "id": 3,
+    "name": "docs-migration",
+    "status": "archived",
+    "coordinator": "carol",
+    "kind": "build",
+    "pct_global": 100,
+    "open_findings": 0,
+    "phases_summary": [
+      {
+        "phase": "1-export",
+        "pct": 100
+      },
+      {
+        "phase": "2-review",
+        "pct": 100
+      }
+    ],
+    "created_at": "2026-07-02T09:00:00"
+  }
+]

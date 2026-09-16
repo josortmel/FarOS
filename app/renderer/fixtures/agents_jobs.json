@@ -1,0 +1,184 @@
+[
+  {
+    "id": 1,
+    "name": "Morning inbox digest",
+    "status": "active",
+    "harness": "claude-cli",
+    "model": "haiku",
+    "prompt": "Check the state and report what changed. Working dir: /srv/projects/atlas",
+    "cwd": "/srv/projects/atlas",
+    "permission_mode": "dontAsk",
+    "allowed_tools": [
+      "Read",
+      "Bash"
+    ],
+    "mcp_config": null,
+    "inherit_mcp": [],
+    "strict_mcp": 0,
+    "add_dirs": [],
+    "effort": null,
+    "fallback_model": null,
+    "system_prompt": null,
+    "json_schema": null,
+    "max_budget_usd": 1.0,
+    "billing_mode": "subscription",
+    "timeout_s": 1800,
+    "schedule": {
+      "type": "recurring",
+      "every_days": 1,
+      "at": [
+        "08:00"
+      ]
+    },
+    "verify_level": "auto",
+    "verify_criteria": "backup file present in the archive and restore test passing",
+    "ticket_id": null,
+    "project_id": 1
+  },
+  {
+    "id": 2,
+    "name": "Weekly market report",
+    "status": "paused",
+    "harness": "opencode",
+    "model": "deepseek-v4-pro",
+    "prompt": "Check the state and report what changed. Working dir: /srv/projects/atlas",
+    "cwd": "/srv/projects/atlas",
+    "permission_mode": "dontAsk",
+    "allowed_tools": [
+      "Read",
+      "Bash"
+    ],
+    "mcp_config": null,
+    "inherit_mcp": [],
+    "strict_mcp": 0,
+    "add_dirs": [],
+    "effort": null,
+    "fallback_model": null,
+    "system_prompt": null,
+    "json_schema": null,
+    "max_budget_usd": 1.0,
+    "billing_mode": "subscription",
+    "timeout_s": 1800,
+    "schedule": {
+      "type": "weekly",
+      "weekdays": [
+        0
+      ],
+      "at": [
+        "07:30"
+      ]
+    },
+    "verify_level": "auto",
+    "verify_criteria": "backup file present in the archive and restore test passing",
+    "ticket_id": null,
+    "project_id": 1
+  },
+  {
+    "id": 3,
+    "name": "Back up the database to the archive",
+    "status": "active",
+    "harness": "claude-cli",
+    "model": "haiku",
+    "prompt": "Check the state and report what changed. Working dir: /srv/projects/atlas",
+    "cwd": "/srv/projects/atlas",
+    "permission_mode": "dontAsk",
+    "allowed_tools": [
+      "Read",
+      "Bash"
+    ],
+    "mcp_config": null,
+    "inherit_mcp": [],
+    "strict_mcp": 0,
+    "add_dirs": [],
+    "effort": null,
+    "fallback_model": null,
+    "system_prompt": null,
+    "json_schema": null,
+    "max_budget_usd": 1.0,
+    "billing_mode": "subscription",
+    "timeout_s": 1800,
+    "schedule": {
+      "type": "weekly",
+      "weekdays": [
+        6
+      ],
+      "at": [
+        "03:30"
+      ]
+    },
+    "verify_level": "auto",
+    "verify_criteria": "backup file present in the archive and restore test passing",
+    "ticket_id": 104,
+    "project_id": 1
+  },
+  {
+    "id": 4,
+    "name": "Watch the daemon every 2 h",
+    "status": "active",
+    "harness": "claude-cli",
+    "model": "haiku",
+    "prompt": "Check the state and report what changed. Working dir: /srv/projects/atlas",
+    "cwd": "/srv/projects/atlas",
+    "permission_mode": "dontAsk",
+    "allowed_tools": [
+      "Read",
+      "Bash"
+    ],
+    "mcp_config": null,
+    "inherit_mcp": [],
+    "strict_mcp": 0,
+    "add_dirs": [],
+    "effort": null,
+    "fallback_model": null,
+    "system_prompt": null,
+    "json_schema": null,
+    "max_budget_usd": 1.0,
+    "billing_mode": "subscription",
+    "timeout_s": 1800,
+    "schedule": {
+      "type": "recurring",
+      "every_days": 1,
+      "at": [
+        "09:00",
+        "11:00",
+        "13:00"
+      ]
+    },
+    "verify_level": "auto",
+    "verify_criteria": "backup file present in the archive and restore test passing",
+    "ticket_id": 106,
+    "project_id": 1
+  },
+  {
+    "id": 5,
+    "name": "Verification sweep",
+    "status": "archived",
+    "harness": "claude-cli",
+    "model": "sonnet",
+    "prompt": "Check the state and report what changed. Working dir: /srv/projects/atlas",
+    "cwd": "/srv/projects/atlas",
+    "permission_mode": "dontAsk",
+    "allowed_tools": [
+      "Read",
+      "Bash"
+    ],
+    "mcp_config": null,
+    "inherit_mcp": [],
+    "strict_mcp": 0,
+    "add_dirs": [],
+    "effort": null,
+    "fallback_model": null,
+    "system_prompt": null,
+    "json_schema": null,
+    "max_budget_usd": 1.0,
+    "billing_mode": "subscription",
+    "timeout_s": 1800,
+    "schedule": {
+      "type": "manual"
+    },
+    "verify_level": "auto",
+    "verify_criteria": "backup file present in the archive and restore test passing",
+    "ticket_id": null,
+    "project_id": 1
+  }
+]

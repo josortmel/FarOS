@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FarOS</title>
+
+  <!-- T4.8: tipografía local (assets/fonts, OFL) — sin red la app se ve igual -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+  <!-- ===== Barra superior ===== -->
+  <header class="topbar">
+    <div class="topbar__brand">
+      <!-- icono nav de marca: tres líneas, la central naranja -->
+      <svg class="topbar__icon" width="26" height="26" viewBox="0 0 32 32" role="img" aria-label="FarOS">
+        <rect x="2" y="2" width="28" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <line x1="8" y1="10" x2="24" y2="10" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/>
+        <line x1="8" y1="16" x2="20" y2="16" stroke="#f37513" stroke-width="2.4" stroke-linecap="square"/>
+        <line x1="8" y1="22" x2="24" y2="22" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/>
+      </svg>
+      <span class="topbar__name">FarOS</span>
+      <span class="topbar__conn" id="conn-chip" role="status">
+        <span class="topbar__conn-dot" aria-hidden="true"></span>
+        <span id="conn-label">conectando…</span>
+      </span>
+    </div>
+
+    <!-- v3.1 T3.1 (el dueño, queja 1ª): las secciones viven en la columna central de una rejilla
+         fija — no se mueven cuando una sección esconde sus controles. El rótulo lleva
+         un fantasma en negrita (data-label) para que el ancho no cambie al activarse. -->
+    <nav class="views views--surface" id="surface-tabs" aria-label="Superficie">
+      <button class="views__tab is-active" data-surface="board"><span class="views__label" data-label="Tablero">Tablero</span></button>
+      <button class="views__tab" data-surface="workflow"><span class="views__label" data-label="Workflows">Workflows</span><span class="wf-badge" id="wf-findings-badge" hidden></span><span class="wf-badge wf-badge--new" id="wf-decisions-badge" hidden></span></button>
+      <button class="views__tab" data-surface="agents"><span class="views__label" data-label="Agentes">Agentes</span><span class="ag-live" id="ag-live-badge" hidden aria-label="runs en ejecución"></span></button>
+    </nav>
+
+    <div class="topbar__actions">
+      <!-- T3.2: auto (sistema) → claro → oscuro; persiste en localStorage -->
+      <button class="btn btn--ghost themebtn" id="btn-theme" data-theme="auto" title="Tema: sigue al sistema. Clic para cambiar" aria-label="Tema: automático">
+        <span class="themebtn__dot" aria-hidden="true"></span><span id="theme-label">auto</span>
+      </button>
+      <!-- T2.5 (el dueño: «o no existe o no puedo encontrarlo»): buscó «Ajustes» y el registro
+           MCP vivía dentro de Agentes. La palabra va aquí, en la zona de acciones de la app,
+           NO entre las tres superficies de trabajo: configurar no es trabajar, y la columna
+           central no se toca (queja 1ª del dueño en la v3.1). -->
+      <button class="btn btn--ghost" id="btn-settings" title="Ajustes de la app: registro de servidores MCP">
+        <span class="settings__gear" aria-hidden="true">⚙</span> Ajustes
+      </button>
+      <!-- #262 (el dueño: «los dos idiomas deben convivir y poder cambiarse con un botón»):
+           cambia en caliente, sin recargar, y persiste. El idioma inicial lo pone el
+           sistema. Va en la zona de acciones, con Ajustes y Tema: es una preferencia
+           de la app, no una superficie de trabajo. -->
+      <button class="btn btn--ghost langbtn" id="btn-lang" title="Idioma de la interfaz. Clic para cambiar" aria-label="Idioma de la interfaz">
+        <span id="lang-label">ES</span>
+      </button>
+      <button class="btn btn--ghost" id="btn-verify">Verificar cola</button>
+      <button class="btn btn--primary" id="btn-create">Nueva tarea</button>
+    </div>
+  </header>
+
+  <!-- ===== Controles del Tablero (T3.1): segunda línea propia, hermana de wf-bar y ag-bar ===== -->
+  <div class="boardbar" id="board-bar" aria-label="Controles del tablero">
+    <!-- T2.4: el mismo Tablero, dos modos de mirarlo -->
+    <nav class="views views--mode" id="mode-tabs" aria-label="Modo del tablero">
+      <button class="views__tab" data-mode="kanban">Kanban</button>
+      <button class="views__tab" data-mode="calendar">Calendario</button>
+    </nav>
+
+    <nav class="views views--after-mode" id="view-tabs" aria-label="Vista temporal">
+      <button class="views__tab" data-view="today">Hoy</button>
+      <button class="views__tab" data-view="week">Semana</button>
+      <button class="views__tab" data-view="future">Futuras</button>
+      <button class="views__tab" data-view="all">Todas</button>
+    </nav>
+
+    <nav class="views views--after-mode" id="cal-tabs" aria-label="Vista del calendario" hidden>
+      <button class="views__tab" data-cal="day">Día</button>
+      <button class="views__tab" data-cal="week">Semana</button>
+      <button class="views__tab" data-cal="month">Mes</button>
+      <button class="views__tab" data-cal="year">Año</button>
+    </nav>
+
+    <!-- el pulso del día: lo urgente en una línea, a la derecha -->
+    <div class="boardpulse" id="board-pulse" hidden></div>
+  </div>
+
+  <!-- ===== Filtro de proyectos ===== -->
+  <div class="projectbar" id="project-bar" aria-label="Filtro de proyectos"></div>
+
+  <!-- ===== Tablero ===== -->
+  <main class="board" id="board" aria-label="Tablero de tareas"></main>
+
+  <!-- ===== Banda de laterales (bloqueadas / rechazadas / expiradas) ===== -->
+  <section class="laterals" id="laterals" aria-label="Tareas apartadas"></section>
+
+  <!-- ===== Tablero en el tiempo (T2.4 — armazón; vistas en T2.5–T2.8) ===== -->
+  <main class="cal" id="cal-root" hidden aria-label="Calendario de tareas"></main>
+
+  <!-- ===== Superficie Workflows (v2) ===== -->
+  <main class="wf" id="wf-root" hidden aria-label="Workflows">
+    <!-- T4.3 (el dueño): menú lateral con slider Activos/Archivados, buscador y lista vertical;
+         archivar / cancelar / reactivar con clic derecho o el desplegable de cada fila -->
+    <aside class="wf__side" id="wf-side" aria-label="Lista de workflows"></aside>
+    <div class="wf__main">
+    <div class="wf__bar" id="wf-bar"></div>
+    <div class="wf__handoff" id="wf-handoff" hidden></div>
+    <div class="wf__banner" id="wf-banner" hidden></div>
+    <!-- T3.1: fases como filtro con progreso; el tablero es por estado -->
+    <div class="wf__phases" id="wf-phases" hidden aria-label="Fases del workflow"></div>
+    <div class="wf__board" id="wf-board"></div>
+    <section class="laterals" id="wf-laterals" aria-label="Tareas apartadas del workflow" hidden></section>
+    <!-- T3.5: pestañas Handoffs / Actividad de la Oficina -->
+    <div class="wf__pane" id="wf-pane" hidden></div>
+    </div>
+  </main>
+
+  <!-- ===== Agentes (v3 T1.12): trabajo agéntico headless, en su ventana ===== -->
+  <main class="ag" id="ag-root" hidden aria-label="Agentes">
+    <div class="ag__bar" id="ag-bar"></div>
+    <div class="ag__body" id="ag-body"></div>
+  </main>
+
+  <!-- ===== Mesa de bugs (drawer) ===== -->
+  <aside class="drawer" id="findings-drawer" aria-label="Mesa de bugs" hidden></aside>
+
+  <!-- ===== Panel de detalle ===== -->
+  <aside class="panel" id="panel" aria-label="Detalle de tarea" hidden></aside>
+  <div class="panel-scrim" id="panel-scrim" hidden></div>
+
+  <!-- ===== Modal (crear tarea / evidencia / motivo) ===== -->
+  <div class="modal-root" id="modal-root" hidden></div>
+
+  <!-- ===== Toasts ===== -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

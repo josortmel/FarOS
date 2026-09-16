@@ -1,0 +1,75 @@
+{
+  "1": [
+    {
+      "id": 51,
+      "status": "ok",
+      "started_at": "2026-09-16T08:00:04",
+      "finished_at": "2026-09-16T08:01:22",
+      "cost_usd": 0.004,
+      "cost_kind": "equivalent",
+      "verdict": "pass",
+      "verdict_reason": null,
+      "result_summary": "3 threads needing a reply; no newsletters.",
+      "job_id": 1,
+      "exit_code": 0,
+      "session_id": "s-51",
+      "output_path": null,
+      "verified_at": "2026-09-16T08:05:00"
+    }
+  ],
+  "2": [
+    {
+      "id": 47,
+      "status": "error",
+      "started_at": "2026-09-09T07:30:00",
+      "finished_at": "2026-09-09T07:31:10",
+      "cost_usd": 0.0,
+      "cost_kind": "equivalent",
+      "verdict": "fail",
+      "verdict_reason": "exit 1: web search denied without an allowlist.",
+      "result_summary": "exit 1: web search denied without an allowlist.",
+      "job_id": 2,
+      "exit_code": 1,
+      "session_id": "s-47",
+      "output_path": null,
+      "verified_at": "2026-09-09T07:35:00"
+    }
+  ],
+  "3": [
+    {
+      "id": 38,
+      "status": "ok",
+      "started_at": "2026-09-09T03:30:02",
+      "finished_at": "2026-09-09T03:34:12",
+      "cost_usd": 0.012,
+      "cost_kind": "equivalent",
+      "verdict": "pass",
+      "verdict_reason": null,
+      "result_summary": "Archive written, 41 MB, restore test passed.",
+      "job_id": 3,
+      "exit_code": 0,
+      "session_id": "s-38",
+      "output_path": null,
+      "verified_at": "2026-09-09T03:40:00"
+    }
+  ],
+  "4": [
+    {
+      "id": 44,
+      "status": "running",
+      "started_at": "2026-09-16T09:00:01",
+      "finished_at": null,
+      "cost_usd": null,
+      "cost_kind": null,
+      "verdict": null,
+      "verdict_reason": null,
+      "result_summary": null,
+      "job_id": 4,
+      "exit_code": null,
+      "session_id": "s-44",
+      "output_path": null,
+      "verified_at": null
+    }
+  ],
+  "5": []
+}

@@ -1,0 +1,59 @@
+# FarOS — empaquetado Windows (T4.3). `npm run dist` → dist/FarOS-Setup-<ver>.exe
+# #261 (16-sep): la MARCA publica es FarOS.
+#
+# CORREGIDO el 16-sep por la tarde. Este comentario decia que «el paquete python
+# interno sigue llamandose agenticos y el directorio de datos sigue siendo
+# %LOCALAPPDATA%\AgenticOS a proposito». Las dos cosas eran ciertas cuando se
+# escribieron por la maniana y las dos son FALSAS desde el mediodia:
+#   · el paquete python se llama `faros` desde el #286
+#   · una instalacion LIMPIA guarda en %LOCALAPPDATA%\FarOS — faros/env.py
+#     prefiere la carpeta nueva y solo cae a la vieja si ya existe, que es lo
+#     que salva a quien ya tenia datos
+# Y el README publicado dice «Everything lives under %LOCALAPPDATA%\FarOS\».
+# Este fichero VIAJA al repo publico (whitelist_pub.md:63), asi que un
+# desconocido que abriera los dos leia dos verdades distintas. Lo encontro
+# Lienzo cotejando el README contra el codigo.
+#
+# LO QUE SI SIGUE LLAMANDOSE agenticos, y a proposito: el NOMBRE DEL SERVIDOR
+# MCP. Es el prefijo de las 67 herramientas (mcp__agenticos__*), o sea una
+# interfaz publica: renombrarlo rompe a todo el que las tenga cableadas. Y las
+# dos TAREAS PROGRAMADAS de Windows (AgenticOS-daemon / AgenticOS-watchdog),
+# que son objetos reales del sistema y cuyo renombrado es #288.
+# El daemon va como extraResources (onedir de PyInstaller, T4.2: tools/build_daemon.ps1 primero).
+appId: io.github.josortmel.faros
+productName: FarOS
+copyright: FarOS
+directories:
+  output: dist
+  buildResources: assets
+files:
+  - main.js
+  - preload.js
+  - package.json
+  - renderer/**
+  - assets/icon.ico
+  - "!renderer/**/*.md"
+extraResources:
+  - from: ../build/dist/faros-daemon
+    to: daemon
+  - from: ../tools/install_service.ps1
+    to: tools/install_service.ps1
+  - from: ../tools/uninstall_service.ps1
+    to: tools/uninstall_service.ps1
+  - from: ../tools/install_watchdog.ps1
+    to: tools/install_watchdog.ps1
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: assets/icon.ico
+  artifactName: FarOS-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FarOS
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false

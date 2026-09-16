@@ -1,0 +1,67 @@
+[
+  {
+    "name": "claude-cli",
+    "installed": true,
+    "version": "2.1.0",
+    "billing": "subscription",
+    "capabilities": [
+      "mcp",
+      "json_schema",
+      "effort"
+    ],
+    "models": [
+      {
+        "alias": "haiku",
+        "label": "Haiku 4.5",
+        "tier": "cheap"
+      },
+      {
+        "alias": "sonnet",
+        "label": "Sonnet 5",
+        "tier": "mid"
+      },
+      {
+        "alias": "opus",
+        "label": "Opus 4.8",
+        "tier": "high"
+      }
+    ],
+    "models_source": "probe",
+    "models_refreshed_at": "2026-09-15T22:10:00",
+    "families": [
+      "claude"
+    ]
+  },
+  {
+    "name": "opencode",
+    "installed": true,
+    "version": "0.9.4",
+    "billing": "api",
+    "capabilities": [
+      "mcp"
+    ],
+    "models": [
+      {
+        "alias": "deepseek-v4-pro",
+        "label": "DeepSeek v4 Pro",
+        "tier": "high"
+      }
+    ],
+    "models_source": "static",
+    "models_refreshed_at": null,
+    "families": [
+      "deepseek"
+    ]
+  },
+  {
+    "name": "codex",
+    "installed": false,
+    "version": null,
+    "billing": "api",
+    "capabilities": [],
+    "models": [],
+    "models_source": "static",
+    "models_refreshed_at": null,
+    "families": []
+  }
+]

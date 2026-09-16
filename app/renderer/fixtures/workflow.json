@@ -1,0 +1,306 @@
+{
+  "id": 1,
+  "name": "platform-v3",
+  "status": "active",
+  "coordinator": "dave",
+  "kind": "build",
+  "pct_global": 0,
+  "phases": [
+    "1-core",
+    "2-ui"
+  ],
+  "tickets_by_phase": {
+    "1-core": [
+      {
+        "id": 107,
+        "project_id": 2,
+        "kind": "manual",
+        "title": "Publish release notes",
+        "description": "",
+        "owner": "bob",
+        "source": "manual",
+        "status": "done",
+        "priority": "media",
+        "due_at": null,
+        "verify_criteria": "backup file present in the archive and restore test passing",
+        "blocked_reason": null,
+        "verification_level": "peer",
+        "evidence_type": "file_path",
+        "evidence": "docs/releases/2026-05.md",
+        "verified_by": null,
+        "expires_at": null,
+        "cadence_days": null,
+        "last_done_at": null,
+        "created_by": "owner",
+        "created_at": "2026-09-08T09:20:09",
+        "closed_at": "2026-09-16T08:41:00",
+        "due_state": "ok",
+        "scheduled_at": null,
+        "duration_min": null,
+        "all_day": 0,
+        "last_change": {
+          "at": "2026-09-16T08:41:00",
+          "by": "bob",
+          "from": "in_progress",
+          "to": "done"
+        },
+        "preferred_time": null,
+        "next_due_override": null,
+        "phase": "1-core",
+        "ready": true,
+        "dispatched_to": null
+      },
+      {
+        "id": 108,
+        "project_id": 2,
+        "kind": "manual",
+        "title": "Fix the calendar drag on narrow screens",
+        "description": "",
+        "owner": "carol",
+        "source": "manual",
+        "status": "verified",
+        "priority": "alta",
+        "due_at": "2026-09-16",
+        "verify_criteria": null,
+        "blocked_reason": null,
+        "verification_level": "peer",
+        "evidence_type": "command_output",
+        "evidence": "playwright: 12 passed",
+        "verified_by": "alice",
+        "expires_at": null,
+        "cadence_days": null,
+        "last_done_at": null,
+        "created_by": "bob",
+        "created_at": "2026-09-08T09:20:09",
+        "closed_at": "2026-09-16T10:10:00",
+        "due_state": "due",
+        "scheduled_at": null,
+        "duration_min": null,
+        "all_day": 0,
+        "last_change": {
+          "at": "2026-09-16T10:10:00",
+          "by": "alice",
+          "from": "done",
+          "to": "verified"
+        },
+        "preferred_time": null,
+        "next_due_override": null,
+        "phase": "1-core",
+        "ready": true,
+        "dispatched_to": null
+      }
+    ],
+    "2-ui": [
+      {
+        "id": 102,
+        "project_id": 2,
+        "kind": "manual",
+        "title": "Migrate the metrics dashboard",
+        "description": "",
+        "owner": "bob",
+        "source": "manual",
+        "status": "accepted",
+        "priority": "alta",
+        "due_at": "2026-09-16",
+        "verify_criteria": null,
+        "blocked_reason": null,
+        "verification_level": "self",
+        "evidence_type": null,
+        "evidence": null,
+        "verified_by": null,
+        "expires_at": null,
+        "cadence_days": null,
+        "last_done_at": null,
+        "created_by": "owner",
+        "created_at": "2026-09-08T09:20:09",
+        "closed_at": null,
+        "due_state": "due",
+        "scheduled_at": "2026-09-16T09:00",
+        "duration_min": 90,
+        "all_day": 0,
+        "last_change": {
+          "at": "2026-09-15T18:25:00",
+          "by": "bob",
+          "from": "proposed",
+          "to": "accepted"
+        },
+        "preferred_time": null,
+        "next_due_override": null,
+        "phase": "2-ui",
+        "ready": true,
+        "dispatched_to": null
+      },
+      {
+        "id": 103,
+        "project_id": 1,
+        "kind": "manual",
+        "title": "Write the onboarding guide",
+        "description": "",
+        "owner": "carol",
+        "source": "manual",
+        "status": "accepted",
+        "priority": "media",
+        "due_at": "2026-09-16",
+        "verify_criteria": null,
+        "blocked_reason": null,
+        "verification_level": "self",
+        "evidence_type": null,
+        "evidence": null,
+        "verified_by": null,
+        "expires_at": null,
+        "cadence_days": null,
+        "last_done_at": null,
+        "created_by": "owner",
+        "created_at": "2026-09-08T09:20:09",
+        "closed_at": null,
+        "due_state": "due",
+        "scheduled_at": "2026-09-16T12:00",
+        "duration_min": 60,
+        "all_day": 0,
+        "last_change": {
+          "at": "2026-09-15T11:02:00",
+          "by": "carol",
+          "from": "proposed",
+          "to": "accepted"
+        },
+        "preferred_time": null,
+        "next_due_override": null,
+        "phase": "2-ui",
+        "ready": true,
+        "dispatched_to": "dave"
+      },
+      {
+        "id": 106,
+        "project_id": 1,
+        "kind": "manual",
+        "title": "Watch the daemon every 2 h",
+        "description": "",
+        "owner": "dave",
+        "source": "manual",
+        "status": "in_progress",
+        "priority": "alta",
+        "due_at": "2026-09-16",
+        "verify_criteria": "backup file present in the archive and restore test passing",
+        "blocked_reason": null,
+        "verification_level": "auto",
+        "evidence_type": null,
+        "evidence": null,
+        "verified_by": null,
+        "expires_at": null,
+        "cadence_days": null,
+        "last_done_at": null,
+        "created_by": "owner",
+        "created_at": "2026-09-08T09:20:09",
+        "closed_at": null,
+        "due_state": "due",
+        "scheduled_at": null,
+        "duration_min": null,
+        "all_day": 0,
+        "last_change": {
+          "at": "2026-09-16T08:05:00",
+          "by": "dave",
+          "from": "accepted",
+          "to": "in_progress"
+        },
+        "preferred_time": null,
+        "next_due_override": null,
+        "linked_job": {
+          "id": 4,
+          "name": "Watch the daemon every 2 h",
+          "status": "active",
+          "last_run": {
+            "id": 44,
+            "status": "running",
+            "verdict": null,
+            "finished_at": null
+          }
+        },
+        "phase": "2-ui",
+        "ready": true,
+        "dispatched_to": "dave"
+      }
+    ]
+  },
+  "phases_summary": [],
+  "findings": [
+    {
+      "id": 1,
+      "workflow_id": 1,
+      "ticket_id": 106,
+      "title": "The daemon restart loses the run in flight",
+      "severity": "alta",
+      "status": "open",
+      "found_by": "alice",
+      "created_at": "2026-09-15T16:20:00",
+      "closed_at": null,
+      "note": null
+    },
+    {
+      "id": 2,
+      "workflow_id": 1,
+      "ticket_id": 107,
+      "title": "The release notes link pointed to the old tag",
+      "severity": "media",
+      "status": "closed",
+      "found_by": "carol",
+      "created_at": "2026-09-12T11:00:00",
+      "closed_at": "2026-09-14T09:30:00",
+      "note": null
+    }
+  ],
+  "handoffs": [
+    {
+      "id": 1,
+      "workflow_id": 1,
+      "author": "dave",
+      "created_at": "2026-09-15T19:40:00",
+      "lead": "The UI phase is halfway: the board is done, the calendar is not.",
+      "body": "Next session: start with the drag on narrow screens. The backend contract did not change."
+    }
+  ],
+  "latest_handoff": {
+    "id": 1,
+    "workflow_id": 1,
+    "author": "dave",
+    "created_at": "2026-09-15T19:40:00",
+    "lead": "The UI phase is halfway: the board is done, the calendar is not.",
+    "body": "Next session: start with the drag on narrow screens. The backend contract did not change."
+  },
+  "milestones": [
+    {
+      "id": 1,
+      "workflow_id": 1,
+      "phase": "1-core",
+      "title": "Core phase verified end to end",
+      "reached_at": "2026-09-14T18:00:00",
+      "saved_to_ecodb": 1
+    }
+  ],
+  "milestones_pending_ecodb": 0,
+  "recent_activity": [
+    {
+      "at": "2026-09-16T10:10:00",
+      "by": "alice",
+      "kind": "transition",
+      "text": "moved the task to verified",
+      "ticket_id": 108
+    },
+    {
+      "at": "2026-09-16T08:41:00",
+      "by": "bob",
+      "kind": "transition",
+      "text": "completed the task with evidence",
+      "ticket_id": 107
+    }
+  ],
+  "projects": [
+    {
+      "id": 1,
+      "name": "Platform",
+      "color": "oklch(58% 0.12 50)",
+      "position": 0,
+      "archived": 0,
+      "created_at": "2026-08-07T10:00:00"
+    }
+  ]
+}

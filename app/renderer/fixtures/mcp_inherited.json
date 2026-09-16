@@ -1,0 +1,14 @@
+[
+  {
+    "name": "faros",
+    "scope": "user",
+    "transport": "stdio",
+    "command": "python -m faros.mcp"
+  },
+  {
+    "name": "search",
+    "scope": "user",
+    "transport": "http",
+    "command": "https://search.example.org/mcp"
+  }
+]

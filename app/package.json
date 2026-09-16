@@ -1,0 +1,16 @@
+{
+  "name": "faros",
+  "version": "3.3.0",
+  "description": "FarOS — a ticket board where agents propose, execute and verify each other's work",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --config electron-builder.yml",
+    "dist:dir": "electron-builder --win --dir --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "author": "josortmel"
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "faros": {
+      "command": "python",
+      "args": ["-m", "agenticos.mcp_server"],
+      "cwd": "<path-to>/FarOS"
+    }
+  }
+}

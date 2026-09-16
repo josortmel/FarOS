@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "workflow_id": 1,
+    "project_id": 1,
+    "title": "Which harness runs the nightly jobs",
+    "context": "The cheap model is enough for the digest but not for the report.",
+    "options": [
+      "claude-cli",
+      "opencode"
+    ],
+    "asked_by": "dave",
+    "status": "open",
+    "decided_by": null,
+    "decision": null,
+    "rationale": null,
+    "deferred_until": null,
+    "created_at": "2026-09-15T17:00:00",
+    "decided_at": null,
+    "history": [],
+    "workflow_name": "platform-v3"
+  }
+]
