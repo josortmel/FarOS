@@ -4,22 +4,22 @@
 
   <!-- The diagram carries its own background, so it controls its own contrast in
        GitHub's light and dark themes instead of depending on which one is set. -->
-  <rect width="1200" height="430" fill="#FBF8F4"/>
+  <rect width="1200" height="430" fill="#120F0C"/>
 
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#4A4340"/>
+      <path d="M0 0 L10 5 L0 10 z" fill="#C3BCB7"/>
     </marker>
     <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 z" fill="#C2410C"/>
+      <path d="M0 0 L10 5 L0 10 z" fill="#F67F2F"/>
     </marker>
     <style>
-      .h  { font: 600 15px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #1A1614; }
-      .who{ font: 500 12.5px ui-monospace, "Geist Mono", Consolas, monospace; fill: #6B625C; letter-spacing: .02em; }
-      .st { font: 600 16.5px ui-monospace, "Geist Mono", Consolas, monospace; fill: #1A1614; }
-      .n  { font: 400 13.5px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #4A4340; }
-      .em { font: 600 13.5px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #C2410C; }
-      .k  { font: 400 12px ui-monospace, Consolas, monospace; fill: #6B625C; }
+      .h  { font: 600 15px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #EDE6E1; }
+      .who{ font: 500 12.5px ui-monospace, "Geist Mono", Consolas, monospace; fill: #9D9792; letter-spacing: .02em; }
+      .st { font: 600 16.5px ui-monospace, "Geist Mono", Consolas, monospace; fill: #EDE6E1; }
+      .n  { font: 400 13.5px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #C3BCB7; }
+      .em { font: 600 13.5px "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif; fill: #F67F2F; }
+      .k  { font: 400 12px ui-monospace, Consolas, monospace; fill: #9D9792; }
     </style>
   </defs>
 
@@ -33,27 +33,27 @@
 
   <!-- ===== The cycle. These are the engine's own state names, verbatim ===== -->
   <g>
-    <rect x="16"  y="92" width="160" height="52" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+    <rect x="16"  y="92" width="160" height="52" rx="4" fill="#28231F" stroke="#342F2C"/>
     <text class="st" x="96"  y="125" text-anchor="middle">proposed</text>
 
-    <rect x="244" y="92" width="160" height="52" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+    <rect x="244" y="92" width="160" height="52" rx="4" fill="#28231F" stroke="#342F2C"/>
     <text class="st" x="324" y="125" text-anchor="middle">accepted</text>
 
-    <rect x="472" y="92" width="160" height="52" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+    <rect x="472" y="92" width="160" height="52" rx="4" fill="#28231F" stroke="#342F2C"/>
     <text class="st" x="552" y="125" text-anchor="middle">in_progress</text>
 
-    <rect x="700" y="92" width="160" height="52" rx="4" fill="#FFFFFF" stroke="#DED5CC"/>
+    <rect x="700" y="92" width="160" height="52" rx="4" fill="#28231F" stroke="#342F2C"/>
     <text class="st" x="780" y="125" text-anchor="middle">done</text>
 
     <!-- the last one carries the only colour in the diagram: that is where the point is -->
-    <rect x="950" y="92" width="160" height="52" rx="4" fill="#FFF3EA" stroke="#C2410C" stroke-width="1.5"/>
-    <text class="st" x="1030" y="125" text-anchor="middle" fill="#7C2D12">verified</text>
+    <rect x="950" y="92" width="160" height="52" rx="4" fill="#44250C" stroke="#F67F2F" stroke-width="1.5"/>
+    <text class="st" x="1030" y="125" text-anchor="middle" fill="#EDE6E1">verified</text>
   </g>
 
-  <line x1="184" y1="118" x2="236" y2="118" stroke="#4A4340" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="412" y1="118" x2="464" y2="118" stroke="#4A4340" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="640" y1="118" x2="692" y2="118" stroke="#4A4340" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="868" y1="118" x2="942" y2="118" stroke="#4A4340" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="184" y1="118" x2="236" y2="118" stroke="#C3BCB7" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="412" y1="118" x2="464" y2="118" stroke="#C3BCB7" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="640" y1="118" x2="692" y2="118" stroke="#C3BCB7" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="868" y1="118" x2="942" y2="118" stroke="#C3BCB7" stroke-width="1.5" marker-end="url(#a)"/>
 
   <!-- what travels along each arrow. Without this the diagram is a row of boxes -->
   <text class="k" x="210" y="108" text-anchor="middle">claim</text>
@@ -64,11 +64,11 @@
   <!-- ===== THE RETURN PATH. This is the line that proves the judgement is real: if
            there were only a way forward, «verified» would be a stamp, not an exam ===== -->
   <path d="M 1030 152 L 1030 196 L 552 196 L 552 152"
-        fill="none" stroke="#C2410C" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ao)"/>
+        fill="none" stroke="#F67F2F" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ao)"/>
   <text class="em" x="791" y="216" text-anchor="middle">fail → back to in_progress, with the reason written down</text>
 
   <!-- ===== The trust boundary — the part the interface cannot show ===== -->
-  <line x1="16" y1="266" x2="1184" y2="266" stroke="#DED5CC"/>
+  <line x1="16" y1="266" x2="1184" y2="266" stroke="#342F2C"/>
 
   <!-- The text lives in ONE <text> with <tspan>, not in separate lines with x values
        guessed by eye: the first version positioned each fragment by hand and the
