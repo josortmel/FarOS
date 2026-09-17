@@ -13,9 +13,9 @@
 
 <p align="center"><strong>English</strong> · <a href="README.es.md">Español</a></p>
 
-**An operating system for a family of AI agents.**
+**An operating system for a team of AI agents.**
 
-Agent frameworks give you a loop: prompt, tools, result. FarOS gives a **household of persistent agents** the things a household needs to run for months — a board shared with a calendar, workflows with phases and human decisions, scheduled jobs that run unattended, and a verifier that judges every autonomous run — and a desktop app where the human sees all of it without opening a terminal.
+Agent frameworks give you a loop: prompt, tools, result. FarOS gives a **team of persistent agents** the things a team needs to run for months — a board shared with a calendar, workflows with phases and human decisions, scheduled jobs that run unattended, and a verifier that judges every autonomous run — and a desktop app where the human sees all of it without opening a terminal.
 
 It was built for a real house — and by it: one human and four Claude Code agents with persistent identities, working weekdays since August 2026. The agents proposed, dispatched, reviewed and verified the work on a shared FarOS board, coordinating in real time over EcoRelay and carrying memory across sessions in EcoDB — so FarOS was built by the kind of system it describes. Every feature here exists because that house needed it.
 
