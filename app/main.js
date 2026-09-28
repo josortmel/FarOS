@@ -161,15 +161,38 @@ function showWindow() {
   win.focus();
 }
 
+/* #314 (absorbe el #335): el menu de la bandeja vive en el PROCESO PRINCIPAL, que no
+   tiene catalogo ni idioma, y se pintaba en espaniol siempre. El idioma de arranque sale
+   del sistema con la misma regla que delSistema() del renderer (en -> en, lo demas -> es);
+   el renderer manda el suyo al cargar y en cada cambio, y el menu se RECONSTRUYE. */
+const TRAY_LABELS = {
+  es: { open: "Abrir FarOS", quit: "Salir" },
+  en: { open: "Open FarOS", quit: "Quit" },
+};
+let trayLang = null;   // se fija en createTray: getLocale() no es fiable antes de ready
+
+function buildTrayMenu() {
+  if (!tray) return;
+  const l = TRAY_LABELS[trayLang] ?? TRAY_LABELS.es;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: l.open, click: showWindow },
+    { type: "separator" },
+    { label: l.quit, click: () => { quitting = true; app.quit(); } },
+  ]));
+}
+
+ipcMain.on("agenticos:set-lang", (_event, l) => {
+  if (!TRAY_LABELS[l] || l === trayLang) return;
+  trayLang = l;
+  buildTrayMenu();
+});
+
 function createTray() {
   const icon = fs.existsSync(ICON_FILE) ? nativeImage.createFromPath(ICON_FILE) : nativeImage.createEmpty();
   tray = new Tray(icon);
   tray.setToolTip("FarOS");
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "Abrir FarOS", click: showWindow },
-    { type: "separator" },
-    { label: "Salir", click: () => { quitting = true; app.quit(); } },
-  ]));
+  if (!trayLang) trayLang = (app.getLocale() || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  buildTrayMenu();
   tray.on("click", showWindow);
   tray.on("double-click", showWindow);
 }

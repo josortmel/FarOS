@@ -6,7 +6,7 @@
    ============================================================ */
 
 import { esc } from '../util.js';
-import { fechaDiaMes, applyI18n } from '../i18n.js';
+import { fechaDiaMes, applyI18n, t as tr } from '../i18n.js';
 
 const root = () => document.getElementById('modal-root');
 
@@ -342,7 +342,7 @@ export function projectDialog(project = null) {
         <div class="field">
           <label for="pj-color">Color</label>
           <input type="color" id="pj-color" value="${editing && /^#[0-9a-f]{6}$/i.test(project.color ?? '') ? esc(project.color) : '#e8590c'}" style="width:4rem;height:2.4rem;padding:2px;border:1px solid var(--color-rule-strong);border-radius:6px;background:var(--color-card);">
-          ${editing && project.color && !/^#[0-9a-f]{6}$/i.test(project.color) ? `<div class="hint">color actual: ${esc(project.color)} (no es hex; se sustituye si guardas)</div>` : ''}
+          ${editing && project.color && !/^#[0-9a-f]{6}$/i.test(project.color) ? `<div class="hint">${tr('color actual:')} ${esc(project.color)} ${tr('(no es hex; se sustituye si guardas)')}</div>` : ''}
         </div>
         <div class="modal__footer">
           ${editing ? '<button type="button" class="btn btn--danger" data-archive style="margin-right:auto">Archivar proyecto</button>' : ''}
@@ -382,7 +382,7 @@ export function dispatchDialog(t, agents, suggested) {
         <div class="field">
           <label for="dp-to">A quién</label>
           <select id="dp-to">${opts}</select>
-          ${suggested ? `<div class="hint">el Plan sugiere ${esc(suggested)}</div>` : ''}
+          ${suggested ? `<div class="hint">${tr('el Plan sugiere')} ${esc(suggested)}</div>` : ''}
         </div>
         <div class="field">
           <label for="dp-note">Nota del lote</label>

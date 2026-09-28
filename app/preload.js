@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld("agenticos", {
   // T3.6: abrir un documento del workflow con la app del sistema. Devuelve "" si ok,
   // o el mensaje de error de shell.openPath.
   openPath: (path) => ipcRenderer.invoke("agenticos:open-path", path),
+  // #314: el menu de la bandeja lo pinta el proceso principal, que no sabe el idioma.
+  setLang: (lang) => ipcRenderer.send("agenticos:set-lang", lang),
 });

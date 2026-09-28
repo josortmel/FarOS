@@ -2,6 +2,21 @@
 
 Notable changes to FarOS. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 3.3.1 — 2026-09-28
+
+A fix release: the English interface is now complete, and a few screens that could strand you no longer do.
+
+### Fixed
+- **English interface, all the way through.** Toasts that carry a name, the task panel, the ticket states, the calendar's labels and dialogs (including the accessibility labels you only meet by tabbing), and the tray menu now follow the language you picked in the app. An end-to-end check fails if any panel shows an untranslated catalog key.
+- **Empty board.** A fresh install shows the board's five columns, empty, instead of a blank screen.
+- **New job dialog.** It closes the three ways you would expect — Escape, a click on the backdrop, and Cancel — and its buttons stay put when an error appears.
+
+### Known issues — fixed in the next release
+We found these in a dependency and security audit on the day of this release. We chose to ship the fixes above now and to say so plainly rather than hold them back:
+- **Opening workflow documents is too permissive.** The desktop app's "open document" action hands any path to the operating system without checking the file type, so a workflow could point it at an executable. The documents come from your own agents through your own local daemon, but the check belongs in the app. The renderer also has no Content-Security-Policy yet.
+- **The desktop app runs on Electron 33**, which is past its support window. It will move to a supported Electron.
+- **Bundled Python dependencies are behind** (Starlette 0.48 and others with published advisories). The daemon only listens on `127.0.0.1` and does not use the affected features, but they will be updated.
+
 ## 3.3.0 — 2026-09-16
 
 The release that took FarOS public.

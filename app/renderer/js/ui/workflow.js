@@ -367,7 +367,7 @@ function wfCard(t, phase, { showPhase }) {
   if (t.ready === false) {
     const deps = (t.unmet_deps ?? [])
       .map(d => `${d.plan_key ?? '#' + d.id} (${STATUS_LABEL[d.status] ?? d.status})`).join(' · ');
-    lock = `<span class="wflock" tabindex="0" aria-label="Bloqueada por dependencias: ${esc(deps)}">🔒<span class="wflock__tip">espera a ${esc(deps)}</span></span>`;
+    lock = `<span class="wflock" tabindex="0" aria-label="${tr('Bloqueada por dependencias:')} ${esc(deps)}">🔒<span class="wflock__tip">${tr('espera a')} ${esc(deps)}</span></span>`;
   }
 
   const badges = [];
@@ -557,7 +557,7 @@ export function renderWorkflowPane(state) {
 
     const list = state.wfActivity;
     if (list == null) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">cargando…</div>`); return; }
-    if (!list.length) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">Nada nuevo ${state.wfLastSeen ? 'desde ' + fmtWhen(state.wfLastSeen) : ''}.</div>`); return; }
+    if (!list.length) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">${state.wfLastSeen ? `${tr('Nada nuevo desde')} ${fmtWhen(state.wfLastSeen)}.` : tr('Nada nuevo.')}</div>`); return; }
     const ul = document.createElement('ul');
     ul.className = 'act';
     for (const a of list) {

@@ -8,6 +8,7 @@
 
 import { TRANSITIONS, ACTION_LABEL, STATUS_LABEL } from '../transitions.js';
 import { fmtWhen, fmtDate, fmtWhenScheduled, esc, projectColor } from '../util.js';
+import { t as tr, applyI18n } from '../i18n.js';  // #314
 import { api } from '../api.js';
 
 let handlers = null; // { onTransition(t, target, action), onOpenJob(jobId), onPatchTime(t, patch), onPatchFields(t, patch), onClose }
@@ -101,7 +102,7 @@ function renderTimeSection(t) {
         <div class="field">
           <label for="tm-pref">Hora preferida</label>
           <input type="time" id="tm-pref" value="${esc(t.preferred_time ?? '')}">
-          <div class="hint">cada ${t.cadence_days} d · próxima ${t.next_due ? esc(fmtDate(t.next_due)) : '—'}</div>
+          <div class="hint">${tr(`cada ${t.cadence_days} d`)} · ${tr('próxima')} ${t.next_due ? esc(fmtDate(t.next_due)) : '—'}</div>
         </div>
         <div class="field">
           <label for="tm-next">Mover la próxima a</label>
@@ -191,7 +192,7 @@ function renderPlanSections(t, plan) {
     plan.agente_sugerido ? `sugerido <b>${esc(plan.agente_sugerido)}</b>` : '',
     plan.verification_level ? `verificación <b>${esc(plan.verification_level)}</b>` : '',
   ].filter(Boolean).join(' · ');
-  s.innerHTML = `<div class="panel__section-title">Ficha del Plan${plan.key ? ` · ${esc(plan.key)}` : ''}</div>
+  s.innerHTML = `<div class="panel__section-title">${tr('Ficha del Plan')}${plan.key ? ` · ${esc(plan.key)}` : ''}</div>
     ${facts ? `<div class="plan__facts">${facts}</div>` : ''}`;
 
   const unmet = new Map((t.unmet_deps ?? []).map(d => [d.plan_key ?? `#${d.id}`, d]));
@@ -209,7 +210,7 @@ function renderPlanSections(t, plan) {
       dd.innerHTML = `<ul class="plan__list plan__list--deps">${[].concat(v).map(k => {
         const d = unmet.get(k);
         return d
-          ? `<li class="plan__dep plan__dep--unmet"><span class="plan__dep-key">${esc(k)}</span> ${esc(STATUS_LABEL[d.status] ?? d.status)} — espera</li>`
+          ? `<li class="plan__dep plan__dep--unmet"><span class="plan__dep-key">${esc(k)}</span> ${esc(STATUS_LABEL[d.status] ?? d.status)} — ${tr('espera')}</li>`
           : `<li class="plan__dep plan__dep--met"><span class="plan__dep-key">${esc(k)}</span> ✓</li>`;
       }).join('')}</ul>`;
     } else if (field === 'criterio') {
@@ -233,7 +234,7 @@ export async function openPanel(t, board) {
   head.className = 'panel__head';
 
   const badges = [];
-  if (t.due_state === 'overdue') badges.push(`<span class="badge badge--overdue">▲ vencida${t.due_at ? ' · ' + fmtDate(t.due_at) : ''}</span>`);
+  if (t.due_state === 'overdue') badges.push(`<span class="badge badge--overdue">${tr('▲ vencida')}${t.due_at ? ' · ' + fmtDate(t.due_at) : ''}</span>`);
   else if (t.due_state === 'due') badges.push(`<span class="badge badge--due">● hoy</span>`);
   if (t.status === 'blocked') badges.push(`<span class="badge badge--blocked">⛔ bloqueada</span>`);
   if (t.priority === 'alta') badges.push(`<span class="badge badge--prio">! alta</span>`);
@@ -253,7 +254,7 @@ export async function openPanel(t, board) {
       <span>estado <b>${STATUS_LABEL[t.status] ?? t.status}</b></span>
       <span>responsable <b>${esc(t.owner ?? '—')}</b></span>
       <span>creada por <b>${esc(t.created_by ?? '—')}</b> · ${fmtWhen(t.created_at)}</span>
-      ${t.cadence_days ? `<span>recurrente <b>cada ${t.cadence_days} d</b> · última ${t.last_done_at ? fmtWhen(t.last_done_at) : 'nunca'}</span>` : ''}
+      ${t.cadence_days ? `<span>recurrente <b>${tr(`cada ${t.cadence_days} d`)}</b> · ${tr('última')} ${t.last_done_at ? fmtWhen(t.last_done_at) : tr('nunca')}</span>` : ''}
       ${t.verified_by ? `<span>verificada por <b>${esc(t.verified_by)}</b></span>` : ''}
       ${t.evidence_type ? `<span>evidencia <b>${esc(t.evidence_type)}</b>${t.evidence ? ' · ' + esc(String(t.evidence).slice(0, 60)) : ''}</span>` : ''}
     </div>`;
@@ -290,7 +291,7 @@ export async function openPanel(t, board) {
       const action = legal[target];
       const btn = document.createElement('button');
       btn.className = action === 'reject' || action === 'block' || action === 'rework' ? 'btn btn--danger' : 'btn btn--ghost';
-      btn.textContent = action === 'rework' ? `Devolver a ${STATUS_LABEL[target] ?? target}…` : (ACTION_LABEL[action] ?? action);
+      btn.textContent = action === 'rework' ? `${tr('Devolver a')} ${STATUS_LABEL[target] ?? target}…` : (ACTION_LABEL[action] ?? action);
       btn.addEventListener('click', () => handlers.onTransition(t, target, action));
       row.appendChild(btn);
     }
@@ -335,6 +336,10 @@ export async function openPanel(t, board) {
   list.innerHTML = '<li>cargando…</li>';
   hs.appendChild(list);
   body.appendChild(hs);
+  /* #314: el panel se pinta DESPUÉS del recorrido de applyI18n (la clase del #291), y
+     con la interfaz en inglés salía entero en español. Se pasa aquí, y otra vez sobre
+     el historial, que llega más tarde. */
+  applyI18n(panel);
 
   api().history(t.id)
     .then(payload => {
@@ -355,5 +360,6 @@ export async function openPanel(t, board) {
         list.appendChild(li);
       }
     })
-    .catch(() => { list.innerHTML = '<li>(historial no disponible)</li>'; });
+    .catch(() => { list.innerHTML = '<li>(historial no disponible)</li>'; })
+    .finally(() => applyI18n(list));
 }

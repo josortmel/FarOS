@@ -108,8 +108,15 @@ export const fechaLarga  = (d) => dtf({ weekday: 'long', day: 'numeric', month: 
 export const fechaDiaMes = (d) => dtf({ weekday: 'long', day: 'numeric', month: 'long' }).format(d);
 
 /* Normaliza una cadena a su patrón: los números salen a {n} para que
-   «3 vencidas» y «2 vencidas» compartan una sola entrada del catálogo. */
-const patron = (s) => s.replace(/\d+/g, '{n}');
+   «3 vencidas» y «2 vencidas» compartan una sola entrada del catálogo.
+   #314: y lo que va entre comillas angulares sale a «{s}». En toda la app las
+   comillas angulares marcan un DATO (el nombre de un proyecto, el título de una
+   tarea), y los avisos lo llevan en mitad de la frase: «Proyecto «x» creado.».
+   Las citas salen PRIMERO, para que las cifras de un nombre sigan siendo del
+   nombre. La cadena tiene que seguir casando ENTERA con una clave. */
+const CITA = /«[^»]*»/g;
+const sinCitas = (s) => s.replace(CITA, '«{s}»');
+const patron = (s) => sinCitas(s).replace(/\d+/g, '{n}');
 
 /* Traduce una cadena SUELTA. Devuelve la misma si no está en el catálogo —
    ese «no la conozco, no la toco» es la garantía de que los datos pasan
@@ -124,11 +131,15 @@ export function t(s) {
   const p = patron(limpio);
   const conPatron = dict[p];
   if (conPatron == null) return crudo;
-  /* reinserta las cifras originales en el mismo orden */
-  const cifras = limpio.match(/\d+/g) ?? [];
-  let i = 0;
-  const traducido = conPatron.replace(/\{n\}/g, () => cifras[i++] ?? '');
-  return crudo.replace(limpio, traducido);
+  /* reinserta las cifras y las citas originales, cada una en su orden */
+  const citas = limpio.match(CITA) ?? [];
+  const cifras = sinCitas(limpio).match(/\d+/g) ?? [];
+  let i = 0, j = 0;
+  const traducido = conPatron
+    .replace(/\{n\}/g, () => cifras[i++] ?? '')
+    .replace(/«\{s\}»/g, () => citas[j++] ?? '');
+  /* con función: ahora el texto lleva datos, y un «$&» en un nombre no es un patrón */
+  return crudo.replace(limpio, () => traducido);
 }
 
 const ATTRS = ['title', 'placeholder', 'aria-label'];
@@ -254,6 +265,7 @@ export async function setLang(l) {
      quedaba sin su lowercase. Un efecto que solo ocurre en una rama no va dentro de la
      rama: va donde ocurre el cambio. */
   document.documentElement.lang = lang;
+  avisarMain();
   await cargar(l);
   /* del inglés al español hay que volver a pintar de cero: el catálogo va en
      un solo sentido y no sabe deshacer. Del español al inglés bastaría con
@@ -269,8 +281,15 @@ export async function setLang(l) {
 
 /* Arranque: se resuelve el idioma y se carga el catálogo ANTES del primer
    pintado, para que no se vea el español un instante. */
+/* #314: el menu de la bandeja vive en el proceso principal y solo sabe el idioma si se lo
+   decimos. Fuera de Electron (fixtures, navegador) no hay puente y no pasa nada. */
+function avisarMain() {
+  try { window.agenticos?.setLang?.(lang); } catch { /* sin puente */ }
+}
+
 export async function initI18n() {
   lang = leer();
+  avisarMain();
   await cargar(lang);
   document.documentElement.lang = lang;
   return lang;

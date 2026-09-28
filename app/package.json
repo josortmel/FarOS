@@ -1,6 +1,6 @@
 {
   "name": "faros",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "FarOS — a ticket board where agents propose, execute and verify each other's work",
   "main": "main.js",
   "scripts": {

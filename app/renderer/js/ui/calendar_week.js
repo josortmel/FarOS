@@ -21,7 +21,7 @@ export function initWeek(h) { handlers = h; }
 
 
 /* #262 */
-import { mesCorto as MES, diaCorto as DIAS_F } from '../i18n.js';
+import { mesCorto as MES, diaCorto as DIAS_F, t as tr } from '../i18n.js';
 
 function daysBetween(from, to) {
   const out = [];
@@ -183,7 +183,7 @@ function renderMini(it, timed) {
   el.dataset.id = it.ticket_id;
   el.tabIndex = 0;
   el.setAttribute('role', 'button');
-  el.setAttribute('aria-label', `${it.title}${it.start ? ', ' + it.start : ''} — ${it.owner ?? ''}. Abrir detalle`);
+  el.setAttribute('aria-label', `${it.title}${it.start ? ', ' + it.start : ''} — ${it.owner ?? ''}. ${tr('Abrir detalle')}`);
   el.style.setProperty('--stripe', projectStripe(it));
   el.title = it.ghost ? 'ocurrencia prevista: se mueve arrastrando la próxima real' : isClosed(it) ? `${it.title} · ${closedLine(it)}` : `${it.title} · ${STATUS_LABEL[it.status] ?? it.status}`;
   el.innerHTML = `

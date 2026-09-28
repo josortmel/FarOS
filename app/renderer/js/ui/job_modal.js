@@ -390,7 +390,24 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
     applyHarness(); fillModels(); renderSchedule(); toolsWarn();
     if (!models.length) loadModels(false);
 
-    modal.querySelector('[data-cancel]').addEventListener('click', () => { close(); resolve(null); });
+    /* #316: este modal SECUESTRABA la app. Se enviaba vacío (que es lo primero que hace
+       cualquiera que abre un formulario que no entiende), saltaban las ocho validaciones, y
+       a partir de ahí no había forma de salir: Escape no existía, el fondo no cerraba, y el
+       botón Cancelar se había ido de debajo del cursor porque los errores lo empujaron.
+       Tres puertas y las tres cerradas. La única salida era matar la app, y eso se llevó por
+       delante la vista Settings global que Eco tenía sin mirar (#300).
+       Las tres salidas comparten cierre: cerrar SIEMPRE resuelve la promesa, porque un modal
+       que desaparece sin resolver deja a quien lo abrió esperando para siempre. */
+    const salir = () => { document.removeEventListener('keydown', alEscape, true); close(); resolve(null); };
+    function alEscape(e) { if (e.key === 'Escape') { e.preventDefault(); salir(); } }
+    document.addEventListener('keydown', alEscape, true);
+
+    /* el fondo: sólo cuenta el clic en el propio backdrop, no uno que burbujee desde dentro */
+    document.getElementById('modal-root').addEventListener('mousedown', (e) => {
+      if (e.target.id === 'modal-root') salir();
+    });
+
+    modal.querySelector('[data-cancel]').addEventListener('click', salir);
     modal.querySelector('#job-form').addEventListener('submit', (e) => {
       e.preventDefault();
       syncSchedule();
@@ -444,6 +461,10 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
         json_schema: schema,
         max_budget_usd: h.billing === 'api' && v('#j-budget') ? Number(v('#j-budget')) : null,
       };
+      /* el mismo desenganche que en salir(): si el modal se cierra POR ÉXITO y el listener se
+         queda vivo, Escape sigue disparando sobre un modal que ya no existe — y el siguiente
+         que se abra se cerrará solo. Un arreglo que deja basura detrás es medio arreglo. */
+      document.removeEventListener('keydown', alEscape, true);
       close();
       resolve(payload);
     });

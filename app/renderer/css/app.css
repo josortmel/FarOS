@@ -854,6 +854,25 @@ details.advanced[open] summary { margin-bottom: var(--sp-3); color: var(--color-
   margin-top: var(--sp-4);
 }
 
+/* #316: la botonera del modal de job no se mueve, pase lo que pase por encima.
+   El bug: .modal tiene max-height 90vh y overflow-y auto, así que el footer
+   scrollea CON el contenido. Al enviar el formulario vacío, las ocho validaciones
+   insertan su caja justo antes del footer y lo empujan hacia abajo — el botón
+   Cancelar se va de debajo del cursor en el momento exacto en que hace falta.
+   Sticky lo ancla al borde inferior del área que scrollea: los errores crecen por
+   encima y los botones se quedan donde estaban.
+   ALCANCE DELIBERADAMENTE MÍNIMO: sólo .modal--job. Los cinco modales de modal.js
+   tienen la misma estructura y probablemente el mismo problema, pero eso no lo pide
+   este ticket y no toco código de al lado sin que alguien lo mire. Queda dicho. */
+.modal--job .modal__footer {
+  position: sticky;
+  bottom: 0;
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) 0 var(--sp-1);
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-rule);
+}
+
 /* ================= Toasts ================= */
 
 .toasts {
@@ -891,6 +910,10 @@ details.advanced[open] summary { margin-bottom: var(--sp-3); color: var(--color-
 
 /* ================= Estado vacío del tablero ================= */
 
+/* #285: el aviso va ENCIMA de las cinco columnas vacías, no en su lugar. Ocupa la
+   primera fila entera y se queda pegado a la izquierda al desplazar el tablero; su ancho
+   lo limita la ventana, no la rejilla (que mide cinco columnas), o a 560 px se sale.
+   El estilo de .board-empty sin más sigue siendo el del workflow («Elige un workflow»). */
 .board-empty {
   grid-column: 1 / -1;
   align-self: center;
@@ -898,6 +921,16 @@ details.advanced[open] summary { margin-bottom: var(--sp-3); color: var(--color-
   color: var(--color-text-mute);
 }
 .board-empty b { display: block; font-family: var(--font-display); font-size: 1.3rem; color: var(--color-text-soft); margin-bottom: 0.4rem; }
+.board--empty { grid-template-rows: auto 1fr; }
+.board--empty > .board-empty {
+  position: sticky;
+  left: 0;
+  justify-self: start;
+  align-self: start;
+  text-align: left;
+  max-width: min(40rem, calc(100vw - 2 * var(--sp-5)));
+}
+.board--empty > .board-empty b { display: inline; font-size: 1.1rem; margin: 0 0.35rem 0 0; }
 
 /* ================= Tablero en el tiempo (T2.4 armazón) ================= */
 

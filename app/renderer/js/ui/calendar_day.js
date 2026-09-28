@@ -10,6 +10,7 @@
    ============================================================ */
 
 import { fmtWhen, fmtDate, esc, projectColor } from '../util.js';
+import { t as tr } from '../i18n.js';  // #314
 
 /* kind=closed (contrato del 3-sep): el trabajo hecho del día se ve, tachado, y no se toca */
 export const isClosed = (it) => it.kind === 'closed';
@@ -248,7 +249,7 @@ function statusLine(it) {
 export function badges(it) {
   const b = [];
   /* vencida solo la ocurrencia real: una proyección (ghost) de una vencida no está vencida */
-  if (it.overdue_since) b.push(`<span class="badge badge--overdue">▲ vencida desde ${esc(fmtDate(it.overdue_since))}</span>`);
+  if (it.overdue_since) b.push(`<span class="badge badge--overdue">▲ ${tr('vencida desde')} ${esc(fmtDate(it.overdue_since))}</span>`);
   else if (it.due_state === 'overdue' && !it.ghost) b.push(`<span class="badge badge--overdue">▲ vencida</span>`);
   if (it.cadence_days) b.push(`<span class="badge badge--recur">↻ ${it.cadence_days} d${it.ghost ? ' · prevista' : ''}</span>`);
   if (it.all_day) b.push(`<span class="badge badge--recur">todo el día</span>`);
@@ -265,7 +266,7 @@ export function renderChip(it) {
   el.dataset.id = it.ticket_id;
   el.tabIndex = 0;
   el.setAttribute('role', 'button');
-  el.setAttribute('aria-label', `${it.title} — sin hora. Abrir detalle`);
+  el.setAttribute('aria-label', `${it.title} — ${tr('sin hora. Abrir detalle')}`);
   el.style.setProperty('--stripe', projectStripe(it));
   el.innerHTML = `
     <div class="day__chip-title">${esc(it.title)}</div>
@@ -289,7 +290,7 @@ function renderEvent(it, hFrom, colIdx, colCount) {
   el.dataset.id = it.ticket_id;
   el.tabIndex = 0;
   el.setAttribute('role', 'button');
-  el.setAttribute('aria-label', `${it.title}, ${it.start}${it.end ? '–' + it.end : ''}. Abrir detalle`);
+  el.setAttribute('aria-label', `${it.title}, ${it.start}${it.end ? '–' + it.end : ''}. ${tr('Abrir detalle')}`);
   el.style.setProperty('--stripe', projectStripe(it));
   el.style.top = `${(s - hFrom * 60) / 60 * HOUR_H}px`;
   el.style.height = `${dur / 60 * HOUR_H}px`;
@@ -502,7 +503,7 @@ function wireStretch(el, it, dur0) {
       const px = Math.max(MIN_DUR / 60 * HOUR_H, h0 + (ev.clientY - y0));
       dur = Math.max(MIN_DUR, Math.round(px / HOUR_H * 60 / STRETCH_SNAP) * STRETCH_SNAP);
       el.style.height = `${dur / 60 * HOUR_H}px`;
-      preview.textContent = `${dur} min · hasta ${toHHMM(Math.min(toMin(it.start) + dur, 24 * 60 - 1))}`;
+      preview.textContent = tr(`${dur} min · hasta ${toHHMM(Math.min(toMin(it.start) + dur, 24 * 60 - 1))}`);
     };
     const up = () => {
       handle.removeEventListener('pointermove', move);

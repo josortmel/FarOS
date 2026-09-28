@@ -254,12 +254,16 @@ export function renderBoard(state) {
      (kind=agentic) viven en Agentes y aquí no se pintan */
   const visible = (arr) => (arr ?? []).filter(t => t.kind !== 'agentic');
   const total = COLUMNS.reduce((n, c) => n + visible(board.columns[c.status]).length, 0);
+  /* #285: vacío NO es pantalla en blanco. Las cinco columnas SON el producto —el ciclo
+     propuesta → verificada—, así que se pintan igual, cada una con su propio vacío, y
+     encima una línea con la siguiente acción. Antes había un return aquí y en el primer
+     arranque con la base limpia no se veía nada de lo que FarOS es. */
+  root.classList.toggle('board--empty', total === 0);
   if (total === 0) {
     const empty = document.createElement('div');
     empty.className = 'board-empty';
-    empty.innerHTML = `<b>Nada en esta vista.</b>Cambia de vista o crea una tarea con «Nueva tarea».`;
+    empty.innerHTML = `<b>Nada en esta vista.</b> <span>Cambia de vista o crea una tarea con «Nueva tarea».</span>`;
     root.appendChild(empty);
-    return;
   }
 
   // ¿hay brazo automático trabajando? — la columna En curso lo dice con un punto vivo

@@ -6,6 +6,8 @@
    pendiente de confirmar con Hilo (flag en el handoff).
    ============================================================ */
 
+import { t } from './i18n.js';
+
 export const TRANSITIONS = {
   proposed:    { accepted: 'accept', rejected: 'reject' },
   accepted:    { in_progress: 'start', done: 'complete', blocked: 'block', rejected: 'reject' },
@@ -40,8 +42,12 @@ export const COLUMNS = [
   { status: 'verified',    title: 'Verificadas', note: null,             empty: '—' },
 ];
 
-export const STATUS_LABEL = {
+/* #314 (forma 4b): la plantilla pega la etiqueta a un dato —`FIX #${id} · ${STATUS_LABEL[s]}`—
+   y el catálogo no casa esa cadena entera, así que se quedaba en español. Se envuelve la
+   BÚSQUEDA aquí, una vez: cada consulta devuelve la etiqueta ya pasada por t(), con el idioma
+   del momento. Una clave que no existe sigue dando undefined, y el `?? status` de fuera vale. */
+export const STATUS_LABEL = new Proxy({
   proposed: 'propuesta', accepted: 'aceptada', in_progress: 'en curso',
   done: 'hecha (sin verificar)', verified: 'verificada',
   blocked: 'bloqueada', rejected: 'rechazada', expired: 'expirada',
-};
+}, { get: (o, k) => (Object.hasOwn(o, k) ? t(o[k]) : undefined) });

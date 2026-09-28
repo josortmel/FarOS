@@ -30,7 +30,7 @@ async function refetchBoard() {
     const board = await api().board(view, project);
     setState({ board });
   } catch (err) {
-    toast(`No se pudo cargar el tablero: ${humanError(err)}`, 'reject');
+    toast(`${tr('No se pudo cargar el tablero:')} ${humanError(err)}`, 'reject');
   }
 }
 
@@ -42,7 +42,7 @@ async function refetchCalendar() {
     const calData = await api().calendar(range.from, range.to);
     setState({ calData, calRange: range });
   } catch (err) {
-    toast(`No se pudo cargar el calendario: ${humanError(err)}`, 'reject');
+    toast(`${tr('No se pudo cargar el calendario:')} ${humanError(err)}`, 'reject');
   }
 }
 /* T5.2: el calendario de Agentes tiene su propio rango y su propia fuente */
@@ -50,7 +50,7 @@ async function refetchAgCalendar() {
   const { agCalView, agCalDate } = getState();
   const range = rangeFor(agCalView, agCalDate);
   try { setState({ agCalData: await api().agentsCalendar(range.from, range.to), agCalRange: range }); }
-  catch (err) { toast(`No se pudo cargar el calendario de Agentes: ${humanError(err)}`, 'reject'); }
+  catch (err) { toast(`${tr('No se pudo cargar el calendario de Agentes:')} ${humanError(err)}`, 'reject'); }
 }
 function ensureAgCalendar() {
   const { agCalView, agCalDate, agCalRange, agCalData } = getState();
@@ -101,7 +101,7 @@ async function refetchWorkflows() {
       setState({ workflows: [] });
       return;
     }
-    toast(`No se pudieron cargar los workflows: ${humanError(err)}`, 'reject');
+    toast(`${tr('No se pudieron cargar los workflows:')} ${humanError(err)}`, 'reject');
   }
 }
 
@@ -120,7 +120,7 @@ async function refetchAgents() {
     setState({ agJobs, agSchedule, agResults, agRunning, mcpServers });
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) { setState({ agJobs: [], agSchedule: { items: [] }, agResults: [], agRunning: [] }); return; }
-    toast(`No se pudo cargar Agentes: ${humanError(err)}`, 'reject');
+    toast(`${tr('No se pudo cargar Agentes:')} ${humanError(err)}`, 'reject');
   }
 }
 
@@ -158,7 +158,7 @@ async function requestTransition(t, target, action) {
 
   // T2.3 (el dueño §1.3): devolver una hecha/verificada exige motivo (≥ 10) — el historial lo guarda como [rechazo]
   if (action === 'rework') {
-    const rs = await reasonDialog(`Devolver «${t.title}» a ${STATUS_LABEL[target] ?? target}`, 'Devolver', {
+    const rs = await reasonDialog(`${tr(`Devolver «${t.title}» a`)} ${STATUS_LABEL[target] ?? target}`, 'Devolver', {
       min: 10, hint: 'qué falta o qué está mal — se guarda en el historial con la fecha',
     });
     if (!rs) return;
@@ -179,8 +179,8 @@ async function requestTransition(t, target, action) {
          motor la ancla a hoy (`anchored`), y aquí se DICE adónde ha ido — que algo se
          mueva en silencio a un sitio que no estás mirando es indistinguible de perderlo. */
       toast(res?.anchored
-        ? `«${t.title}» devuelta a ${STATUS_LABEL[target] ?? target} — vence hoy, la tienes en la vista de Hoy.`
-        : `«${t.title}» devuelta a ${STATUS_LABEL[target] ?? target}.`, 'ok');
+        ? `${tr(`«${t.title}» devuelta a`)} ${STATUS_LABEL[target] ?? target} — ${tr('vence hoy, la tienes en la vista de Hoy.')}`
+        : `${tr(`«${t.title}» devuelta a`)} ${STATUS_LABEL[target] ?? target}.`, 'ok');
     }
     closePanel();
     setState({ selected: null });
@@ -194,7 +194,7 @@ async function requestTransition(t, target, action) {
       toastReject(humanError(err));
       flashCard(t.id); flashDayItem(t.id); // la tarjeta no se movió: que se vea cuál era
     } else {
-      toast(`Error de red: ${humanError(err)}`, 'reject');
+      toast(`${tr('Error de red:')} ${humanError(err)}`, 'reject');
     }
   }
 }
@@ -223,7 +223,7 @@ async function openTicketById(id) {
     setState({ selected: id });
     openPanel(t, getState().board ?? { projects: [] });
   } catch (err) {
-    toast(`No se pudo abrir la tarea: ${humanError(err)}`, 'reject');
+    toast(`${tr('No se pudo abrir la tarea:')} ${humanError(err)}`, 'reject');
   }
 }
 
@@ -271,7 +271,7 @@ function renderProjectBar(state) {
           await refetchBoard();
         } catch (err) {
           if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
-          else toast(`No se pudo guardar: ${humanError(err)}`, 'reject');
+          else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
         }
       });
       bar.appendChild(edit);
@@ -288,7 +288,7 @@ function renderProjectBar(state) {
       await api().createProject(p);
       toast(`Proyecto «${p.name}» creado.`, 'ok');
       await refetchBoard();
-    } catch (err) { toast(`No se pudo crear: ${humanError(err)}`, 'reject'); }
+    } catch (err) { toast(`${tr('No se pudo crear:')} ${humanError(err)}`, 'reject'); }
   });
   bar.appendChild(add);
 
@@ -508,7 +508,7 @@ async function main() {
         reopenSelected();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
-        else toast(`No se pudo guardar: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
       }
     },
     onPatchTime: async (t, patch) => {
@@ -520,7 +520,7 @@ async function main() {
         reopenSelected();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
-        else toast(`No se pudo guardar: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
       }
     },
     onClose: () => { closePanel(); setState({ selected: null, selectedJob: null }); }, // el panel es uno: ticket o job
@@ -582,12 +582,12 @@ async function main() {
           await api().schedule(d.ticket_id, { agent, ...body });
         }
         const dayTxt = movedDay ? ` el ${fmtDayShort(patch.date)}` : '';
-        toast((patch.preferredOnly || (d.cadence && 'start' in patch && !patch.start && !movedDay)) ? (patch.start ? `Hora preferida: ${patch.start}.` : 'Hora preferida borrada: vuelve a «sin hora», el ciclo no cambia.') : patch.start ? `Programada${dayTxt} a las ${patch.start}.` : patch.duration_min != null ? `Duración: ${patch.duration_min} min.` : movedDay ? (d.cadence ? `Próxima ocurrencia movida al ${fmtDayShort(patch.date)}; la cadencia no cambia.` : `Movida al ${fmtDayShort(patch.date)}, todo el día.`) : 'Sin hora: queda para todo el día.', 'ok');
+        toast((patch.preferredOnly || (d.cadence && 'start' in patch && !patch.start && !movedDay)) ? (patch.start ? `Hora preferida: ${patch.start}.` : 'Hora preferida borrada: vuelve a «sin hora», el ciclo no cambia.') : patch.start ? (movedDay ? `${tr('Programada el')} ${fmtDayShort(patch.date)} ${tr('a las')} ${patch.start}.` : `Programada a las ${patch.start}.`) : patch.duration_min != null ? `Duración: ${patch.duration_min} min.` : movedDay ? (d.cadence ? `${tr('Próxima ocurrencia movida al')} ${fmtDayShort(patch.date)}; ${tr('la cadencia no cambia.')}` : `${tr('Movida al')} ${fmtDayShort(patch.date)}, ${tr('todo el día.')}`) : 'Sin hora: queda para todo el día.', 'ok');
         await refetchCalendar();
         refetchBoard();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
-        else toast(`No se pudo programar: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo programar:')} ${humanError(err)}`, 'reject');
         flashDayItem(d.ticket_id);
       }
     },
@@ -635,14 +635,14 @@ async function main() {
       ]);
       setState({ workflow, findings, wfHandoffs, wfActivity, wfDocuments, wfDecisions });
     } catch (err) {
-      toast(`No se pudo cargar el workflow: ${humanError(err)}`, 'reject');
+      toast(`${tr('No se pudo cargar el workflow:')} ${humanError(err)}`, 'reject');
     }
   }
 
   /* T4.3: Archivados con buscador; archivar / cancelar */
   async function refetchArchived() {
     try { setState({ wfArchived: await api().workflows({ status: 'archived' }) }); } // el buscador filtra en cliente
-    catch (err) { setState({ wfArchived: [] }); toast(`No se pudo leer Archivados: ${humanError(err)}`, 'reject'); }
+    catch (err) { setState({ wfArchived: [] }); toast(`${tr('No se pudo leer Archivados:')} ${humanError(err)}`, 'reject'); }
   }
   initWorkflow({
     onSelectWorkflow: selectWorkflow,
@@ -655,7 +655,7 @@ async function main() {
         await refetchWorkflows(); await refetchArchived();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
-        else toast(`No se pudo reactivar: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo reactivar:')} ${humanError(err)}`, 'reject');
       }
     },
     onArchive: async (wf) => {
@@ -667,7 +667,7 @@ async function main() {
         await refetchWorkflows(); if (getState().wfListMode === 'archived') await refetchArchived();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
-        else toast(`No se pudo archivar: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo archivar:')} ${humanError(err)}`, 'reject');
       }
     },
     onCancel: async (wf) => {
@@ -679,7 +679,7 @@ async function main() {
         await refetchWorkflows();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
-        else toast(`No se pudo cancelar: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo cancelar:')} ${humanError(err)}`, 'reject');
       }
     },
     onSelectPhase: (wfPhase) => setState({ wfPhase }),
@@ -692,7 +692,7 @@ async function main() {
         await refetchWorkflows();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
-        else toast(`No se pudo decidir: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo decidir:')} ${humanError(err)}`, 'reject');
         await refetchWorkflows(); // si otro la decidió antes, que se vea
       }
     },
@@ -705,17 +705,17 @@ async function main() {
         await refetchWorkflows();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
-        else toast(`No se pudo aplazar: ${humanError(err)}`, 'reject');
+        else toast(`${tr('No se pudo aplazar:')} ${humanError(err)}`, 'reject');
       }
     },
     /* T3.6: abrir un documento con la app del sistema (solo en Electron) */
     onOpenDocument: async (d) => {
       const open = window.agenticos?.openPath;
-      if (typeof open !== 'function') { toast(`Abrir solo funciona en la app de escritorio. Ruta: ${d.path}`, 'info'); return; }
+      if (typeof open !== 'function') { toast(`${tr('Abrir solo funciona en la app de escritorio. Ruta:')} ${d.path}`, 'info'); return; }
       try {
         const err = await open(d.path);
         if (err) toastReject(`No se pudo abrir «${d.name}»: ${err}`);
-      } catch (e) { toast(`No se pudo abrir: ${humanError(e)}`, 'reject'); }
+      } catch (e) { toast(`${tr('No se pudo abrir:')} ${humanError(e)}`, 'reject'); }
     },
     /* T3.5: sellar la visita — a partir de ahora solo cuenta lo nuevo */
     onMarkSeen: async () => {
@@ -744,7 +744,7 @@ async function main() {
     onDispatchTicket: async (t, to, note) => {
       try {
         await api().dispatchTicket(t.id, { agent: getState().agent, to, note });
-        toast(`«${t.plan_key ?? t.title}» despachada a ${to}. Avísale por relay.`, 'ok');
+        toast(`«${t.plan_key ?? t.title}» despachada a «${to}». Avísale por relay.`, 'ok');
         await refetchWorkflows();
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) toastReject(humanError(err));
@@ -760,7 +760,7 @@ async function main() {
       if (!out) return;
       try {
         await api().dispatchTicket(t.id, { agent: getState().agent, to: out.to, note: out.note });
-        toast(`«${t.plan_key ?? t.title}» despachada a ${out.to}. Avísale por relay.`, 'ok');
+        toast(`«${t.plan_key ?? t.title}» despachada a «${out.to}». Avísale por relay.`, 'ok');
         await refetchWorkflows();
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) toastReject(humanError(err));
@@ -832,7 +832,7 @@ async function main() {
   /* ---------------- Agentes (v3 T1.12/T1.13) ---------------- */
   const jobErr = (err, verb) => {
     if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
-    else toast(`No se pudo ${verb}: ${humanError(err)}`, 'reject');
+    else toast(`${tr(`No se pudo ${verb}:`)} ${humanError(err)}`, 'reject');
   };
   async function openJobModal(job = null) {
     let { harnesses, mcpInherited, meta, board } = getState();
@@ -851,17 +851,17 @@ async function main() {
         const r = await api().mcpImportLocal(getState().agent);
         toast(`Importados ${r.imported ?? 0} servidor${r.imported === 1 ? '' : 'es'} de la sesión local${r.updated ? ` · ${r.updated} actualizados` : ''}.`, 'ok');
         await refetchAgents();
-      } catch (err) { toast(`No se pudo importar: ${humanError(err)}`, 'reject'); }
+      } catch (err) { toast(`${tr('No se pudo importar:')} ${humanError(err)}`, 'reject'); }
     },
     onToggle: async (s, enabled) => {
       try { await api().mcpPatch(s.id, { agent: getState().agent, enabled: enabled ? 1 : 0 }); await refetchAgents(); }
-      catch (err) { toast(`No se pudo cambiar «${s.name}»: ${humanError(err)}`, 'reject'); await refetchAgents(); }
+      catch (err) { toast(`${tr(`No se pudo cambiar «${s.name}»:`)} ${humanError(err)}`, 'reject'); await refetchAgents(); }
     },
     onDelete: async (s) => {
       const rs = await reasonDialog(`Borrar el MCP «${s.name}» del registro`, 'Borrar', { min: 1, hint: 'por qué se quita (queda en el toast, no hay historial de MCP)' });
       if (!rs) return;
       try { await api().mcpDelete(s.id, getState().agent); toast(`MCP «${s.name}» borrado.`, 'ok'); await refetchAgents(); }
-      catch (err) { toast(`No se pudo borrar: ${humanError(err)}`, 'reject'); }
+      catch (err) { toast(`${tr('No se pudo borrar:')} ${humanError(err)}`, 'reject'); }
     },
     /* T2.5: la guía de alta del servidor, con la app del sistema (mismo camino que T3.6) */
     onOpenGuide: async (path) => {
