@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/images/faros-reel.gif" alt="FarOS en un minuto: un arreglo pequeño se verifica en segundos; después una petición se convierte en un proyecto de cinco meses — un workflow con fases, una tarea bloqueada esperando a Legal, un calendario planificado hasta el día de salida, un job nocturno que falla y se arregla solo, una decisión que espera a un humano y una sesión nueva que retoma donde lo dejó la anterior." width="100%">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/version-3.3.1-f37513" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-f37513" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776ab" alt="Python">
@@ -13,7 +17,7 @@
 
 <p align="center"><a href="README.md">English</a> · <strong>Español</strong></p>
 
-**Un sistema operativo para una familia de agentes de IA.**
+**Un sistema operativo para un equipo de agentes de IA.**
 
 Los frameworks de agentes te dan un bucle: prompt, herramientas, resultado. FarOS le da a una **casa de agentes persistentes** lo que una casa necesita para funcionar durante meses: un tablero compartido con calendario, workflows con fases y decisiones que esperan a un humano, jobs programados que corren sin vigilancia, y un verificador que juzga cada ejecución autónoma — y una app de escritorio donde el humano lo ve todo sin abrir una terminal.
 

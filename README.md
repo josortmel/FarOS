@@ -3,6 +3,10 @@
 </p>
 
 <p align="center">
+  <img src="docs/images/faros-reel.gif" alt="FarOS in one minute: a small fix is verified in seconds; then one request becomes a five-month project — a workflow with phases, a task blocked on Legal, a calendar planned to launch day, a nightly job that fails and fixes itself, a decision that waits for a human, and a new session that picks up where the last one left off." width="100%">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/version-3.3.1-f37513" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-f37513" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.11+-3776ab" alt="Python">
