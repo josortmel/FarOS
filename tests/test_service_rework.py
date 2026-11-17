@@ -33,9 +33,12 @@ def test_owner_can_start_any_ticket(conn):
 
 
 def test_other_agent_cannot_start_foreign_ticket(conn):
-    tid = _peer_ticket(conn)
+    # #367 (Pepe, salida A): con verificación peer SÍ puede (quien lo ejecuta lo arranca y
+    # lo completa; sella un tercero). La prohibición sigue para los de verificación self.
+    t = s.propose_ticket(conn, "owner", "tarea de carol", owner="carol", verification_level="self",
+                         auto_accept=True)["ticket"]
     with pytest.raises(TicketError, match="solo puede hacerlo el owner"):
-        s.start_ticket(conn, "bob", tid)
+        s.start_ticket(conn, "bob", t["id"])
 
 
 def test_rework_requires_reason(conn):
@@ -110,12 +113,19 @@ def test_rework_verified_fix_reopens_finding_as_dispatched(conn):
     assert fnd["status"] == "dispatched" and fnd["correction_ticket_id"] == fix_id
 
 
-def test_manual_ticket_without_time_gets_auto_anchor(conn):
+def test_manual_ticket_without_time_is_left_for_its_owner_to_place(conn):
+    """#364 (Pepe, 30-sep): sin ancla automática, y sin exigirle la fecha a quien crea.
+    La tarea nace «por ubicar» y le sale a su DUEÑO, que es quien la coloca."""
     t = s.propose_ticket(conn, "owner", "sin hora", owner="alice", auto_accept=True)["ticket"]
-    assert t["scheduled_at"] and t["scheduled_at"][11:16] == "14:00" and t["duration_min"] == 60
-    h = s.ticket_history(conn, t["id"])["history"]
-    assert any("[ancla automática]" in (r["note"] or "") for r in h)
+    assert t["scheduled_at"] is None and t["due_at"] is None
     r = s.propose_ticket(conn, "owner", "recurrente sin hora", owner="alice", cadence_days=7, auto_accept=True)["ticket"]
-    assert r["preferred_time"] == "14:00"
+    assert r["preferred_time"] is None
+    mine = {x["id"] for x in s.my_board(conn, "alice")["por_ubicar"]}
+    assert {t["id"], r["id"]} <= mine
+    assert t["id"] not in {x["id"] for x in s.my_board(conn, "bob")["por_ubicar"]}
+    b = s.board(conn, view="today")
+    assert t["id"] in {x["id"] for x in b["laterals"]["por_ubicar"]} and b["counts"]["por_ubicar"] >= 2
+    s.update_ticket(conn, "alice", t["id"], scheduled_at="2026-10-02T10:00")
+    assert t["id"] not in {x["id"] for x in s.my_board(conn, "alice")["por_ubicar"]}
     e = s.propose_ticket(conn, "owner", "con hora", owner="alice", scheduled_at="2026-09-10T09:00")["ticket"]
     assert e["scheduled_at"] == "2026-09-10T09:00"

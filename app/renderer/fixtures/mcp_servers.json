@@ -1,21 +1,21 @@
 [
   {
     "id": 1,
-    "name": "calendar",
+    "name": "gmail",
     "transport": "stdio",
     "command": "node",
     "args": [
-      "/srv/projects/atlas/mcp/calendar/index.js"
+      "/srv/projects/atlas/mcp/gmail/index.js"
     ],
     "url": null,
     "env": {
-      "CALENDAR_TOKEN": "••••"
+      "GMAIL_OAUTH_TOKEN": "••••"
     },
     "headers": {},
     "enabled": false,
-    "note": "Local calendar MCP (stdio). Enable after finishing OAuth. Tools: list_events, create_event.",
+    "note": "Local Gmail MCP (stdio). Enable after finishing OAuth; the setup guide hangs from this row. Tools: search_threads, create_draft.",
     "source": "manual",
-    "created_at": "2026-08-27T12:00:00",
-    "updated_at": "2026-08-27T12:00:00"
+    "created_at": "2026-09-10T12:00:00",
+    "updated_at": "2026-09-10T12:00:00"
   }
 ]

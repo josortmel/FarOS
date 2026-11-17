@@ -117,3 +117,21 @@ def test_archive_active_in_one_step_and_reactivate(conn):
     assert res["status"] == "active"
     row = w.get_workflow(conn, wf["id"])
     assert row["closed_at"] is None and row["archived_at"] is None
+
+
+def test_documents_only_lists_document_extensions_384(conn, tmp_path):
+    """#384: spec_path/plan_path se abren con shell.openPath desde la app; si el
+    plan apunta a un .bat (o cualquier ejecutable), documents() no debe listarlo."""
+    root = tmp_path / "repo"
+    (root / "plans").mkdir(parents=True)
+    (root / "docs").mkdir()
+    (root / "plans" / "evil.bat").write_text("@echo off", encoding="utf-8")
+    (root / "docs" / "SPEC.md").write_text("# spec", encoding="utf-8")
+    (root / "docs" / "manual.pdf").write_bytes(b"%PDF-1.4")
+    (root / "docs" / "run.ps1").write_text("x", encoding="utf-8")
+    plan = _plan("zeta-v1")
+    plan["workflow"]["plan_path"] = "plans/evil.bat"
+    wf = w.import_plan(conn, "alice", plan, repo_root=str(root))
+    names = {d["name"] for d in w.documents(conn, wf["id"])}
+    assert "evil.bat" not in names and "run.ps1" not in names
+    assert "SPEC.md" in names and "manual.pdf" in names

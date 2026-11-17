@@ -30,6 +30,20 @@ import httpx  # noqa: E402
 from mcp.server.fastmcp import FastMCP
 from . import env as _env
 
+# #339: FastMCP valida los argumentos de cada tool con un modelo pydantic que IGNORA lo que
+# sobra, así que update_ticket(blocked_reason=…) devolvía 200 con el ticket sin tocar. Con
+# extra="forbid", un argumento que la tool no declara falla nombrándolo. Tiene que ir ANTES de
+# registrar las tools: cada modelo de argumentos hereda esta configuración al crearse.
+# ArgModelBase es interno de mcp 1.x (pyproject: mcp>=1.27,<2). Si una versión lo mueve, NO se
+# tumba el servidor: se avisa por stderr (stdout es el protocolo) y se vuelve al comportamiento
+# de antes. Lo caza test_339 (todas las tools registradas tienen que prohibir lo que sobra).
+try:
+    from mcp.server.fastmcp.utilities import func_metadata as _fm
+    _fm.ArgModelBase.model_config["extra"] = "forbid"
+except (ImportError, AttributeError, TypeError) as _exc:
+    print(f"[faros] AVISO #339: no se pudo prohibir argumentos desconocidos ({_exc!r}); "
+          "FastMCP los descartará en silencio", file=sys.stderr)
+
 BASE_URL = _env.get("URL", "http://127.0.0.1:8756")
 # The SAME house as the daemon, resolved by env.data_dir(). It used to hardcode
 # its own path with "AgenticOS": on a NEW install the daemon writes the token to
@@ -37,23 +51,10 @@ BASE_URL = _env.get("URL", "http://127.0.0.1:8756")
 # 401. Prima found it while reviewing the rename.
 TOKEN_FILE = _env.data_dir() / "token"
 
-# THE SELF-NAME IS PARAMETERIZABLE, AND STILL DEFAULTS TO "agenticos".
-#
-# The prefix of EVERY tool comes from it (tested: the server's self-name wins,
-# not the config key). Changing it outright moves everything to mcp__faros__*
-# and leaves the four live sessions without a board until they restart the MCP.
-# That is why the default is not touched today.
-#
-# And it is why "adding a second faros entry next to agenticos" does NOT work as
-# is: both entries launch the SAME server, named the same, so both expose
-# mcp__agenticos__* and collide. A seamless transition needs the new entry to
-# start the server UNDER A DIFFERENT NAME, which is what this variable allows:
-#     entry "agenticos": no env             -> mcp__agenticos__*
-#     entry "faros":     FAROS_MCP_NAME=faros -> mcp__faros__*
-# Both coexist, you migrate session by session, and retire the old one cold.
-# NONE IS ADDED TODAY: with no migration under way they are just extra processes.
-# The mechanism is ready for #238.
-mcp = FastMCP(_env.get("MCP_NAME", "agenticos"))
+# The tool prefix comes from the KEY in the client's config (~/.claude.json), not from this name:
+# measured on 28-oct and again on 4-nov, key FarOS with no variable gives mcp__FarOS__*. The name
+# only makes the server call itself like its key; FAROS_MCP_NAME still overrides it.
+mcp = FastMCP(_env.get("MCP_NAME", "FarOS"))
 
 
 def _call(method: str, path: str, **kwargs):
@@ -87,7 +88,23 @@ def _call(method: str, path: str, **kwargs):
         body = {"error": "bad_response", "reason": r.text[:500]}
     if r.status_code >= 400 and "error" not in body:
         body = {"error": f"http_{r.status_code}", "reason": str(body)[:500]}
+    if isinstance(body, dict) and body.get("code") == "route.not_found":
+        body = _otra_version(body)
     return body
+
+
+def _otra_version(body: dict) -> dict:
+    """#1254: el MCP sale del código y el daemon de la última versión instalada. Una
+    herramienta nueva llega antes que su ruta: decirlo con las dos versiones."""
+    from . import __version__
+    try:
+        daemon = httpx.request("GET", f"{BASE_URL}/api/health", timeout=5).json()["version"]["daemon"]
+    except Exception:
+        daemon = "?"
+    return {**body, "daemon_version": daemon, "mcp_version": __version__,
+            "reason": (f"esta herramienta es de una versión de FarOS que todavía no está instalada: "
+                       f"el daemon es la {daemon} y el MCP la {__version__}. Se arregla instalando "
+                       f"la versión nueva, no cambiando la llamada.")}
 
 
 @mcp.tool()
@@ -101,9 +118,34 @@ def board(project_id: int | None = None, view: str = "all") -> dict:
 
 
 @mcp.tool()
-def my_board(agent: str) -> dict:
-    """Your personal board: open tasks, recurring due, verification queue, proposals."""
-    return _call("GET", "/api/my_board", params={"agent": agent})
+def my_board(agent: str, full: bool = False, limit: int = 30) -> dict:
+    """Your personal board: open tasks, recurring due, verification queue, proposals,
+    and «por_ubicar» (yours without a date — place them). Slim by default (Pepe, 4-nov:
+    it no longer fit in one answer): each ticket is id, title, status, priority, time and
+    owner; workable ones first, by time; limit caps each list and «notes» says what's left.
+    Read one ticket with get_ticket, or pass full=True for everything."""
+    board = _call("GET", "/api/my_board", params={"agent": agent, "full": full})
+    if full or not isinstance(board, dict):
+        return board  # un error del servidor pasa tal cual
+
+    def order(t):
+        parked = t.get("status") in ("blocked", "done", "verified")
+        return (parked, not t.get("scheduled_at"), t.get("scheduled_at") or "", t.get("id") or 0)
+
+    keep = ("id", "title", "status", "priority", "scheduled_at", "next_due", "owner",
+            "due_state", "preferred_time")
+    out, notes = {}, {}
+    for section, tickets in board.items():
+        if not isinstance(tickets, list):
+            out[section] = tickets
+            continue
+        shown = sorted(tickets, key=order)[:max(1, limit)]
+        out[section] = [{k: t.get(k) for k in keep} for t in shown]
+        if len(tickets) > len(shown):
+            notes[section] = f"{len(tickets) - len(shown)} más: sube limit o usa full=True."
+    if notes:
+        out["notes"] = notes
+    return out
 
 
 @mcp.tool()
@@ -124,6 +166,75 @@ def patch_settings(agent: str, changes: dict) -> dict:
     """Change settings (household only). changes: {key: value}. A secret whose
     value is '••••' is left untouched; '' clears it."""
     return _call("PATCH", "/api/settings", json={"agent": agent, **changes})
+
+
+@mcp.tool()
+def silenciar_timbre(agent: str, hasta: str = "mañana", agente: str | None = None) -> dict:
+    """Silence YOUR franja bell (the relay message FarOS sends at each task's start time), no permission
+    needed. hasta: "1h", "3h", "mañana" (until 00:00 tomorrow), "siempre", an ISO datetime, or "" to turn
+    it back on. While silenced nothing rings and nothing is saved for later. Only the household owner may
+    pass another agente."""
+    return _call("POST", "/api/timbre/silencio", json={"agent": agent, "agente": agente or agent, "hasta": hasta})
+
+
+@mcp.tool()
+def marcar_tiempo_libre(agent: str, ticket_id: int, libre: bool = True) -> dict:
+    """Mark (or unmark, libre=False) one of YOUR tasks as free time: when it starts, the bell sends your
+    free-time invitation instead of «Tenías planeado». Want a second nudge halfway through a free hour?
+    Split the task in two (e.g. 15:00 and 15:30) and mark both. The household owner may mark anyone's."""
+    return _call("POST", "/api/timbre/tiempo_libre", json={"agent": agent, "ticket_id": ticket_id, "libre": libre})
+
+
+@mcp.tool()
+def credentials() -> list | dict:
+    """Claves (#460): the open list of external-service secrets (deepseek, anthropic,
+    telegram, otra). Values never come back («••••»). Each one says whether FarOS uses it
+    (in_use: one per kind, copied into its setting) and its last test."""
+    return _call("GET", "/api/credentials")
+
+
+@mcp.tool()
+def credential_changes(limit: int = 50) -> list | dict:
+    """Claves (#1078): who changed what in a secret and when (created, name, origin, value, in_use,
+    deliverable, deleted), newest first. Never the value: a value change only says «cambiado».
+    Each row carries the name, because ids are reused after a delete."""
+    return _call("GET", "/api/credentials/changes", params={"limit": limit})
+
+
+@mcp.tool()
+def create_credential(agent: str, name: str, kind: str, value: str, origin: str = "",
+                      in_use: bool | None = None) -> dict:
+    """Add a secret (household only). kind: deepseek | anthropic | telegram | otra.
+    Known kinds are TESTED first (free call) and NOT saved if the service rejects them
+    (422 credential.test_failed). «otra» is saved untested; origin says where it comes from.
+    in_use omitted: the first of its kind becomes the one FarOS uses."""
+    return _call("POST", "/api/credentials", json={"agent": agent, "name": name, "kind": kind,
+                                                   "value": value, "origin": origin, "in_use": in_use})
+
+
+@mcp.tool()
+def update_credential(agent: str, credential_id: int, name: str | None = None,
+                      value: str | None = None, origin: str | None = None,
+                      in_use: bool | None = None) -> dict:
+    """Edit a secret: name, origin, value (tested before saving) or in_use (true = FarOS
+    uses this one for its kind; false = none). The kind can't change."""
+    body = {"agent": agent}
+    for k, v in (("name", name), ("value", value), ("origin", origin), ("in_use", in_use)):
+        if v is not None:
+            body[k] = v
+    return _call("PATCH", f"/api/credentials/{credential_id}", json=body)
+
+
+@mcp.tool()
+def test_credential(agent: str, credential_id: int) -> dict:
+    """Test a saved secret again against its service and record the result."""
+    return _call("POST", f"/api/credentials/{credential_id}/test", json={"agent": agent})
+
+
+@mcp.tool()
+def delete_credential(agent: str, credential_id: int) -> dict:
+    """Delete a secret. If FarOS was using it, its setting is left empty."""
+    return _call("DELETE", f"/api/credentials/{credential_id}", params={"agent": agent})
 
 
 @mcp.tool()
@@ -184,7 +295,15 @@ def propose_ticket(agent: str, title: str, description: str = "", owner: str | N
     """Propose a manual ticket (born 'proposed'; the owner accepts it at the
     decision gate). Returns the ticket + possible duplicates (FTS5). Temporal
     fields: scheduled_at 'YYYY-MM-DDTHH:MM', duration_min, preferred_time 'HH:MM'
-    (recurring), weekday 0=Monday…6 (v3.2: weekly recurring anchored to a day)."""
+    (recurring), weekday 0=Monday…6 (v3.2: weekly recurring anchored to a day).
+    verification_level: self | peer | auto (Haiku judge) | external (#465: judged by
+    DeepSeek, majority of 3 runs; only DeepSeek or the household owner can seal it).
+    #364: nothing is auto-scheduled. A ticket without a date is born «por ubicar»
+    and its OWNER places it (my_board → por_ubicar; board laterals.por_ubicar).
+    When you own it, placing it is your job — pick the slot yourself.
+    #1081: criterion_warnings lists what the verify_criteria breaks of the criteria rule
+    ({punto, aviso}: suite without the exact command, «fixed» without red on the parent,
+    something a judge can't touch…). It never blocks: fix it with update_ticket if it applies."""
     return _call("POST", "/api/tickets", json={k: v for k, v in locals().items() if v is not None})
 
 
@@ -225,16 +344,36 @@ def get_ticket(ticket_id: int) -> dict:
     return _call("GET", f"/api/tickets/{ticket_id}")
 
 
+def _evidencia_texto(evidence):
+    """#600 punto 5: un `proof` es un JSON, y FastMCP parsea a dict un argumento con pinta de JSON
+    antes de validarlo, así que con `str` a secas ningún agente podía completar con proof por MCP
+    («Input should be a valid string»). Se acepta el dict y se vuelve a texto: la API guarda texto."""
+    if isinstance(evidence, dict):
+        return json.dumps(evidence, ensure_ascii=False)
+    return evidence
+
+
 @mcp.tool()
 def transition_ticket(agent: str, ticket_id: int, action: str,
-                      evidence_type: str | None = None, evidence: str | None = None,
+                      evidence_type: str | None = None, evidence: str | dict | None = None,
                       verdict: str = "pass", reason: str | None = None,
-                      note: str = "") -> dict:
-    """State transition: accept | start | block | complete | verify | reject.
+                      note: str = "", provenance: str | None = None) -> dict:
+    """State transition: accept | start | block | complete | verify | reject | pause | claim | unclaim.
+    claim (#481): put your name on a task's verification BEFORE saying it in the room; if
+    someone has it already you get «ya la tiene X». unclaim releases it (only whoever has it).
     complete requires evidence_type+evidence. verify uses verdict (pass|fail) + note.
-    block/reject require reason."""
+    block/reject require reason; block on an already blocked task rewrites its reason
+    without unblocking it (#482). pause: in_progress → accepted when it wasn't really
+    started, with a note of at least 10 chars; only the task owner or the household owner.
+    #640: a task OWNED by the household owner can be started, completed (which seals a
+    self-level one) and paused by anyone of the house; the history says «en nombre de …».
+    provenance (#377), only on a verification (verify, or complete of a self-level task):
+    'deterministic:<tool>' when a test/grep/script did the check. Leave it empty otherwise:
+    FarOS records 'external' (the household owner) or 'same-family' (a Claude) by itself."""
     body = {"agent": agent, "action": action, "evidence_type": evidence_type,
-            "evidence": evidence, "verdict": verdict, "reason": reason, "note": note}
+            "evidence": _evidencia_texto(evidence), "verdict": verdict, "reason": reason, "note": note}
+    if provenance is not None:
+        body["provenance"] = provenance
     return _call("POST", f"/api/tickets/{ticket_id}/transition", json=body)
 
 
@@ -249,6 +388,7 @@ def rework_ticket(agent: str, ticket_id: int, reason: str, to: str = "accepted")
 
 CLEARABLE_FIELDS = {"scheduled_at", "next_due_override", "due_at", "duration_min",
                     "preferred_time", "weekday"}
+JOB_CLEARABLE_FIELDS = {"ticket_id"}  # #518
 
 
 @mcp.tool()
@@ -259,8 +399,11 @@ def update_ticket(agent: str, ticket_id: int, title: str | None = None,
                   scheduled_at: str | None = None, duration_min: int | None = None,
                   all_day: int | None = None, preferred_time: str | None = None,
                   next_due_override: str | None = None, weekday: int | None = None,
-                  evidence: str | None = None, clear: list[str] | None = None) -> dict:
-    """Edit ticket fields (same PATCH as the UI). Temporal fields (T0.3):
+                  evidence: str | dict | None = None, verification_level: str | None = None,
+                  clear: list[str] | None = None) -> dict:
+    """Edit ticket fields (same PATCH as the UI). verification_level (#414): self | peer |
+    auto | external; anyone may raise it, only the household owner lowers it to self; not on
+    closed, recurring or agentic tasks. Temporal fields (T0.3):
     scheduled_at 'YYYY-MM-DDTHH:MM', duration_min, all_day 0|1, preferred_time
     'HH:MM', next_due_override 'YYYY-MM-DD' (recurring only; Sat/Sun snaps to
     Monday), weekday 0=Monday…6 (v3.2, weekly recurring only). evidence:
@@ -271,6 +414,8 @@ def update_ticket(agent: str, ticket_id: int, title: str | None = None,
     due_at, duration_min, preferred_time, weekday."""
     body = {k: v for k, v in locals().items()
             if v is not None and k not in ("ticket_id", "clear")}
+    if "evidence" in body:
+        body["evidence"] = _evidencia_texto(body["evidence"])
     if clear:
         bad = set(clear) - CLEARABLE_FIELDS
         if bad:
@@ -360,18 +505,64 @@ def ask_decision(agent: str, title: str, options: list, context: str = "",
 
 @mcp.tool()
 def list_decisions(status: str | None = None, workflow_id: int | None = None,
-                   project_id: int | None = None) -> list | dict:
-    """Decisions: pending | deferred | decided (with who, when, why)."""
-    params = {k: v for k, v in locals().items() if v is not None}
-    return _call("GET", "/api/decisions", params=params)
+                   project_id: int | None = None, ids: list[int] | None = None,
+                   limit: int = 15, full: bool = False) -> list | dict:
+    """Decisions, slim by default (Pepe, 3-nov: the whole history in every call was madness).
+    No status → only the OPEN ones (pending + deferred). status: pending | deferred | decided.
+    Each comes with title, option labels, answer, rationale and dates; no context, option texts
+    or history. limit caps how many (newest first). For the full body pass ids=[...] or full=True."""
+    params = {k: v for k, v in (("status", status), ("workflow_id", workflow_id),
+                                ("project_id", project_id)) if v is not None}
+    rows = _call("GET", "/api/decisions", params=params)
+    if not isinstance(rows, list):
+        return rows  # un error del servidor pasa tal cual
+    if ids:
+        wanted = set(ids)
+        chosen = [d for d in rows if d.get("id") in wanted]
+        return {"decisions": chosen, "total": len(chosen), "shown": len(chosen)}
+    if status is None:
+        rows = [d for d in rows if d.get("status") in ("pending", "deferred")]
+    total = len(rows)
+    rows = rows[:max(1, limit)]
+    if not full:
+        keep = ("id", "title", "status", "project_id", "workflow_id", "asked_by", "created_at",
+                "decision", "rationale", "decided_by", "decided_at", "deferred_until")
+        rows = [{**{k: d.get(k) for k in keep},
+                 "options": [o.get("label") for o in d.get("options") or []]} for d in rows]
+    out = {"decisions": rows, "total": total, "shown": len(rows)}
+    if total > len(rows):
+        out["note"] = f"{total - len(rows)} más: sube limit, filtra por project_id o pide ids."
+    return out
+
+
+@mcp.tool()
+def decisiones_vigentes(tema: str, agente: str | None = None, incluir_superadas: bool = False,
+                        limit: int = 10) -> dict:
+    """#919: the decisions that HOLD TODAY on a topic, from FarOS decisions AND EcoDB memories
+    (decision/acuerdo). Use it BEFORE acting on something with decisions behind it. A superseded
+    one is replaced by its successor («sustituye_a»); expired ones (valid_until past) are dropped.
+    Each row says its «fuente» (FarOS ids are faros:decision:<n>) and its «rango» within that source: the two halves are
+    interleaved by relevance, not by date. incluir_superadas=true to audit.
+    If EcoDB is down or has no key, FarOS answers with its half and says so in «avisos»."""
+    params = {"tema": tema, "incluir_superadas": str(bool(incluir_superadas)).lower(), "limit": limit}
+    if agente:
+        params["agente"] = agente
+    return _call("GET", "/api/decisions/vigentes", params=params)
 
 
 @mcp.tool()
 def decide(agent: str, decision_id: int, rationale: str, option: str | None = None,
-           decision: str | None = None) -> dict:
+           decision: str | None = None, supersedes: list[int] | None = None,
+           supersede_kind: str | None = None, supersede_reason: str | None = None,
+           decidido_por: dict | None = None, valid_until: str | None = None) -> dict:
     """Decide (usually the owner): option = chosen label, or decision = free text.
-    rationale is mandatory. It cannot be decided twice."""
+    rationale is mandatory. It cannot be decided twice.
+    #919: if this decision changes earlier ones, name them in supersedes=[ids]: they get marked
+    «superseded by» this one (supersede_kind total|parcial|nunca_valida — the last one owner only;
+    supersede_reason one line). decidido_por = who actually decided {tipo: humano|agente|equipo,
+    quien}; valid_until = YYYY-MM-DD for something that only holds until a date."""
     body = {k: v for k, v in locals().items() if v is not None and k != "decision_id"}
+    body["surface"] = "mcp"   # #657: decidido por MCP (ni escritorio ni móvil)
     return _call("POST", f"/api/decisions/{decision_id}/decide", json=body)
 
 
@@ -420,11 +611,39 @@ def get_job(job_id: int) -> dict:
 
 
 @mcp.tool()
-def update_job(agent: str, job_id: int, **fields) -> dict:
-    """Edit fields of a job (name, prompt, model, schedule, inherit_mcp, add_dirs,
-    effort, fallback_model, system_prompt, json_schema, verify_criteria, verify_level,
-    ticket_id, project_id, enabled...)."""
-    return _call("PATCH", f"/api/jobs/{job_id}", json={"agent": agent, **fields})
+def update_job(agent: str, job_id: int, name: str | None = None, harness: str | None = None,
+               model: str | None = None, prompt: str | None = None, cwd: str | None = None,
+               permission_mode: str | None = None, allowed_tools: str | None = None,
+               mcp_config: str | None = None, inherit_mcp: list | None = None,
+               mcp_servers: list | None = None, strict_mcp: bool | None = None,
+               add_dirs: list | None = None, effort: str | None = None,
+               fallback_model: str | None = None, system_prompt: str | None = None,
+               json_schema: dict | None = None, max_budget_usd: float | None = None,
+               timeout_s: int | None = None, schedule: dict | None = None,
+               verify_level: str | None = None, verify_criteria: str | None = None,
+               ticket_id: int | None = None, project_id: int | None = None,
+               enabled: bool | None = None, clear: list[str] | None = None) -> dict:
+    """Edit fields of a job; only the ones you pass change. schedule has the same
+    shape as in create_job. Only the parameters listed here exist: any other
+    argument is dropped before it reaches the daemon, silently if it travels with
+    an editable one (a call with no editable field returns an error).
+    To UNLINK the job from its task use clear=["ticket_id"] (#518: a job hanging
+    from a closed task does not fire; get_job says so in not_firing)."""
+    # #401: con **fields, FastMCP publicaba UN parámetro «fields» y el daemon lo rechazaba.
+    body = {k: v for k, v in locals().items() if v is not None and k not in ("job_id", "clear")}
+    if clear:
+        bad = set(clear) - JOB_CLEARABLE_FIELDS
+        if bad:
+            return {"error": "invalid_request", "code": "job.field_not_clearable",
+                    "reason": f"not clearable: {', '.join(sorted(bad))}",
+                    "fields": sorted(bad), "clearable": sorted(JOB_CLEARABLE_FIELDS)}
+        body.update({k: None for k in clear})
+    # Un campo que no está en el esquema (no editable) FastMCP lo descarta callado: sin
+    # este corte, el PATCH iría vacío, daría 200 y parecería que cambió algo.
+    if len(body) == 1:
+        return {"error": "invalid_request", "code": "request.invalid",
+                "reason": "update_job sin ningún campo editable; los editables son los parámetros de esta herramienta"}
+    return _call("PATCH", f"/api/jobs/{job_id}", json=body)
 
 
 @mcp.tool()
@@ -499,8 +718,8 @@ def mcp_inherited() -> list | dict:
 
 @mcp.tool()
 def run_verdict(agent: str, run_id: int, verdict: str, reason: str) -> dict:
-    """Manual verdict on an ok run that was never judged: pass|fail plus a reason.
-    A pass on a linked job completes its ticket."""
+    """Manual verdict on an ok run that was never judged, or that the judge left
+    'uncertain': pass|fail plus a reason. A pass on a linked job completes its ticket."""
     return _call("POST", f"/api/runs/{run_id}/verdict",
                  json={"agent": agent, "verdict": verdict, "reason": reason})
 
@@ -704,6 +923,42 @@ def mark_milestone_saved(agent: str, workflow_id: int, milestone_id: int,
     """Mark the milestone as saved to your memory store; pass the id it gave you."""
     return _call("POST", f"/api/workflows/{workflow_id}/milestones/{milestone_id}/mark_saved",
                  json={"agent": agent, "memory_id": memory_id})
+
+
+# ------------------------------------------------------------------ Library (#850)
+
+LIBRARY_GET_MAX = 8000
+
+
+@mcp.tool()
+def library_search(q: str | None = None, clase: str | None = None, desde: str | None = None,
+                   hasta: str | None = None, limite: int = 20) -> list | dict:
+    """Search the Library (what FarOS and the agents produce: magazines, readings, reports,
+    run results, project docs, reports for the owner). Full text in q (2+ letter words); clase: revista |
+    lectura | faro | resultado | documentacion | informe; desde/hasta: YYYY-MM-DD. Without q it lists by date.
+    Each row has `id`, `titulo`, `fecha`, `clase` and `abrir` (URL if it is an interactive page)."""
+    params = {k: v for k, v in (("q", q), ("clase", clase), ("desde", desde), ("hasta", hasta),
+                                ("limite", limite)) if v is not None}
+    return _call("GET", "/api/library/items", params=params)
+
+
+@mcp.tool()
+def library_get(id: int, max_chars: int = LIBRARY_GET_MAX) -> dict:
+    """Read a Library entry as text (max 8000 characters; `truncado` tells you if there is more).
+    `id` comes from library_search."""
+    return _call("GET", f"/api/library/items/{id}/content",
+                 params={"formato": "texto", "max": max(1, min(max_chars, LIBRARY_GET_MAX))})
+
+
+@mcp.tool()
+def library_add(ruta: str, clase: str, ticket: int | None = None) -> dict:
+    """Register a file you produced in the Library. It must be inside one of the Library roots
+    (the daemon decides; anything else is refused). clase: revista | lectura | faro | resultado |
+    documentacion | informe. ticket links it to a ticket."""
+    body = {"ruta": ruta, "clase": clase}
+    if ticket is not None:
+        body["ticket"] = ticket
+    return _call("POST", "/api/library/items", json=body)
 
 
 if __name__ == "__main__":

@@ -6,8 +6,14 @@
     "title": "Which harness runs the nightly jobs",
     "context": "The cheap model is enough for the digest but not for the report.",
     "options": [
-      "claude-cli",
-      "opencode"
+      {
+        "label": "claude-cli",
+        "text": "Run both on claude-cli: one harness, one set of logs."
+      },
+      {
+        "label": "opencode",
+        "text": "Digest on claude-cli, report on opencode: the report needs the bigger model."
+      }
     ],
     "asked_by": "dave",
     "status": "open",
@@ -15,9 +21,107 @@
     "decision": null,
     "rationale": null,
     "deferred_until": null,
-    "created_at": "2026-09-15T17:00:00",
+    "created_at": "2026-09-29T17:00:00",
     "decided_at": null,
     "history": [],
     "workflow_name": "platform-v3"
+  },
+  {
+    "workflow_id": 1,
+    "project_id": 1,
+    "options": [
+      {
+        "label": "Hetzner",
+        "text": "One fixed-price server in Finland."
+      },
+      {
+        "label": "Railway",
+        "text": "Keep paying per minute of RAM."
+      }
+    ],
+    "asked_by": "dave",
+    "status": "decided",
+    "deferred_until": null,
+    "workflow_name": "platform-v3",
+    "id": 2,
+    "title": "Where the app lives",
+    "context": "",
+    "decided_by": "alice",
+    "decision": "Railway",
+    "rationale": "it already works",
+    "created_at": "2026-10-01T10:00:00",
+    "decided_at": "2026-10-01T11:00:00",
+    "superseded_by": 3,
+    "supersede_kind": "parcial",
+    "supersede_reason": "the RAM bill grew with no users",
+    "decidido_por": null,
+    "valid_until": null,
+    "history": [
+      {
+        "event": "asked",
+        "actor": "dave",
+        "changed_at": "2026-10-01T10:00:00",
+        "note": null
+      },
+      {
+        "event": "decided",
+        "actor": "alice",
+        "changed_at": "2026-10-01T11:00:00",
+        "note": "Railway — it already works",
+        "surface": "desktop"
+      },
+      {
+        "event": "superseded",
+        "actor": "alice",
+        "changed_at": "2026-11-10T10:00:00",
+        "note": "superada por #3 (parcial)"
+      }
+    ]
+  },
+  {
+    "workflow_id": 1,
+    "project_id": 1,
+    "options": [
+      {
+        "label": "Hetzner",
+        "text": "One fixed-price server in Finland."
+      },
+      {
+        "label": "Railway",
+        "text": "Keep paying per minute of RAM."
+      }
+    ],
+    "asked_by": "dave",
+    "status": "decided",
+    "deferred_until": null,
+    "workflow_name": "platform-v3",
+    "id": 3,
+    "title": "Where the app lives, second look",
+    "context": "",
+    "decided_by": "alice",
+    "decision": "Hetzner",
+    "rationale": "fixed price, data in the EU",
+    "created_at": "2026-11-10T09:00:00",
+    "decided_at": "2026-11-10T10:00:00",
+    "superseded_by": null,
+    "supersede_kind": null,
+    "supersede_reason": null,
+    "decidido_por": "{\"tipo\": \"humano\", \"quien\": \"carol\"}",
+    "valid_until": "2027-01-31",
+    "history": [
+      {
+        "event": "asked",
+        "actor": "dave",
+        "changed_at": "2026-11-10T09:00:00",
+        "note": null
+      },
+      {
+        "event": "decided",
+        "actor": "alice",
+        "changed_at": "2026-11-10T10:00:00",
+        "note": "Hetzner — fixed price",
+        "surface": "desktop"
+      }
+    ]
   }
 ]

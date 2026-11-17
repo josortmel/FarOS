@@ -16,9 +16,9 @@
 #
 # LO QUE SI SIGUE LLAMANDOSE agenticos, y a proposito: el NOMBRE DEL SERVIDOR
 # MCP. Es el prefijo de las 67 herramientas (mcp__agenticos__*), o sea una
-# interfaz publica: renombrarlo rompe a todo el que las tenga cableadas. Y las
-# dos TAREAS PROGRAMADAS de Windows (AgenticOS-daemon / AgenticOS-watchdog),
-# que son objetos reales del sistema y cuyo renombrado es #288.
+# interfaz publica: renombrarlo rompe a todo el que las tenga cableadas.
+# Las dos TAREAS PROGRAMADAS de Windows se llaman FarOS-daemon / FarOS-watchdog
+# desde el #288 (los scripts quitan las AgenticOS-* viejas al registrar las nuevas).
 # El daemon va como extraResources (onedir de PyInstaller, T4.2: tools/build_daemon.ps1 primero).
 appId: io.github.josortmel.faros
 productName: FarOS
@@ -28,6 +28,10 @@ directories:
   buildResources: assets
 files:
   - main.js
+  - open_path_guard.js
+  - window_policy.js
+  - ipc_guard.js
+  - copiar_clave.js
   - preload.js
   - package.json
   - renderer/**
@@ -42,6 +46,18 @@ extraResources:
     to: tools/uninstall_service.ps1
   - from: ../tools/install_watchdog.ps1
     to: tools/install_watchdog.ps1
+# #476 (decisión #43 de Pepe, 15-oct): fuses de Electron (opciones de FuseOptionsV1 de app-builder-lib 26.15.3,
+# leídas en su configuration.d.ts el 16-oct). Antes, FarOS.exe con ELECTRON_RUN_AS_NODE=1 era un intérprete de
+# Node (medido el 9-oct). runAsNode false es seguro: main.js no usa process.fork. La integridad del asar está
+# soportada en Windows desde Electron 30. grantFileProtocolExtraPrivileges se queda encendido mientras el renderer
+# se cargue por file:// (el protocolo propio es el #477, aplazado por Pepe).
+# Coste: los instrumentos que se enganchan con --inspect al main empaquetado solo valen en dev.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
 win:
   target:
     - target: nsis
@@ -57,3 +73,5 @@ nsis:
   shortcutName: FarOS
   runAfterFinish: true
   deleteAppDataOnUninstall: false
+  # #317 (A): el desinstalador quita las tareas programadas (assets/installer.nsh)
+  include: assets/installer.nsh

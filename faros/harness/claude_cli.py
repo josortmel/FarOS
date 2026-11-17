@@ -46,6 +46,18 @@ def parse_help_aliases(help_text: str) -> list[str]:
     return aliases
 
 
+def _lineas_json(stdout: str) -> list | None:
+    """#1281: la salida de --output-format stream-json (un objeto JSON por línea) como lista, igual que la de «json»
+    en claude ≥2.1.206. None si alguna línea no es JSON: entonces no es esa salida."""
+    lineas = [l for l in stdout.splitlines() if l.strip()]
+    if not lineas:
+        return None
+    try:
+        return [json.loads(l) for l in lineas]
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
 def _probe_model(exe: str, model: str, timeout: int = 20) -> bool:
     """Sonda medida por Prima (docs/mediciones/modelos_claude_cli.md §2)."""
     from .model_discovery import UNRECOGNIZED_MARKER
@@ -135,7 +147,9 @@ class ClaudeCliAdapter(HarnessAdapter):
         return _probe_model(self.exe, model)
 
     def build_command(self, job: dict) -> list[str]:
-        cmd = [self.exe, "-p", "--output-format", "json", "--no-session-persistence",
+        # #1281: stream-json (+ --verbose, que lo exige con -p) escribe una línea por evento MIENTRAS trabaja; con
+        # «json» no salía nada hasta el final, y un run cortado por timeout no dejaba ni por dónde iba.
+        cmd = [self.exe, "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
                "--model", job["model"]]
         if job.get("permission_mode"):
             cmd += ["--permission-mode", job["permission_mode"]]
@@ -189,8 +203,10 @@ class ClaudeCliAdapter(HarnessAdapter):
         try:
             data = json.loads(stdout)
         except (json.JSONDecodeError, ValueError):
-            status = "ok" if exit_code == 0 and stdout.strip() else "error"
-            return RunResult(status, exit_code, None, None, stdout, None)
+            data = _lineas_json(stdout)   # #1281: stream-json, un objeto por línea
+            if data is None:
+                status = "ok" if exit_code == 0 and stdout.strip() else "error"
+                return RunResult(status, exit_code, None, None, stdout, None)
         if isinstance(data, list):
             # claude ≥2.1.206 (verificado en vivo): --output-format json emite la
             # LISTA de mensajes; el veredicto es el último item type=="result".

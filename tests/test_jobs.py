@@ -159,3 +159,21 @@ def test_pending_verdicts_and_results(conn):
         jobs.set_verdict(conn, jobs.create_run(conn, j["id"])["id"], "pass", "x")
     res = jobs.results(conn)
     assert {r["job"]["id"] for r in res} == {j["id"], j2["id"]}
+
+
+def test_budget_ignored_when_the_harness_cannot_enforce_it(conn, monkeypatch):
+    """#580 (Lienzo, 16-oct): claude-cli-deepseek factura por api pero no puede aplicar un tope en USD
+    (su parse_output anula el coste: el de Claude Code es falso con DeepSeek). Un tope que nunca salta es
+    una promesa falsa: se ignora con aviso, igual que en suscripción. opencode (api + budget) lo conserva."""
+    from types import SimpleNamespace
+    from faros import harness as hz
+    real = hz.get
+    falsos = {"claude-cli-deepseek": SimpleNamespace(billing="api", capabilities=SimpleNamespace(budget=False)),
+              "opencode": SimpleNamespace(billing="api", capabilities=SimpleNamespace(budget=True))}
+    monkeypatch.setattr(hz, "get", lambda n: falsos.get(n) or real(n))
+    j = _job(conn, harness_name="claude-cli-deepseek", max_budget_usd=5)
+    assert j["max_budget_usd"] is None and "no puede aplicar" in j["warning"]
+    k = _job(conn, harness_name="opencode", max_budget_usd=5)
+    assert k["max_budget_usd"] == 5 and not k.get("warning")
+    u = jobs.update_job(conn, "owner", j["id"], max_budget_usd=7)
+    assert u["max_budget_usd"] is None and "no puede aplicar" in u["warning"]

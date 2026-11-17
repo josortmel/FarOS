@@ -17,7 +17,7 @@ def conn():
 def _fake_judge(verdicts):
     calls = []
 
-    async def judge(prompt, model=None):
+    async def judge(prompt, model=None, read_dirs=None, read_files=None):
         calls.append(prompt)
         return verdicts.pop(0)
     return judge, calls

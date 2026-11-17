@@ -83,6 +83,8 @@ function openMenu(x, y, w, archived) {
   }, 0);
 }
 
+let cursorWf = null;   // #400: posición del cursor en #wf-q entre repintados
+
 export function renderWorkflowSidebar(state) {
   const side = document.getElementById('wf-side');
   side.innerHTML = '';
@@ -104,7 +106,9 @@ export function renderWorkflowSidebar(state) {
   search.type = 'search'; search.id = 'wf-q'; search.className = 'wfside__search';
   search.placeholder = 'buscar por nombre…'; search.value = state.wfQuery ?? '';
   search.setAttribute('aria-label', 'Buscar workflows');
-  search.addEventListener('input', () => handlers.onSearch(search.value));
+  // #400: cada tecla repinta y crea un input NUEVO; la posición del cursor se guarda
+  // en el propio evento (el único sitio donde el viejo sigue vivo), como en #mcp-search.
+  search.addEventListener('input', () => { cursorWf = search.selectionStart; handlers.onSearch(search.value); });
   side.appendChild(search);
 
   const all = (archived ? state.wfArchived : state.workflows) ?? null;
@@ -112,8 +116,8 @@ export function renderWorkflowSidebar(state) {
   const ul = document.createElement('div');
   ul.className = 'wfside__list';
   ul.setAttribute('role', 'list');
-  if (all == null) ul.innerHTML = '<div class="wfside__empty">cargando…</div>';
-  else if (!list.length) ul.innerHTML = `<div class="wfside__empty">${q ? 'Nada coincide.' : archived ? 'Ningún workflow archivado.' : 'Sin workflows. Se importan desde un Plan por MCP o API.'}</div>`;
+  if (all == null) ul.innerHTML = `<div class="wfside__empty">${tr('cargando…')}</div>`;
+  else if (!list.length) ul.innerHTML = `<div class="wfside__empty">${tr(q ? 'Nada coincide.' : archived ? 'Ningún workflow archivado.' : 'Sin workflows. Se importan desde un Plan por MCP o API.')}</div>`;
   for (const w of list) {
     const row = document.createElement('div');
     row.className = `wfrow${state.workflowId === w.id ? ' is-active' : ''}${['closed', 'cancelled', 'archived'].includes(w.status) ? ' wfrow--closed' : ''}`;
@@ -134,7 +138,11 @@ export function renderWorkflowSidebar(state) {
     ul.appendChild(row);
   }
   side.appendChild(ul);
-  if (document.activeElement === document.body && state.wfQuery) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
+  if (document.activeElement === document.body && state.wfQuery) {
+    search.focus();
+    const pos = Math.min(cursorWf ?? search.value.length, search.value.length);
+    search.setSelectionRange(pos, pos);
+  }
 }
 
 /* ---------------- barra del workflow abierto: pestañas + meta + mesa de bugs ---------------- */
@@ -144,7 +152,7 @@ export function renderWorkflowBar(state) {
   bar.innerHTML = '';
   const wf = state.workflow;
   if (!wf) {
-    bar.innerHTML = `<span class="wf__empty">${(state.workflows ?? []).length ? 'Elige un workflow en el menú de la izquierda.' : 'Sin workflows. Se importan desde un Plan (workflow-diseño) por MCP o API.'}</span>`;
+    bar.innerHTML = `<span class="wf__empty">${tr((state.workflows ?? []).length ? 'Elige un workflow en el menú de la izquierda.' : 'Sin workflows. Se importan desde un Plan (workflow-diseño) por MCP o API.')}</span>`;
     return;
   }
   /* T3.5: pestañas de la Oficina — Tareas · Handoffs · Actividad */

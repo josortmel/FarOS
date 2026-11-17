@@ -48,14 +48,11 @@ export function renderMcpSettings(body, state) {
   const list = q ? all.filter(s => [s.name, s.transport, cmdOf(s), s.source, s.note].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) : all;
 
   const root = document.createElement('section');
-  root.className = 'mcp';
-  /* #277: la pantalla dice su nombre. El que pulsa «Ajustes» tiene que leer «Ajustes» al
-     llegar — si el destino se titula de otra forma, no sabe que ya está dentro. */
+  root.className = 'settings__sec mcp';
+  /* #252: la cabecera «Ajustes» ya no vive aquí — la pinta renderSettings (agents.js)
+     una vez para toda la página, porque MCP dejó de ser el único ajuste. */
   root.innerHTML = `
-    <div class="pane__head">
-      <span class="pane__title"><span class="settings__gear" aria-hidden="true">⚙</span> Ajustes</span>
-      <span class="pane__hint">Registro de servidores MCP — hoy el único ajuste de la app.</span>
-    </div>
+    <h3 class="settings__sub">Servidores MCP</h3>
     <div class="mcp__bar">
       <input type="search" class="mcp__search" id="mcp-search" placeholder="buscar por nombre, comando, fuente…" value="${esc(state.mcpQuery ?? '')}" aria-label="Buscar MCP">
       <span class="mcp__count">${list.length}${q ? ` de ${all.length}` : ''} servidor${list.length === 1 ? '' : 'es'}</span>

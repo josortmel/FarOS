@@ -25,27 +25,34 @@ import threading
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-MEASURED_AT = "2026-09-04"
-MEASURED_BY = "Prima (tools/probe_models.py)"
+MEASURED_AT = "2026-10-16"
+# #491: los alias medidos el 16-oct con `claude -p --model <alias>` (CLI 2.1.296), leyendo modelUsage;
+# la semilla del 4-sep la midió Prima con tools/probe_models.py.
+MEASURED_BY = "Hilo (alias por modelUsage, CLI 2.1.296) · Prima (semilla del 4-sep, tools/probe_models.py)"
 
 # id → (familia, etiqueta, tier, nota)
 SEED: dict[str, tuple[str, str, str, str]] = {
-    "claude-opus-5":              ("opus",   "Opus 5",                "high",  "el opus actual (alias opus)"),
+    "claude-opus-5-5":            ("opus",   "Opus 5.5",              "high",  "el opus actual (alias opus)"),
+    "claude-opus-5":              ("opus",   "Opus 5",                "high",  ""),
     "claude-opus-4-8":            ("opus",   "Opus 4.8",              "high",  ""),
     "claude-opus-4-6":            ("opus",   "Opus 4.6",              "high",  "escribe mejor"),
     "claude-opus-4-6[1m]":        ("opus",   "Opus 4.6 · 1M contexto", "high", "contexto largo"),
-    "claude-sonnet-5":            ("sonnet", "Sonnet 5",              "mid",   "el sonnet actual (alias sonnet)"),
+    "claude-sonnet-5-5":          ("sonnet", "Sonnet 5.5",            "mid",   "el sonnet actual (alias sonnet)"),
+    "claude-sonnet-5":            ("sonnet", "Sonnet 5",              "mid",   ""),
     "claude-sonnet-4-6":          ("sonnet", "Sonnet 4.6",            "mid",   "más barato y sensible; pendiente de sonda"),
-    "claude-haiku-4-5-20251001":  ("haiku",  "Haiku 4.5",             "cheap", "alias haiku"),
+    "claude-haiku-5-5":           ("haiku",  "Haiku 5.5",             "cheap", "el haiku actual (alias haiku)"),
+    "claude-haiku-4-5-20251001":  ("haiku",  "Haiku 4.5",             "cheap", ""),
+    "claude-fable-5-2":           ("fable",  "Fable 5.2",             "max",   "el Fable actual según Anthropic; candidato hasta la sonda"),
     "claude-fable-5-1":           ("fable",  "Fable 5.1",             "max",   "alias fable"),
     "claude-fable-5":             ("fable",  "Fable 5",               "max",   ""),
 }
 # Medido el 4-sep: aceptados con inferencia real. Lo que no está aquí y sí en SEED
 # queda validated=None (candidato) hasta la sonda del refresco.
-MEASURED_OK = {"claude-opus-5", "claude-opus-4-8", "claude-opus-4-6", "claude-opus-4-6[1m]",
+MEASURED_OK = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",   # 16-oct, por alias
+               "claude-opus-5", "claude-opus-4-8", "claude-opus-4-6", "claude-opus-4-6[1m]",
                "claude-sonnet-5", "claude-haiku-4-5-20251001", "claude-fable-5", "claude-fable-5-1"}
-ALIASES = {"opus": "claude-opus-5", "sonnet": "claude-sonnet-5",
-           "haiku": "claude-haiku-4-5-20251001", "fable": "claude-fable-5-1"}
+ALIASES = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5",
+           "haiku": "claude-haiku-5-5", "fable": "claude-fable-5-1"}   # 10-nov: medido otra vez, el alias sigue en 5.1 (CLI 2.1.296)
 FAMILY_ORDER = ["fable", "opus", "sonnet", "haiku", "otros"]
 FAMILY_LABEL = {"fable": "Fable", "opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku", "otros": "Otros"}
 

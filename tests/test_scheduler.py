@@ -56,9 +56,13 @@ def test_once_missed_beyond_grace_disables(conn):
 
 def test_recurring_due_at_first_fire(conn):
     t = _agentic(conn, {"type": "recurring", "every_days": 1, "at": "08:00"})
-    # creado hoy; a las 08:00 del mismo día debe dispararse (nunca corrido)
+    # creado hoy ANTES de las 08:00; a las 08:01 debe dispararse (nunca corrido). #431: si se crea
+    # después de las 08:00, el disparo de esa mañana no existía y ya no cuenta como perdido.
     created = t["job"]["created_at"]
     fire_day = datetime.fromisoformat(created).replace(hour=8, minute=1, second=0)
+    conn.execute("UPDATE agent_jobs SET created_at=? WHERE ticket_id=?",
+                 (fire_day.replace(hour=7, minute=0).isoformat(timespec="seconds"), t["id"]))
+    conn.commit()
     due = due_jobs(conn, fire_day)
     assert [j["ticket_id"] for j in due] == [t["id"]]
 

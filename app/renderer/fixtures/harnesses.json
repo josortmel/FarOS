@@ -11,23 +11,96 @@
     ],
     "models": [
       {
-        "alias": "haiku",
-        "label": "Haiku 4.5",
-        "tier": "cheap"
+        "id": "fable",
+        "label": "Fable (alias → claude-fable-5-1)",
+        "family": "fable",
+        "alias_of": "claude-fable-5-1",
+        "tier": "max",
+        "source": "help",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": "alias: follows the latest Anthropic version"
       },
       {
-        "alias": "sonnet",
-        "label": "Sonnet 5",
-        "tier": "mid"
+        "id": "opus",
+        "label": "Opus (alias → claude-opus-5-5)",
+        "family": "opus",
+        "alias_of": "claude-opus-5-5",
+        "tier": "high",
+        "source": "help",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": "alias: follows the latest Anthropic version"
       },
       {
-        "alias": "opus",
-        "label": "Opus 4.8",
-        "tier": "high"
+        "id": "sonnet",
+        "label": "Sonnet (alias → claude-sonnet-5-5)",
+        "family": "sonnet",
+        "alias_of": "claude-sonnet-5-5",
+        "tier": "mid",
+        "source": "help",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": "alias: follows the latest Anthropic version"
+      },
+      {
+        "id": "haiku",
+        "label": "Haiku (alias → claude-haiku-5-5)",
+        "family": "haiku",
+        "alias_of": "claude-haiku-5-5",
+        "tier": "cheap",
+        "source": "help",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": "alias: follows the latest Anthropic version"
+      },
+      {
+        "id": "claude-fable-5-1",
+        "label": "Fable 5.1",
+        "family": "fable",
+        "alias_of": null,
+        "tier": "max",
+        "source": "measured",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": ""
+      },
+      {
+        "id": "claude-opus-5-5",
+        "label": "Opus 5.5",
+        "family": "opus",
+        "alias_of": null,
+        "tier": "high",
+        "source": "measured",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": ""
+      },
+      {
+        "id": "claude-sonnet-5-5",
+        "label": "Sonnet 5.5",
+        "family": "sonnet",
+        "alias_of": null,
+        "tier": "mid",
+        "source": "measured",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": ""
+      },
+      {
+        "id": "claude-haiku-5-5",
+        "label": "Haiku 5.5",
+        "family": "haiku",
+        "alias_of": null,
+        "tier": "cheap",
+        "source": "measured",
+        "validated": true,
+        "validated_at": "2026-09-20",
+        "note": ""
       }
     ],
     "models_source": "probe",
-    "models_refreshed_at": "2026-09-15T22:10:00",
+    "models_refreshed_at": "2026-09-29T22:10:00",
     "families": [
       "claude"
     ]
@@ -42,9 +115,14 @@
     ],
     "models": [
       {
-        "alias": "deepseek-v4-pro",
-        "label": "DeepSeek v4 Pro",
-        "tier": "high"
+        "id": "deepseek/deepseek-v4-pro",
+        "label": "deepseek/deepseek-v4-pro",
+        "family": null,
+        "alias_of": null,
+        "tier": "high",
+        "source": "cli",
+        "validated": null,
+        "note": ""
       }
     ],
     "models_source": "static",

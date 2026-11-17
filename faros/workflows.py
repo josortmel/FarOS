@@ -516,6 +516,10 @@ def list_handoffs(conn, workflow_id) -> list[dict]:
         "SELECT * FROM handoffs WHERE workflow_id=? ORDER BY id DESC", (workflow_id,))]
 
 
+# #384: misma lista blanca que app/open_path_guard.js (ALLOWED_EXT).
+DOC_EXTENSIONS = frozenset({".md", ".json", ".txt", ".html", ".pdf"})
+
+
 def documents(conn, workflow_id, repo_root=None) -> list[dict]:
     """T3.6: documentos abribles del workflow. Base = carpeta que contiene el
     plan (plan_path relativo a repo_root) — spec, plan, reviews/, docs/mediciones/."""
@@ -532,6 +536,10 @@ def documents(conn, workflow_id, repo_root=None) -> list[dict]:
         resolved = path.resolve()
         if not resolved.is_relative_to(root.resolve()):
             return
+        # #384: la app abre estas rutas con shell.openPath, que en Windows EJECUTA
+        # .bat/.exe/.lnk. Solo documentos, también para spec_path/plan_path.
+        if resolved.suffix.lower() not in DOC_EXTENSIONS:
+            return
         if resolved.exists() and resolved.is_file() and str(resolved) not in seen:
             seen.add(str(resolved))
             out.append({"kind": kind, "name": resolved.name, "path": str(resolved),
@@ -546,8 +554,7 @@ def documents(conn, workflow_id, repo_root=None) -> list[dict]:
         d = root / sub
         if d.is_dir():
             for p in sorted(d.iterdir()):
-                if p.suffix.lower() in {".md", ".json", ".txt", ".html"}:
-                    add(kind, p)
+                add(kind, p)
     return out
 
 

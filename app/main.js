@@ -1,15 +1,23 @@
 // FarOS — Electron main process (SPEC §2, §9).
-// #261 (16-sep): marca visible = FarOS. Los nombres de TAREA PROGRAMADA
-// ("AgenticOS-daemon", "AgenticOS-watchdog") NO se tocan: son tareas reales
-// registradas en la maquina, y renombrarlas aqui dejaria de encontrarlas.
+// #261 (16-sep): marca visible = FarOS. Las TAREAS PROGRAMADAS se llaman
+// FarOS-daemon / FarOS-watchdog desde el #288; ensureLogonTask aun lee la vieja
+// AgenticOS-daemon para migrar las maquinas que la tienen.
 // Responsabilidades: asegurar daemon vivo, ventana, bandeja, pasar token al renderer.
 // El daemon NO muere con la ventana: las tareas programadas siguen (SPEC §2).
 
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog, clipboard } = require("electron");
+const { rejectReason } = require("./open_path_guard");
+const { puedeNavegar, abrirFuera, peticionLocalPermitida } = require("./window_policy");
+const { senderEsLaVentana, permisoPermitido } = require("./ipc_guard");
+const { pathToFileURL } = require("url");
 
 // T3.6: la UI pide abrir documentos del workflow (rutas que devuelve el daemon).
-ipcMain.handle("agenticos:open-path", async (_event, target) => {
-  if (typeof target !== "string" || !target) return "ruta vacía";
+// #384: solo documentos locales existentes (open_path_guard.js); nunca ejecutables ni UNC.
+ipcMain.handle("agenticos:open-path", async (event, target) => {
+  // #476: solo nuestra ventana, desde su marco principal (antes atendía a cualquier remitente).
+  if (!senderEsLaVentana(event, win)) return "origen no permitido";
+  const why = rejectReason(target);
+  if (why) return why;
   return shell.openPath(target);
 });
 const { spawn, execFile } = require("child_process");
@@ -48,7 +56,13 @@ const ICON_FILE = path.join(__dirname, "assets", "icon.ico");
 app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 
 // T4.3: instancia única — la segunda enfoca la primera (decisión del dueño: bandeja).
-if (!app.requestSingleInstanceLock()) {
+// #390 (5-oct): app.quit() no corta el script. La perdedora seguía hasta whenReady →
+// createWindow → ensureDaemon y, con otro FAROS_HOME, dejaba un daemon huérfano y
+// ninguna ventana (medido: daemon en 8798 + base creada). Por eso whenReady mira PRIMARY.
+const PRIMARY = app.requestSingleInstanceLock();
+if (!PRIMARY) {
+  console.error(`FarOS ya está abierto con este perfil (${app.getPath("userData")}); ` +
+                "esta instancia sale. Para aislar una prueba: --user-data-dir=<carpeta>.");
   app.quit();
 }
 
@@ -86,10 +100,22 @@ function spawnDaemon() {
   child.unref();
 }
 
+// #1134: ¿hay alguien escuchando en el puerto? Un daemon lento no contesta a /api/health en 1,5 s,
+// pero sigue teniendo el puerto: entonces se le espera, no se arranca otro.
+function portBusy() {
+  return new Promise((resolve) => {
+    const sock = require("net").connect({ host: "127.0.0.1", port: Number(PORT) });
+    const fin = (busy) => { sock.destroy(); resolve(busy); };
+    sock.setTimeout(1500, () => fin(true));   // acepta pero no contesta: ocupado y lento
+    sock.once("connect", () => fin(true));
+    sock.once("error", () => fin(false));
+  });
+}
+
 async function ensureDaemon() {
   if (await daemonAlive()) return true;
-  spawnDaemon();
-  for (let i = 0; i < 40; i++) {
+  if (!(await portBusy())) spawnDaemon();
+  for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 500));
     if (await daemonAlive()) return true;
   }
@@ -110,40 +136,53 @@ function ensureLogonTask() {
       process.env.AGENTICOS_HOME || process.env.AGENTICOS_PORT) return;
   const script = path.join(process.resourcesPath, "tools", "install_service.ps1");
   if (!fs.existsSync(script) || !fs.existsSync(PACKAGED_DAEMON)) return;
-  // Se pregunta a la propia tarea (no a un marcador) a qué exe apunta: si ya es
-  // este, nada; si es otro (desarrollo, versión anterior), se re-registra.
-  // Vigilante independiente (finding #5, 12:55): tarea con trigger de TIEMPO cada 5 min
-  // que hace health y relanza la tarea del daemon. La repeticion de la propia tarea del
-  // daemon NO cubre instancias arrancadas a mano (medido en produccion).
-  // v3.1 (T1.2, el dueño, queja 2ª): el vigilante es el propio exe del daemon en modo --watchdog
-  // (sin ventana). Si la tarea no existe O todavia apunta a powershell.exe / a otro exe,
-  // se re-registra. Se pregunta a la tarea (XML), no a un marcador.
+  // #288: las tareas se llaman FarOS-daemon / FarOS-watchdog. Los scripts quitan las
+  // AgenticOS-* viejas al registrar las nuevas (dos daemons se pelearian por el puerto).
+  // #317 (C): si las tareas ya apuntan a OTRA instalacion que sigue existiendo, se
+  // PREGUNTA antes de reapuntarlas. El 16-sep un instalador con «Ejecutar FarOS» marcado
+  // reapunto en silencio las tareas de produccion: un cambio en el arranque de la
+  // maquina de alguien no ocurre sin que se vea. Si apuntan a un exe que ya no existe,
+  // se reparan sin preguntar: no hay nada que proteger.
   const watchdog = path.join(process.resourcesPath, "tools", "install_watchdog.ps1");
-  execFile("schtasks.exe", ["/Query", "/TN", "AgenticOS-watchdog", "/XML"], { windowsHide: true }, (wErr, wXml) => {
-    if (!fs.existsSync(watchdog)) return;
-    const ok = !wErr && typeof wXml === "string" && wXml.includes(PACKAGED_DAEMON) && wXml.includes("--watchdog");
-    if (ok) return;
-    execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", watchdog,
-      "-Exe", PACKAGED_DAEMON, "-Port", String(PORT)],
-      { windowsHide: true }, (error, stdout, stderr) => {
-        if (error) fs.appendFileSync(path.join(DATA_DIR, "daemon_stderr.log"), `[app] install_watchdog.ps1 fallo: ${error.message}
+  const xmlDe = (tn) => new Promise((res) => execFile("schtasks.exe", ["/Query", "/TN", tn, "/XML"],
+    { windowsHide: true }, (err, out) => res(!err && typeof out === "string" ? out : null)));
+  const exeDe = (xml) => ((xml || "").match(/<Command>([^<]+)<\/Command>/) || [])[1] || null;
+  const correr = (ps1, nombre) => execFile("powershell.exe",
+    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, "-Exe", PACKAGED_DAEMON, "-Port", String(PORT)],
+    { windowsHide: true }, (error, stdout, stderr) => {
+      if (error) fs.appendFileSync(path.join(DATA_DIR, "daemon_stderr.log"),
+        `[app] ${nombre} fallo: ${error.message}
 ${stderr}
 `);
-      });
-  });
-  execFile("schtasks.exe", ["/Query", "/TN", "AgenticOS-daemon", "/XML"],
-    { windowsHide: true }, (qErr, xml) => {
-      if (!qErr && typeof xml === "string" && xml.includes(PACKAGED_DAEMON)) return;
-      execFile("powershell.exe",
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script,
-         "-Exe", PACKAGED_DAEMON, "-Port", String(PORT)],
-        { windowsHide: true }, (error, stdout, stderr) => {
-          if (error) {
-            fs.appendFileSync(path.join(DATA_DIR, "daemon_stderr.log"),
-              `[app] install_service.ps1 falló: ${error.message}\n${stderr}\n`);
-          }
-        });
     });
+  (async () => {
+    const dXml = (await xmlDe("FarOS-daemon")) || (await xmlDe("AgenticOS-daemon"));
+    const wXml = await xmlDe("FarOS-watchdog");
+    const daemonOk = !!dXml && dXml.includes(PACKAGED_DAEMON) && !!(await xmlDe("FarOS-daemon"));
+    const watchOk = !!wXml && wXml.includes(PACKAGED_DAEMON) && wXml.includes("--watchdog");
+    if (daemonOk && watchOk) return;
+    const otro = exeDe(dXml);
+    const ajeno = otro && path.resolve(otro).toLowerCase() !== path.resolve(PACKAGED_DAEMON).toLowerCase()
+      && fs.existsSync(otro);
+    if (ajeno) {
+      const r = dialog.showMessageBoxSync({
+        type: "question", buttons: ["Usar esta instalación", "Dejarlo como está"], defaultId: 1, cancelId: 1,
+        title: "FarOS", message: "El arranque automático de FarOS apunta a otra instalación.",
+        detail: `Ahora arranca: ${otro}
+Esta app: ${PACKAGED_DAEMON}
+
+¿Quieres que al encender el equipo arranque esta?`,
+      });
+      if (r !== 0) {
+        fs.appendFileSync(path.join(DATA_DIR, "daemon_stderr.log"),
+          `[app] tareas de arranque NO reapuntadas: el usuario lo dejo como estaba (${otro})
+`);
+        return;
+      }
+    }
+    if (!daemonOk && fs.existsSync(script)) correr(script, "install_service.ps1");
+    if (!watchOk && fs.existsSync(watchdog)) correr(watchdog, "install_watchdog.ps1");
+  })();
 }
 
 function readToken() {
@@ -181,7 +220,8 @@ function buildTrayMenu() {
   ]));
 }
 
-ipcMain.on("agenticos:set-lang", (_event, l) => {
+ipcMain.on("agenticos:set-lang", (event, l) => {
+  if (!senderEsLaVentana(event, win)) return;   // #476
   if (!TRAY_LABELS[l] || l === trayLang) return;
   trayLang = l;
   buildTrayMenu();
@@ -197,8 +237,27 @@ function createTray() {
   tray.on("double-click", showWindow);
 }
 
+/* #281/#153 (F-SEG-07): el token iba en additionalArguments, o sea en la línea de comandos
+   del proceso renderer. Ahora se queda aquí y el preload lo pide por IPC; solo se entrega a
+   NUESTRA ventana (y #402 ya impide que esa ventana navegue fuera de su index.html). */
+let tokenRenderer = "";
+ipcMain.on("agenticos:get-token", (event) => {
+  event.returnValue = senderEsLaVentana(event, win) ? tokenRenderer : "";   // #476: también el marco
+});
+
+// #1217: «Copiar» en Ajustes › Claves. El valor lo pide este proceso y va directo al portapapeles; al renderer
+// solo le llega {ok, nombre, se_borra_en} (app/copiar_clave.js). Solo para nuestra ventana, como todo el IPC.
+const copiarClave = require("./copiar_clave").crearCopiador({
+  baseUrl: BASE_URL, token: () => readToken() || "", fetch, clipboard, setTimeout,
+});
+ipcMain.handle("agenticos:copiar-clave", async (event, nombre) => {
+  if (!senderEsLaVentana(event, win)) return { ok: false, motivo: "origen_no_permitido" };
+  return copiarClave(nombre);
+});
+
 async function createWindow() {
   const ok = await ensureDaemon();
+  tokenRenderer = ok ? readToken() || "" : "";
   ensureLogonTask();
   win = new BrowserWindow({
     width: 1440,
@@ -219,7 +278,6 @@ async function createWindow() {
       nodeIntegration: false,
       additionalArguments: [
         `--agenticos-base-url=${BASE_URL}`,
-        `--agenticos-token=${ok ? readToken() || "" : ""}`,
         `--agenticos-app-version=${app.getVersion()}`,
       ],
     },
@@ -233,7 +291,24 @@ async function createWindow() {
     win.hide();
   });
   win.on("closed", () => { win = null; });
-  await win.loadFile(path.join(__dirname, "renderer", "index.html"));
+  // #402: la ventana lleva el preload (token + openPath); no puede irse de su index.html,
+  // ni abrir ventanas nuevas, ni hablar con otros puertos locales (window_policy.js).
+  const indexFile = path.join(__dirname, "renderer", "index.html");
+  const indexUrl = pathToFileURL(indexFile).href;
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!puedeNavegar(url, indexUrl)) event.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (abrirFuera(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+  // #476: Electron concede por defecto cualquier permiso del navegador; aquí solo el de copiar.
+  win.webContents.session.setPermissionRequestHandler((_wc, permiso, callback) => callback(permisoPermitido(permiso)));
+  win.webContents.session.setPermissionCheckHandler((_wc, permiso) => permisoPermitido(permiso));
+  win.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+    callback({ cancel: !peticionLocalPermitida(details.url, BASE_URL) });
+  });
+  await win.loadFile(indexFile);
   if (!ok) {
     win.webContents.executeJavaScript(
       `document.title = "FarOS — daemon NO disponible";`);
@@ -245,6 +320,7 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(() => {
+  if (!PRIMARY) return;
   createTray();
   createWindow();
 });

@@ -69,7 +69,11 @@ select:focus-visible, textarea:focus-visible {
    ancho de la ventana, tenga lo que tenga cada sección a los lados. */
 .topbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* #851: con cinco secciones, a 1440 (la ventana por defecto) la rejilla simétrica metía las
+     acciones encima de la última pestaña. La columna derecha reserva su ancho (481 px en español):
+     las secciones van centradas si hay sitio, a 1440 quedan 47 px a la izquierda, y no se mueven
+     al esconderse botones. Medido por sección a 1440 y 1700 en los dos idiomas. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(484px, 1fr);
   align-items: center;
   gap: var(--sp-4);
   padding: var(--sp-3) var(--sp-5);
@@ -244,6 +248,7 @@ select:focus-visible, textarea:focus-visible {
   white-space: nowrap;
 }
 .boardpulse__bad  { color: var(--color-danger); font-weight: 700; }
+.boardpulse__unsure { color: var(--color-unsure); font-weight: 700; } /* #470 */
 .boardpulse__live { color: var(--color-orange-deep); font-weight: 700; animation: pulse-glow 1.4s var(--ease-inout) infinite; }
 .boardpulse__sep  { color: var(--color-rule-strong); }
 
@@ -368,6 +373,25 @@ select:focus-visible, textarea:focus-visible {
   letter-spacing: -0.01em;
 }
 
+/* #601: la evidencia «proof» (un JSON) y los repos admitidos del verificador */
+#ev-value.mono { width: 100%; font-family: var(--font-mono); font-size: var(--text-small); }
+.ev-proof-hint { margin: calc(-1 * var(--sp-1)) 0 var(--sp-3); }
+.proofrepos__form { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
+.proofrepos__form textarea { width: 100%; max-width: 44rem; flex: none; font-family: var(--font-mono); }
+/* #695: «máquina quieta», un interruptor (checkbox nativo con role=switch) con el nombre fijo */
+.switch { display: inline-flex; align-items: center; gap: var(--sp-3); min-height: 44px; cursor: pointer;
+  font-size: var(--text-body); font-weight: 600; }
+.switch input { appearance: none; margin: 0; flex: none; width: 48px; height: 28px; border-radius: var(--radius-pill);
+  background: var(--color-text-mute); position: relative; cursor: pointer; transition: background var(--t-fast); }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+  border-radius: 50%; background: #fff; transition: transform var(--t-fast) var(--ease-out); }
+.switch input:checked { background: var(--color-orange-deep); }
+.switch input:checked::after { transform: translateX(20px); }
+.switch__state { font-weight: 400; color: var(--color-text-soft); font-size: var(--text-small); }
+/* #481: quién se ha quedado la verificación, en la tarjeta y en la ficha */
+.card__claim { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-orange-deep); }
+.card__claim b { font-weight: 600; }
+.claim__who { font-size: var(--text-small); color: var(--color-text-soft); margin-bottom: var(--sp-2); }
 .card__meta {
   display: flex;
   align-items: center;
@@ -434,6 +458,7 @@ select:focus-visible, textarea:focus-visible {
 .arm__run { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-soft); }
 .arm__verdict--pass { color: var(--color-ok); }
 .arm__verdict--fail { color: var(--color-danger); }
+.arm__verdict--uncertain { color: var(--color-unsure); } /* #470 */
 
 /* línea de máquina en tarjetas agénticas */
 .card__run {
@@ -452,6 +477,7 @@ select:focus-visible, textarea:focus-visible {
 .card__run-glyph--ok        { color: var(--color-ok); }
 .card__run-glyph--error,
 .card__run-glyph--timeout   { color: var(--color-danger); }
+.card__run-glyph--uncertain { color: var(--color-unsure); } /* #470 */
 .card__run-glyph--running   { color: var(--color-orange-deep); animation: pulse-glow 1.4s var(--ease-inout) infinite; }
 .card__run-glyph--cancelled { color: var(--color-text-mute); }
 .card__run-glyph--none      { color: var(--color-text-mute); }
@@ -597,7 +623,7 @@ select:focus-visible, textarea:focus-visible {
   margin-bottom: var(--sp-2);
 }
 
-.panel__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.panel__actions, .claim__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
 .panel__criteria {
   font-size: var(--text-small);
@@ -718,12 +744,39 @@ select:focus-visible, textarea:focus-visible {
   color: var(--color-text-soft);
   line-height: 1.45;
 }
+/* #698: desde dónde se decidió, una etiqueta junto al evento; «sin superficie» con borde discontinuo */
+.hist__surface { display: inline-block; padding: 0 0.5em; border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-pill); color: var(--color-text-soft); white-space: nowrap; }
+.hist__surface[data-surface="none"] { border-style: dashed; color: var(--color-text-mute); }
 .hist time {
   font-family: var(--font-mono);
   font-size: var(--text-meta);
   color: var(--color-text-mute);
   flex: none;
   width: 8.5em;
+}
+/* #377: procedencia de una verificación. La forma separa las clases, no solo el color:
+   persona rellena, otro modelo rellena en cálido, misma familia con contorno,
+   autoverificada con contorno discontinuo y la herramienta en monoespaciada sobre el
+   fondo hundido. */
+/* Mismo cuerpo que la línea del historial: una etiqueta más pequeña que su frase no se lee. */
+.prov {
+  display: inline-block; margin-left: 0.35em; padding: 0 0.4em;
+  border: 1px solid var(--color-text-soft); border-radius: 4px;
+  white-space: nowrap; color: var(--color-text);
+}
+.prov--ext  { background: var(--color-text); border-color: var(--color-text); color: var(--color-bg); font-weight: 600; }
+.prov--mod  { background: var(--color-orange-wash); border-color: var(--color-orange-deep); }
+.prov--self { border-style: dashed; color: var(--color-text-soft); }
+/* #644: hecho por alguien de la casa sobre una tarea del dueño (#640) */
+.prov--dueno { background: var(--color-bg-well); }
+/* el nombre de la herramienta llega a 120 caracteres: caja con tope de ancho que parte por
+   dentro. En línea con box-decoration-break se salía 6 px del historial (el relleno de cada
+   trozo no cuenta al partir la línea; lo cazó test_564). */
+.prov--det  {
+  max-width: 100%; vertical-align: top;
+  font-family: var(--font-mono); background: var(--color-bg-well); border-color: var(--color-rule-strong);
+  white-space: normal; overflow-wrap: anywhere;
 }
 
 /* ================= Modal ================= */
@@ -822,6 +875,24 @@ select:focus-visible, textarea:focus-visible {
   background: var(--color-danger-wash); border-radius: var(--radius-card);
 }
 
+/* #1136: la nota del criterio. NO es un error (la tarea ya está guardada y nada se bloquea):
+   tono de aviso suave, sin rojo, con el punto de la regla en mono como referencia. */
+.crit-note {
+  margin-top: var(--sp-2); padding: 0.6rem 0.8rem;
+  background: var(--color-warn-wash); border-radius: var(--radius-card);
+  font-size: var(--text-small); line-height: 1.5; color: var(--color-text);
+}
+.crit-note__head { margin: 0 0 0.35rem; font-weight: 600; }
+.crit-note__list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.crit-note__list li { display: grid; grid-template-columns: auto 1fr; gap: 0.6rem; align-items: baseline; }
+.crit-note__punto {
+  font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-warn);
+  font-weight: 700; white-space: nowrap;
+}
+.crit-note__foot { margin: 0.45rem 0 0; color: var(--color-text-soft); font-size: var(--text-meta); }
+/* lo ya guardado se queda quieto: solo el criterio y su nivel siguen vivos */
+#task-form.is-saved .field:has(> :disabled) label { color: var(--color-text-mute); }
+
 /* segmentado manual/agéntica */
 .seg {
   display: inline-flex;
@@ -887,8 +958,11 @@ details.advanced[open] summary { margin-bottom: var(--sp-3); color: var(--color-
   align-items: center;
   pointer-events: none;
 }
+/* #1209: el aviso no se lleva el toque. No tiene botones ni nadie lo escucha, y en el móvil
+   queda encima de la rejilla del calendario y de la ficha («Guardar tiempo»): con auto, mover
+   una tarea y querer mover otra que quedaba debajo no respondía hasta que el aviso se iba. */
 .toast {
-  pointer-events: auto;
+  pointer-events: none;
   display: flex; align-items: baseline; gap: 0.6em;
   max-width: 560px;
   padding: 0.7rem 1.1rem;
@@ -943,6 +1017,25 @@ details.advanced[open] summary { margin-bottom: var(--sp-3); color: var(--color-
   flex: none;
 }
 .cal__nav { display: inline-flex; align-items: center; gap: var(--sp-1); }
+/* #604: las propuestas pendientes, siempre a la vista, caigan en la semana que caigan */
+.cal__props {
+  display: flex; align-items: center; gap: var(--sp-2); flex: none;
+  padding: var(--sp-2) var(--sp-5); overflow-x: auto; scrollbar-width: thin;
+  border-bottom: 1px solid var(--color-rule); background: var(--color-orange-wash);
+}
+.cal__props-label {
+  flex: none; font-family: var(--font-mono); font-size: var(--text-meta); font-weight: 600;
+  color: var(--color-orange-deep); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.cal__prop {
+  flex: none; display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  max-width: 18rem; padding: 0.35rem 0.7rem; border-radius: 8px; cursor: pointer; text-align: left;
+  background: var(--color-card); border: 1px solid var(--color-rule); color: var(--color-text);
+  font: inherit; font-size: var(--text-small);
+}
+.cal__prop b { font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal__prop span { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-mute); }
+.cal__prop:hover, .cal__prop:focus-visible { border-color: var(--color-orange-deep); }
 .cal__navbtn {
   width: 32px; height: 32px;
   border-radius: 6px;
@@ -1036,7 +1129,8 @@ body.is-dragging-cal .week__band.is-empty {
 .day__head { flex: none; border-bottom: 1px solid var(--color-rule); background: var(--color-bg); }
 .day__corner { border-right: 1px solid var(--color-rule); }
 .day__lane-head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2);
+  /* #795: el contador junto al nombre; a la derecha se perdía en un carril ancho */
+  display: flex; align-items: baseline; justify-content: flex-start; gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   border-right: 1px solid var(--color-rule);
 }
@@ -1069,9 +1163,14 @@ body.is-dragging-cal .week__band.is-empty {
 .day__band-cell:last-child { border-right: 0; }
 
 /* rejilla con scroll */
-.day__scroll { flex: 1; min-height: 0; overflow-y: scroll; overflow-x: hidden; scrollbar-gutter: stable; position: relative; }
-.day__grid { position: relative; }
-.day__gutter { border-right: 1px solid var(--color-rule); }
+.day__scroll { flex: 1; min-height: 0; overflow-y: scroll; overflow-x: auto; scrollbar-gutter: stable; position: relative; }
+/* #795: un carril con muchas tareas a la vez puede no caber; la rejilla se desliza de lado
+   (la cabecera y la banda la siguen por JS) y la columna de las horas se queda */
+.day__grid { position: relative; min-width: min-content; }
+.day__gutter { border-right: 1px solid var(--color-rule); position: sticky; left: 0; z-index: 21; background: var(--color-bg); }
+.day__corner, .day__band-label { position: sticky; left: 0; z-index: 1; }
+.day__corner { background: var(--color-bg); }
+.day__band-label { background: var(--color-bg-warm); }
 .day__hour {
   position: relative;
   font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-mute);
@@ -1146,6 +1245,15 @@ body.is-dragging-cal .week__band.is-empty {
 .day__ev.is-overdue { border-left-color: var(--color-danger); }
 .day__ev.is-ghost { background: transparent; border: 1px dashed var(--color-rule-strong); border-left: 3px dashed var(--stripe); box-shadow: none; opacity: 0.8; cursor: default; }
 .day__ev.is-dragging, .day__chip.is-dragging { opacity: 0.35; }
+/* #924: el Día se arrastra por puntero (ratón, dedo, lápiz). Son controles, no texto: mantener el
+   dedo no selecciona el título ni saca el menú de iOS. touch-action se queda en manipulation y no
+   en none, para que se pueda desplazar el calendario pasando el dedo por encima de las tarjetas. */
+.day__ev, .day__band-cell .day__chip, .week__mini {
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+body.is-dragging-cal, body.is-dragging-cal .day__ev, body.is-dragging-cal .day__chip, body.is-dragging-cal .week__mini { cursor: grabbing; }
 .day__ev.is-pending, .day__chip.is-pending { opacity: 0.55; pointer-events: none; }
 .day__ev.is-flash, .day__chip.is-flash { animation: card-flash 900ms var(--ease-out) 1; }
 .day__ev.is-stretching { box-shadow: var(--shadow-lift); z-index: 6; user-select: none; }
@@ -1392,6 +1500,29 @@ body.is-dragging-cal .week__band.is-empty {
 .week__ev.is-short { padding-top: 0.1rem; padding-bottom: 0.1rem; }
 .week__ev.is-short .week__mini-title > span { -webkit-line-clamp: 1; }
 .week__ev.is-short .week__mini-meta { display: none; }
+/* #497: lo pone ajustarTitulos() (calendar_week.js) midiendo, no por duracion */
+.week__ev.is-apretado .week__mini-meta .badge,
+.week__ev.is-apretado .week__closed { display: none; }
+.week__ev.is-una-fila { padding-top: 0.1rem; padding-bottom: 0.1rem; }
+.week__ev.is-una-fila .week__mini-title > span { -webkit-line-clamp: 1; }
+.week__ev.is-una-fila .week__mini-meta { display: none; }
+
+/* #308: lo que no cabe en los carriles de un día. No es una tarjeta (no se arrastra ni
+   tiene dueño): es un rótulo que lleva al día. Borde discontinuo como las previstas, para
+   que se lea «aquí hay más» y no «aquí hay una tarea que se llama +5 más». */
+.week__more {
+  position: absolute; box-sizing: border-box; z-index: 2;
+  display: flex; flex-wrap: wrap; align-content: flex-start; column-gap: 0.35em;
+  padding: 0.15rem 0.45rem; line-height: 1.25;
+  background: var(--color-bg-warm);
+  border: 1px dashed var(--color-rule-strong); border-radius: 5px;
+  font: inherit; font-family: var(--font-mono); font-size: var(--text-meta); font-weight: 500;
+  color: var(--color-text-soft); text-align: left;
+  cursor: pointer; overflow: hidden;
+  transition: box-shadow var(--t-fast) var(--ease-out);
+}
+.week__more b { font-weight: 700; color: var(--color-text); }
+.week__more:hover, .week__more:focus-visible { box-shadow: var(--shadow-lift); border-style: solid; z-index: 5; }
 
 /* ================= Vista Mes (T2.7) =================
    Densidad por día en puntos. Al abrir un día, el mes se encoge a la
@@ -1709,6 +1840,52 @@ body.is-dragging-cal .week__band.is-empty {
 .dec--pending { box-shadow: var(--shadow-card), inset 0 0 0 1px var(--color-orange-soft); }
 .dec--deferred { opacity: 0.85; }
 .dec--decided { opacity: 0.9; }
+/* #919: superada por otra — apagada, pero legible (el texto no baja de su color: solo la tarjeta) */
+.dec--superada { opacity: 0.72; box-shadow: none; border: 1px dashed var(--color-rule-strong); }
+.dec__superadas > summary { cursor: pointer; list-style: revert; }
+.dec__superadas[open] > summary { margin-bottom: var(--sp-2); }
+.dec__superadas > .dec { margin-bottom: var(--sp-2); }
+.dec__super, .dec__valid { font-size: var(--text-small); color: var(--color-text-soft); }
+.dec__super-k { font-family: var(--font-mono); font-size: var(--text-meta); text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-mute); }
+.dec__super--por .dec__super-k { color: var(--color-orange-deep); font-weight: 700; }
+.dec__goto { color: var(--color-orange-deep); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.dec__valid--caducada { color: var(--color-orange-deep); font-weight: 600; }
+@keyframes dec-flash { from { box-shadow: 0 0 0 3px var(--color-orange-soft); } to { box-shadow: var(--shadow-card); } }
+.dec--flash { animation: dec-flash 1.2s ease-out; }
+/* #919: «Lo que vale hoy» — buscar por tema en FarOS y EcoDB */
+.dec-vig { background: var(--color-card); border-radius: var(--radius-panel); box-shadow: var(--shadow-card); padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); }
+.dec-vig__k { font-family: var(--font-mono); font-size: var(--text-meta); text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-orange-deep); font-weight: 700; display: block; margin-bottom: 0.3rem; }
+.dec-vig__row { display: flex; gap: var(--sp-2); }
+.dec-vig__row input { flex: 1; min-width: 0; padding: 0.55rem 0.7rem; border: 1px solid var(--color-rule-strong); border-radius: 6px; background: var(--color-card); color: var(--color-text); font: inherit; font-size: var(--text-small); }
+.dec-vig__sup { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--text-small); min-height: 2.75rem; }
+.dec-vig__lista { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.dec-vig__fila { border-left: 3px solid var(--color-rule-strong); padding: var(--sp-1) var(--sp-3); }
+.dec-vig__fila--superada { opacity: 0.72; border-left-style: dashed; }
+.dec-vig__meta { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-mute); }
+.dec-vig__src { font-weight: 700; }
+.dec-vig__src--faros { color: var(--color-orange-deep); }
+.dec-vig__src--ecodb { color: var(--color-ok); }
+.dec-vig__linea { font-size: var(--text-small); line-height: var(--lh-body); margin: 0.2rem 0; overflow-wrap: anywhere; }
+.dec-vig__extra, .dec-vig__avisos, .dec-vig__errores { font-size: var(--text-small); color: var(--color-text-soft); }
+.dec-vig__errores { color: var(--color-orange-deep); }
+.dec-vig__errores ul, .dec-vig__avisos { margin: 0.2rem 0 0; padding-left: 1.25rem; }
+.dec-vig__mem { font-style: italic; }
+.dec-vig__cargando { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-small); }
+.dec-vig__punto { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--color-orange-deep); animation: dec-vig-late 1s ease-in-out infinite alternate; flex: none; }
+@keyframes dec-vig-late { from { opacity: 0.25; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dec-vig__punto { animation: none; } }
+.dec-vig__error { color: var(--color-orange-deep); font-size: var(--text-small); }
+/* #919: al decidir, a qué sustituye (plegado) y hasta cuándo vale */
+.dec__sust { border-top: 1px solid var(--color-rule); padding-top: var(--sp-2); }
+.dec__sust > summary { cursor: pointer; font-size: var(--text-small); color: var(--color-text-soft); }
+.dec__sust[open] > summary { margin-bottom: var(--sp-2); }
+.dec__sust-list { display: flex; flex-direction: column; max-height: 14rem; overflow-y: auto; margin-bottom: var(--sp-1); }
+.dec__sust-item { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-small); min-height: 2.75rem; cursor: pointer; }
+.dec__sust-t { min-width: 0; overflow-wrap: anywhere; }
+.dec__sust-kind { display: flex; gap: var(--sp-4); margin-bottom: var(--sp-2); font-size: var(--text-small); }
+.dec__sust-kind label { min-height: 2.75rem; display: inline-flex; align-items: center; gap: var(--sp-1); }
+.dec__sust label[for], .dec__valid-in label { display: block; font-size: var(--text-small); font-weight: 500; margin: var(--sp-1) 0 0.3rem; }
+@media (prefers-reduced-motion: reduce) { .dec--flash { animation: none; } }
 .dec__top { display: flex; align-items: baseline; gap: var(--sp-3); font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-mute); }
 .dec__id { font-weight: 700; color: var(--color-orange-deep); }
 .dec__by b { color: var(--color-text-soft); font-weight: 500; }
@@ -1729,7 +1906,7 @@ body.is-dragging-cal .week__band.is-empty {
 .dec__opt-label { font-weight: 700; font-size: var(--text-body); }
 .dec__opt-text { font-size: var(--text-small); color: var(--color-text-soft); line-height: 1.45; }
 .dec__free label, .dec__why label { display: block; font-size: var(--text-small); font-weight: 500; margin: var(--sp-1) 0 0.3rem; }
-.dec__free input, .dec__why textarea {
+.dec__free input, .dec__why textarea, .dec__sust input[type="text"], .dec__valid-in input {   /* #919: los dos campos nuevos, como los de siempre */
   width: 100%; padding: 0.55rem 0.7rem; border: 1px solid var(--color-rule-strong); border-radius: 6px;
   background: var(--color-card); color: var(--color-text); font: inherit; font-size: var(--text-small);
 }
@@ -1742,7 +1919,8 @@ body.is-dragging-cal .week__band.is-empty {
 .dec__verdict-label { font-weight: 700; font-size: var(--text-body); color: var(--color-ok); }
 .dec__verdict-text { font-size: var(--text-small); color: var(--color-text-soft); }
 .dec__rationale { font-size: var(--text-small); color: var(--color-text); line-height: var(--lh-body); }
-.dec__rationale::before { content: "por qué — "; font-family: var(--font-mono); font-size: var(--text-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-mute); }
+/* #314: era un ::before con content:"por qué — " y ningún catálogo llega a un pseudo-elemento; ahora es un span */
+.dec__rationale-k { font-family: var(--font-mono); font-size: var(--text-micro); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-mute); }
 .dec__hist summary { cursor: pointer; font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-mute); }
 .dec__hist[open] summary { margin-bottom: var(--sp-2); }
 
@@ -1851,6 +2029,9 @@ body.is-dragging-cal .week__band.is-empty {
   scroll-snap-type: x proximity;
   scroll-padding-left: var(--sp-5);
 }
+/* #503: sin workflow elegido el unico hijo es el aviso, que ocupa las 5 columnas de 248 px
+   minimo y abria una barra horizontal sobre un panel vacio. Sin columnas, una sola pista. */
+.wf__board:has(> .board-empty) { grid-template-columns: 1fr; overflow-x: hidden; }
 .col--wf { scroll-snap-align: start; }
 
 /* etiqueta de fase en la tarjeta (solo cuando no hay filtro de fase) */
@@ -1979,6 +2160,7 @@ body.is-dragging-cal .week__band.is-empty {
 .res__glyph { font-size: 1.25rem; line-height: 1.2; font-weight: 700; font-family: var(--font-mono-industrial); text-align: center; }
 .res__glyph--pass, .res__glyph--ok { color: var(--color-ok); }
 .res__glyph--fail, .res__glyph--error, .res__glyph--timeout { color: var(--color-danger); }
+.res__glyph--uncertain { color: var(--color-unsure); } /* #470 */
 .res__glyph--running { color: var(--color-orange-deep); animation: pulse-glow 1.4s var(--ease-inout) infinite; }
 .res__glyph--none, .res__glyph--cancelled, .res__glyph--pending { color: var(--color-text-mute); }
 .res__name { font-weight: 600; font-size: var(--text-body); }
@@ -1991,6 +2173,7 @@ body.is-dragging-cal .week__band.is-empty {
 .res__verdict b { font-family: var(--font-mono); font-size: var(--text-meta); letter-spacing: 0.06em; text-transform: uppercase; }
 .res__verdict--pass b { color: var(--color-ok); }
 .res__verdict--fail b { color: var(--color-danger); }
+.res__verdict--uncertain b { color: var(--color-unsure); } /* #470 */
 .res__verdict--pending { color: var(--color-text-mute); }
 .res__actions { display: flex; gap: var(--sp-1); align-items: center; }
 
@@ -2051,6 +2234,13 @@ body.is-dragging-cal .week__band.is-empty {
 .jobstate--active   { background: var(--color-ok-wash); color: var(--color-ok); }
 .jobstate--paused   { background: var(--color-warn-wash); color: var(--color-orange-deep); }
 .jobstate--archived { background: var(--color-block-wash); color: var(--color-block); }
+/* #518: un job activo colgado de una tarea cerrada no se dispara: se dice en naranja, donde iría «próxima» */
+.job-nofire { color: var(--color-orange-deep); font-weight: 600; }
+/* #667: cómo acabó el último run, junto al nombre del job (palabra + glifo, no solo color) */
+.jobhealth { font-size: var(--text-small); font-weight: 700; padding: 0.05rem 0.45rem; border-radius: 4px; white-space: nowrap; }
+.jobhealth--bad    { background: var(--color-danger-wash); color: var(--color-danger); }
+.jobhealth--unsure { background: var(--color-unsure-wash); color: var(--color-unsure); }
+.jobhealth--mute   { background: var(--color-block-wash); color: var(--color-text-soft); }
 .btn--icon { padding: 0.3rem 0.55rem; }
 
 /* ficha de job: reutiliza el panel; runs con veredicto */
@@ -2065,6 +2255,7 @@ body.is-dragging-cal .week__band.is-empty {
 .runs li.is-open { color: var(--color-surface-text); }
 .runs__verdict--pass { color: var(--color-ok); }
 .runs__verdict--fail { color: oklch(68% 0.19 25); }
+.runs__verdict--uncertain { color: oklch(76% 0.11 265); } /* #470: zona de máquina, oscura en los dos temas */
 .runs__cost { color: var(--color-surface-text-soft); }
 
 /* modal de job (T1.13) */
@@ -2249,11 +2440,13 @@ body.is-dragging-cal .week__band.is-empty {
 /* run pasado: el veredicto es el color; job programado: neutro; pausado: apagado */
 .day__ev--pasa, .week__ev--pasa { background: var(--color-ok-wash); border-color: var(--color-ok); }
 .day__ev--falla, .week__ev--falla { background: var(--color-danger-wash); border-color: var(--color-danger); }
+.day__ev--incierto, .week__ev--incierto { background: var(--color-unsure-wash); border-color: var(--color-unsure); } /* #470 */
 .day__ev--sinveredicto, .week__ev--sinveredicto { background: var(--color-bg-warm); }
 .day__ev--running, .week__ev--running { background: var(--color-orange-wash); border-color: var(--color-orange-deep); }
 .day__ev--pausado, .week__ev--pausado, .day__chip.is-pausado { opacity: 0.6; }
 .month__dot--pasa { background: var(--color-ok); }
 .month__dot--falla { background: var(--color-danger); }
+.month__dot--incierto { background: var(--color-unsure); } /* #470 */
 
 /* ================= T4.3 — Oficina: menú lateral (el dueño) ================= */
 .wf { flex-direction: row; }
@@ -2396,3 +2589,224 @@ body.is-dragging-cal .week__band.is-empty {
 }
 /* sin nada que desplazar no hay nada que insinuar: la mascara se apaga */
 .wf__board:not([data-mas="si"]) { mask-image: none; -webkit-mask-image: none; }
+
+/* ================= #252 — Ajustes › Agentes (roster) =================
+   La página de Ajustes tiene ya dos secciones; cada una con su rótulo, un punto por
+   debajo del título de la página. La fila es la misma tarjeta que la de MCP: lo que
+   se configura aquí se parece a lo que se configura ahí. */
+.settings__sec { max-width: 1080px; margin-top: var(--sp-5); }
+.settings__sub {
+  font-family: var(--font-display); font-size: var(--text-body); font-weight: 600;
+  letter-spacing: -0.01em; padding-bottom: var(--sp-2); margin-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--color-rule);
+}
+.settings__lead { font-size: var(--text-small); color: var(--color-text-soft); margin: 0 0 var(--sp-3); }
+.mcp.settings__sec .settings__sub { margin-bottom: 0; }   /* .mcp ya separa con gap */
+
+/* #1217: el timbre de las franjas. Interruptor (.switch, #695) y debajo qué ha sonado ese día: una fila por
+   aviso — hora, a quién, cómo fue — con sus tareas debajo. El color va en un punto, no en el texto: «no tenía
+   sesión abierta» no es un fallo y no se pinta como uno. A 390 el resultado baja a su propia línea. */
+.timbre__aviso { font-size: var(--text-small); color: var(--color-warn); background: var(--color-warn-wash);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm, 6px); margin: 0 0 var(--sp-3); }
+.timbre__vuelta { font-size: var(--text-small); color: var(--color-text-soft); margin: 0 0 var(--sp-3); }
+.timbre__dia { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4); margin: var(--sp-4) 0 var(--sp-2); }
+.timbre__titulo { font-size: var(--text-body); font-weight: 600; margin: 0; }
+.timbre__fecha { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--text-small);
+  color: var(--color-text-soft); }
+.timbre__fecha input { font: inherit; font-size: max(16px, var(--text-small)); color: var(--color-text);
+  background: var(--color-card); border: 1px solid var(--color-rule); border-radius: var(--radius-sm, 6px);
+  padding: 0.35rem 0.5rem; min-height: 40px; }
+.timbre__lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.timbre__fila { display: grid; grid-template-columns: 3.25rem minmax(4.5rem, max-content) 1fr;
+  align-items: baseline; column-gap: var(--sp-3); row-gap: var(--sp-1);
+  padding: var(--sp-2) 0; border-bottom: 1px solid var(--color-rule); font-size: var(--text-small); }
+.timbre__hora { color: var(--color-text-soft); }
+.timbre__agente { font-weight: 600; }
+.timbre__res { color: var(--color-text-soft); min-width: 0; overflow-wrap: anywhere; }
+.timbre__res::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: var(--sp-2); vertical-align: 0.05em; background: var(--color-text-soft); }
+.timbre__fila.is-ok   .timbre__res::before { background: var(--color-ok); }
+.timbre__fila.is-warn .timbre__res::before { background: var(--color-warn); }
+.timbre__fila.is-fail .timbre__res { color: var(--color-danger); }
+.timbre__fila.is-fail .timbre__res::before { background: var(--color-danger); }
+.timbre .mono, .timbre__detalle { font-family: var(--font-mono); }
+.timbre__tareas { grid-column: 2 / -1; list-style: none; margin: 0; padding: 0; color: var(--color-text-soft); }
+.timbre__tareas li { overflow-wrap: anywhere; }
+.timbre__tarea { color: var(--color-text); }
+.timbre__silencios { margin: 0 0 var(--sp-3); }
+.timbre__silencios .timbre__titulo { margin-bottom: var(--sp-2); }
+.timbre__sil-lista { list-style: none; margin: 0; padding: 0; }
+.timbre__sil { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) 0; border-bottom: 1px solid var(--color-rule); font-size: var(--text-small); }
+.timbre__sil .timbre__res { flex: 1 1 10rem; }
+.timbre__sil .btn { min-height: 40px; }
+.timbre__sep { margin: 0 0.4em; }
+.timbre__vacio { font-size: var(--text-small); color: var(--color-text-soft); margin: var(--sp-2) 0 0; }
+@media (max-width: 560px) {
+  .timbre__fila { grid-template-columns: 3.25rem 1fr; }
+  .timbre__res { grid-column: 2; }
+}
+
+.roster__list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.rosterrow {
+  display: grid; grid-template-columns: 1fr auto; gap: var(--sp-2) var(--sp-3); align-items: center;
+  background: var(--color-card); border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+  padding: var(--sp-3) var(--sp-4);
+}
+.rosterrow__main { display: flex; align-items: baseline; gap: 0.6em; flex-wrap: wrap; min-width: 0; }
+.rosterrow__name { font-weight: 600; font-size: var(--text-body); overflow-wrap: anywhere; }
+.rosterrow__tag {
+  font-family: var(--font-mono); font-size: var(--text-micro); text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--color-orange-deep); border: 1px solid var(--color-orange-muted); border-radius: 4px; padding: 0 0.4em;
+}
+.rosterrow__count { font-size: var(--text-small); color: var(--color-text-soft); font-variant-numeric: tabular-nums; }
+.rosterrow__acts { display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; }
+.rosterrow__lock { font-size: var(--text-small); color: var(--color-text-mute); }
+.rosterrow.is-editing { grid-template-columns: 1fr; box-shadow: 0 0 0 2px var(--color-orange-muted), var(--shadow-card); }
+.rosterrow__edit, .roster__add { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.rosterrow__note { font-size: var(--text-small); color: var(--color-text-soft); margin: 0; }
+.roster__input {
+  flex: 1; min-width: 12rem; max-width: 320px; padding: 0.45rem 0.8rem;
+  border: 1px solid var(--color-rule-strong); border-radius: 6px;
+  background: var(--color-card); color: var(--color-text); font: inherit; font-size: var(--text-small);
+}
+.roster__add { margin-top: var(--sp-3); }
+.roster__add .roster__input { background: var(--color-bg); }
+.roster__err { grid-column: 1 / -1; margin: var(--sp-1) 0 0; font-size: var(--text-small); font-weight: 500; color: var(--color-danger); }
+.roster__fixed {
+  font-size: var(--text-small); color: var(--color-text-soft); margin: 0 0 var(--sp-3);
+  padding: 0.5rem 0.7rem; background: var(--color-orange-wash); border-left: 2px solid var(--color-orange-muted);
+  border-radius: 0 4px 4px 0;
+}
+.roster__fixed code { font-family: var(--font-mono); font-size: var(--text-small); }
+.roster-dlg__lead { font-size: var(--text-body); margin: 0 0 var(--sp-3); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (max-width: 560px) {
+  .rosterrow { grid-template-columns: 1fr; }
+  /* #1302: una clave de DeepSeek/Anthropic/Telegram lleva hasta cinco botones (con «Copiar»): ~530 px en una fila de
+     310 a 390 de ancho. Bajan a la línea siguiente en vez de salirse (con cuatro ya pasaba). Las de «otra» caben. */
+  .credrow .rosterrow__acts { flex-wrap: wrap; white-space: normal; }
+  .credrow__copiar { min-width: 0; }   /* en el navegador no hay cuenta atrás: no hace falta guardar el ancho */
+}
+/* #252 suspendidos (Pepe, 30-sep: «prefiero suspenderlo»): siguen en la lista, un
+   escalón por debajo. El nombre se apaga; la fila no desaparece. */
+.roster__sus { margin-top: var(--sp-5); }
+/* #460 Ajustes › Claves: mismas filas que Agentes. El tipo va neutro y «en uso» en naranja,
+   que es lo que hay que ver de un vistazo; una prueba fallida o una clave vacía, en rojo. */
+.creds__kind { flex: 0 0 auto; min-width: 9rem; max-width: 12rem; }
+.credrow .rosterrow__tag { color: var(--color-text-soft); border-color: var(--color-rule-strong); }
+.credrow .rosterrow__tag.credrow__tag--uso { color: var(--color-orange-deep); border-color: var(--color-orange-muted); }
+.credrow__estado--mal { color: var(--color-danger); font-weight: 500; }
+.credrow__cuando, .credrow__detalle { color: var(--color-text-mute); }
+.credrow .rosterrow__note { grid-column: 1 / -1; }   /* el origen y «FarOS la usa para…», a lo ancho de la fila */
+.credrow__origen { overflow-wrap: anywhere; }
+/* #499: entregable bajo demanda y el registro de entregas */
+.credrow .rosterrow__tag.credrow__tag--entrega { color: var(--color-text); border-style: dashed; }
+.credrow__entregable { display: inline-flex; align-items: center; gap: 0.5em; margin-top: var(--sp-1);
+  font-size: var(--text-small); color: var(--color-text-soft); cursor: pointer; }
+.credrow__entregable input { width: 1.05em; height: 1.05em; accent-color: var(--color-orange-deep); }
+.credrow__entregable:has(input:disabled) { cursor: default; }
+/* #1302: «Copiar» → «Copiada · 4:59»: el mismo ancho mientras cuenta, para que la fila no salte */
+.credrow__copiar { min-width: 9.5em; font-variant-numeric: tabular-nums; }
+.credrow__copiar.is-copied { border-color: var(--color-orange-deep); }   /* solo el borde: la tinta la lleva el botón, también en :hover */
+.credrow__copia { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em; margin: var(--sp-1) 0 0; }
+.creds__entregas { margin-top: var(--sp-4); }
+.entregas { list-style: none; display: flex; flex-direction: column; gap: 0.45rem; margin: var(--sp-2) 0 0; padding: 0; }
+.entrega { display: flex; flex-wrap: wrap; gap: 0.3em 0.8em; font-size: var(--text-small); line-height: 1.45; color: var(--color-text-soft); }
+.entrega time { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-mute); flex: none; width: 8.5em; }
+.entrega__que { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
+.entrega__que b { color: var(--color-text); }
+.entrega__res { flex: none; font-weight: 600; color: var(--color-ok); }
+.entrega--no .entrega__res { color: var(--color-danger); }
+.entrega__motivo { flex-basis: 100%; padding-left: 9.3em; color: var(--color-text-mute); overflow-wrap: anywhere; }
+.roster__sus-h { font-size: var(--text-small); font-weight: 600; color: var(--color-text-soft); margin: 0 0 var(--sp-1); }
+.rosterrow.is-suspended { box-shadow: none; border: 1px dashed var(--color-rule-strong); background: transparent; }
+.rosterrow.is-suspended .rosterrow__name { color: var(--color-text-soft); }
+.rosterrow__tag--sus { color: var(--color-text-soft); border-color: var(--color-rule-strong); }
+
+/* #645: Preguntas — todas las decisiones de la casa, en una columna legible */
+.dec-root { width: 100%; max-width: 860px; margin: 0 auto; padding: 24px 24px 64px; overflow-y: auto; }
+
+
+/* ============================================================
+   Biblioteca (#851): lista a la izquierda, documento a la derecha.
+   Por debajo de 900 px, una cosa cada vez (el iPad en vertical y el móvil).
+   ============================================================ */
+.lib { --text-small: max(0.875rem, 14px); flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lib[hidden] { display: none; }
+.lib__bar {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-4);
+  padding: var(--sp-2) var(--sp-5);
+  border-bottom: 1px solid var(--color-rule);
+}
+.lib__tabs { min-width: 0; max-width: 100%; margin-left: 0; overflow-x: auto; scrollbar-width: none; }
+.lib__search {
+  flex: 1 1 200px; max-width: 320px; min-width: 0; min-height: 36px; padding: 0 var(--sp-3);
+  font: inherit; font-size: var(--text-small); color: var(--color-text);
+  background: var(--color-card); border: 1px solid var(--color-rule-strong); border-radius: var(--radius-card);
+}
+.lib__search::placeholder { color: var(--color-text-mute); opacity: 1; }
+.lib__body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); }
+.lib__list {
+  min-height: 0; overflow-y: auto; padding-bottom: var(--sp-5);
+  background: var(--color-bg-warm); border-right: 1px solid var(--color-rule);
+}
+.lib__month {
+  position: sticky; top: 0; z-index: 1; margin: 0;
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
+  background: var(--color-bg-warm);
+  font-size: var(--text-small); font-weight: 600; color: var(--color-text-soft);
+}
+.lib__month::first-letter { text-transform: uppercase; }
+.lib__row {
+  display: grid; grid-template-columns: 3.5rem minmax(0, 1fr) auto; gap: var(--sp-3); align-items: baseline;
+  min-height: 44px; padding: var(--sp-3) var(--sp-4);
+  color: var(--color-text); text-decoration: none;
+  transition: background var(--t-fast) var(--ease-out);
+}
+.lib__row:hover { background: var(--color-bg-well); }
+.lib__row.is-open { background: var(--color-orange-wash); }
+.lib__row time { font-size: var(--text-small); color: var(--color-text-mute); font-variant-numeric: tabular-nums; }
+.lib__row-main { display: grid; gap: 2px; min-width: 0; }
+.lib__row-title {
+  font-weight: 500; line-height: var(--lh-snug); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.lib__row-meta { font-size: var(--text-small); color: var(--color-text-mute); }
+.lib__out {
+  width: 18px; height: 18px; align-self: center; fill: none; stroke: var(--color-text-mute);
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+.lib__more { display: block; margin: var(--sp-3) auto 0; min-height: 44px; }
+.lib__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.lib__read { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--color-bg); }
+.lib__read-head {
+  flex: none; display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1px solid var(--color-rule);
+}
+.lib__read-title { min-width: 0; }
+.lib__read-title h1 {
+  margin: 0; font-family: var(--font-display); font-size: var(--text-h1); font-weight: 600;
+  line-height: var(--lh-snug); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.lib__read-title p { margin: 0; font-size: var(--text-small); color: var(--color-text-mute); }
+.lib__back { display: none; flex: none; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: var(--radius-card); color: var(--color-text); }
+.lib__back svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lib__doc { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--color-bg); }
+.lib__note { margin: 0; padding: var(--sp-5) var(--sp-4); font-size: var(--text-small); color: var(--color-text-soft); }
+.lib__note p { margin: 0 0 var(--sp-3); }
+.lib__note--read { max-width: 46ch; margin: var(--sp-6) auto; padding-inline: var(--sp-5); text-align: center; font-size: var(--text-body); }
+.lib__note--read .btn { display: inline-block; text-decoration: none; }
+.lib__path { display: block; font-family: var(--font-mono); font-size: var(--text-small); overflow-wrap: anywhere; }
+
+@media (max-width: 899px) {
+  .lib__body { display: block; }
+  .lib__list { height: 100%; border-right: 0; }
+  .lib__read { display: none; height: 100%; }
+  .lib__back { display: inline-flex; }
+  .lib[data-leyendo] .lib__bar, .lib[data-leyendo] .lib__list { display: none; }
+  .lib[data-leyendo] .lib__read { display: flex; }
+}

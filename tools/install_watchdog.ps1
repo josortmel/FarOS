@@ -13,13 +13,13 @@
 # Nunca powershell.exe, nunca cmd.exe.
 #
 # Uso: powershell -ExecutionPolicy Bypass -File tools\install_watchdog.ps1 [-Port 8756]
-#      [-Exe ruta\faros-daemon.exe] [-DaemonTask AgenticOS-daemon]
-#      [-TaskName AgenticOS-watchdog] [-Minutes 5]
+#      [-Exe ruta\faros-daemon.exe] [-DaemonTask FarOS-daemon]
+#      [-TaskName FarOS-watchdog] [-Minutes 5]
 param(
     [int]$Port = 8756,
     [string]$Exe = "",
-    [string]$DaemonTask = "AgenticOS-daemon",
-    [string]$TaskName = "AgenticOS-watchdog",
+    [string]$DaemonTask = "FarOS-daemon",
+    [string]$TaskName = "FarOS-watchdog",
     [int]$Minutes = 5
 )
 $ErrorActionPreference = "Stop"
@@ -53,7 +53,12 @@ if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal `
-    -Description "AgenticOS vigilante (sin ventana): cada $Minutes min comprueba /api/health en :$Port y relanza '$DaemonTask' si no responde." | Out-Null
+    -Description "FarOS vigilante (sin ventana): cada $Minutes min comprueba /api/health en :$Port y relanza '$DaemonTask' si no responde." | Out-Null
+# #288: el vigilante se llamaba AgenticOS-watchdog; fuera al registrar el nuevo con su nombre.
+if ($TaskName -eq "FarOS-watchdog" -and (Get-ScheduledTask -TaskName "AgenticOS-watchdog" -ErrorAction SilentlyContinue)) {
+    Unregister-ScheduledTask -TaskName "AgenticOS-watchdog" -Confirm:$false
+    Write-Host "Tarea vieja 'AgenticOS-watchdog' eliminada (#288)."
+}
 # El script antiguo de PowerShell ya no se usa: fuera, para que nadie lo relance.
 Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $DataDir ("watchdog_" + $Port + ".ps1"))
 Write-Host "Tarea '$TaskName' registrada — modo $modo (cada $Minutes min, health :$Port -> relanza '$DaemonTask'). Log: $DataDir\watchdog.log"

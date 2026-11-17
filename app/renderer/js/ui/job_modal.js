@@ -16,6 +16,7 @@
 import { esc, fmtSchedule } from '../util.js';
 import { diaLargo, diaLetra, applyI18n, t as tr } from '../i18n.js';
 import { api } from '../api.js';
+import { openModal } from './shell.js';   // #357
 
 /* #262/#271 (lo encontro Eco): las iniciales salen de Intl con el locale activo.
    El INDICE se conserva tal cual porque ES el weekday del motor (0=lunes, estilo
@@ -25,27 +26,8 @@ import { api } from '../api.js';
 const DIAS_IDX = [0, 1, 2, 3, 4, 5, 6];
 const DANGEROUS = /\b(Read|Bash|Write|Edit|MultiEdit|NotebookEdit)\b/;
 
-function openShell(html) {
-  const root = document.getElementById('modal-root');
-  root.innerHTML = `<div class="modal modal--job" role="dialog" aria-modal="true">${html}</div>`;
-  root.hidden = false;
-  const modal = root.querySelector('.modal');
-  /* #302: este fichero tiene SU PROPIO openShell, distinto del de modal.js. Yo
-     arregle el de modal.js y escribi al lado, tan tranquilo, "va aqui y no en
-     cada modal porque openShell es el UNICO sitio por el que pasan todos".
-     No lo era. Afirme una unicidad que no habia comprobado, en el comentario
-     que explicaba por que mi arreglo era general — y el modal mas grande de la
-     app, con 35 etiquetas, se quedo fuera.
-     Medido: 35 restos antes, 30 despues de "arreglarlo". Los cinco que bajaron
-     eran de otros modales. */
-  applyI18n(modal);
-  return modal;
-}
-function close() {
-  const root = document.getElementById('modal-root');
-  root.hidden = true;
-  root.innerHTML = '';
-}
+/* #357: openShell y close viven en shell.js, la misma pieza que usan las otras nueve ventanas.
+   Aquí había una copia propia y cada arreglo había que hacerlo dos veces (#302, #316). */
 
 /* normaliza el schedule que llega (string JSON o objeto, v1 «at» string o v3 «at» lista) */
 function normSchedule(s) {
@@ -75,7 +57,7 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
     const mcpBoxes = (fromRegistry ? mcpServers : (mcpInherited ?? [])).map(m => `
       <label data-mcp-name="${esc(m.name.toLowerCase())}"><input type="checkbox" name="mcp" value="${esc(m.name)}"${chosen.has(m.name) ? ' checked' : ''}${fromRegistry && m.enabled === false ? ' disabled' : ''}> ${esc(m.name)} <small>${esc(m.scope ?? m.source ?? '')}${m.transport ? ' · ' + esc(m.transport) : ''}${fromRegistry && m.enabled === false ? ' · ' + tr('deshabilitado') : ''}</small></label>`).join('');
 
-    const modal = openShell(`
+    const modal = openModal(`
       <h2 class="modal__title">${editing ? 'Editar job' : 'Nuevo job agéntico'}</h2>
       <form id="job-form" novalidate>
         <div class="field">
@@ -210,7 +192,7 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
           <button type="submit" class="btn btn--primary">${editing ? 'Guardar job' : 'Crear job'}</button>
         </div>
       </form>
-    `);
+    `, resolve, { variant: 'job' });
 
     const q = (sel) => modal.querySelector(sel);
     const capOf = (name) => harnesses.find(h => h.name === name) ?? {};
@@ -278,15 +260,20 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
     /* ---- capacidades del harness: presupuesto, avanzado ---- */
     function applyHarness() {
       const h = capOf(q('#j-harness').value);
+      const cap = h.capabilities ?? {};
       const api_ = h.billing === 'api';
-      q('#j-budget-field').hidden = !api_;
+      /* #580: factura por API pero no informa del coste (claude-cli-deepseek, #463: cost_usd=None a
+         propósito). Un tope en USD ahí no saltaría nunca, así que no se ofrece y se dice por qué. */
+      const sinCoste = api_ && cap.budget === false;
+      q('#j-budget-field').hidden = !api_ || sinCoste;
       const note = q('#j-billing-note');
-      note.hidden = api_;
-      note.textContent = h.billing === 'local'
+      note.hidden = api_ && !sinCoste;
+      note.textContent = sinCoste
+        ? `${h.name} ${tr('factura por API pero no informa del coste: el tope en USD no se puede aplicar. El gasto se mira en la cuenta del servicio.')}`
+        : h.billing === 'local'
         ? 'Harness local: no factura. El presupuesto no aplica.'
         : `${h.name ?? 'Este harness'} ${tr('consume la suscripción: no se cobra por uso, el tope en USD no aplica. El coste que reporte se guarda como equivalente informativo.')}`;
         /* #302: la MARCA del harness es un dato y no se traduce; la frase si. */
-      const cap = h.capabilities ?? {};
       for (const [id, key] of [['#j-effort', 'effort'], ['#j-fallback', 'fallback_model'], ['#j-schema', 'json_schema'], ['#j-dirs', 'add_dir'], ['#j-perm', 'permission_mode'], ['#j-tools', 'allowed_tools']]) {
         const el = q(id);
         const supported = cap[key] !== false;
@@ -398,16 +385,8 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
        delante la vista Settings global que Eco tenía sin mirar (#300).
        Las tres salidas comparten cierre: cerrar SIEMPRE resuelve la promesa, porque un modal
        que desaparece sin resolver deja a quien lo abrió esperando para siempre. */
-    const salir = () => { document.removeEventListener('keydown', alEscape, true); close(); resolve(null); };
-    function alEscape(e) { if (e.key === 'Escape') { e.preventDefault(); salir(); } }
-    document.addEventListener('keydown', alEscape, true);
-
-    /* el fondo: sólo cuenta el clic en el propio backdrop, no uno que burbujee desde dentro */
-    document.getElementById('modal-root').addEventListener('mousedown', (e) => {
-      if (e.target.id === 'modal-root') salir();
-    });
-
-    modal.querySelector('[data-cancel]').addEventListener('click', salir);
+    /* #316 → #357: las tres salidas (Cancelar, fondo, Escape) las engancha y desengancha
+       openModal; cerrar SIEMPRE resuelve la promesa y no deja escuchadores vivos. */
     modal.querySelector('#job-form').addEventListener('submit', (e) => {
       e.preventDefault();
       syncSchedule();
@@ -459,14 +438,10 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
         fallback_model: q('#j-fallback').value || null,
         system_prompt: v('#j-system') || null,
         json_schema: schema,
-        max_budget_usd: h.billing === 'api' && v('#j-budget') ? Number(v('#j-budget')) : null,
+        /* #580: se manda lo que se ve. Un tope tecleado con otro harness y oculto después no viaja. */
+        max_budget_usd: !q('#j-budget-field').hidden && v('#j-budget') ? Number(v('#j-budget')) : null,
       };
-      /* el mismo desenganche que en salir(): si el modal se cierra POR ÉXITO y el listener se
-         queda vivo, Escape sigue disparando sobre un modal que ya no existe — y el siguiente
-         que se abra se cerrará solo. Un arreglo que deja basura detrás es medio arreglo. */
-      document.removeEventListener('keydown', alEscape, true);
-      close();
-      resolve(payload);
+      modal.finish(payload);   // #357: desengancha las salidas, cierra y resuelve una vez
     });
   });
 }

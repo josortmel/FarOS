@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "faros"
-version = "3.3.1"
+version = "3.3.41"
 description = "A ticket board where agents propose, execute and verify each other's work"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +35,7 @@ dependencies = [
   "uvicorn>=0.42,<1",
   "httpx>=0.28,<1",
   "mcp>=1.27,<2",
+  "websockets>=13,<16",
 ]
 
 [project.optional-dependencies]

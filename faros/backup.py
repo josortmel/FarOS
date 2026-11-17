@@ -29,6 +29,9 @@ RETENTION_DAYS = 14
 # los encontraria. Serian invisibles estando ahi — el mismo fallo callado
 # que el de la base de datos, en el sitio donde mas duele, que es el backup.
 FILENAME_RE = re.compile(r"^(?:faros|agenticos)_(\d{4}-\d{2}-\d{2})\.db$")
+ROLLBACK_KEEP = 3
+ROLLBACK_RES = (re.compile(r"^pre_\d+_\d{8}_\d{6}\.db$"),
+                re.compile(r"^(?:faros|agenticos)_pre_migration_[\d_]+\.db$"))
 
 
 def backup_dir() -> Path:
@@ -60,6 +63,12 @@ def _scrub_secrets(dest: Path) -> int:
                     n += 1
         except Exception:
             pass  # base anterior a v4: no hay tabla
+        # #460: los valores de la lista de Claves tampoco viajan (el nombre, el tipo y el origen sí:
+        # al restaurar se sabe qué hay que volver a pegar).
+        try:
+            n += bk.execute("UPDATE credentials SET value = '' WHERE value != ''").rowcount
+        except sqlite3.OperationalError:
+            pass  # base anterior a v6: no hay tabla
         bk.commit()
     finally:
         bk.close()
@@ -107,13 +116,32 @@ def prune_old(now: datetime, retention_days: int = RETENTION_DAYS) -> list[str]:
     return pruned
 
 
+def prune_rollback_copies(keep: int = ROLLBACK_KEEP) -> list[str]:
+    """#988: las copias para volver atrás van enteras, con las claves. Se quedan las `keep` más
+    recientes de cada familia, por fecha del fichero (`pre_339` va después de `pre_3320` como
+    texto). También quita los -wal y -shm cuyo .db ya no existe."""
+    pruned = []
+    ficheros = sorted(backup_dir().iterdir(), key=lambda f: f.stat().st_mtime)
+    for familia in ROLLBACK_RES:
+        copias = [f for f in ficheros if familia.match(f.name)]
+        for f in copias[:-keep]:
+            f.unlink()
+            pruned.append(f.name)
+            log.info("pruned rollback copy: %s", f.name)
+    for f in backup_dir().iterdir():
+        if f.name.endswith(("-wal", "-shm")) and not f.with_name(f.name[:-4]).exists():
+            f.unlink()
+            log.info("pruned orphan: %s", f.name)
+    return pruned
+
+
 def daily_tick(conn: sqlite3.Connection, now: datetime) -> dict:
     """Called once per day from the scheduler loop.
 
     Returns a summary dict for logging / evidence.
     """
     path = create_backup(conn, now)
-    pruned = prune_old(now)
+    pruned = prune_old(now) + prune_rollback_copies()
     ticket_count = conn.execute("SELECT COUNT(*) AS n FROM tickets").fetchone()[0]
     return {
         "backup": str(path),
@@ -149,6 +177,11 @@ def verify_backup(backup_path: str | Path, production_conn: sqlite3.Connection) 
         blanked = [r[0] for r in bk2.execute(
             "SELECT key FROM settings WHERE secret = 1 AND value = '\"\"'"
         ).fetchall()]
+        try:   # #460: las de la lista de Claves, por su nombre
+            blanked += [f"Claves › {r[0]}" for r in bk2.execute(
+                "SELECT name FROM credentials WHERE value = '' ORDER BY name").fetchall()]
+        except sqlite3.OperationalError:
+            pass
     finally:
         bk2.close()
 

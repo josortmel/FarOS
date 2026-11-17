@@ -7,47 +7,12 @@
 
 import { esc } from '../util.js';
 import { fechaDiaMes, applyI18n, t as tr } from '../i18n.js';
+import { VLEVEL } from '../transitions.js';   // #574
+import { openModal } from './shell.js';        // #357
+import { notaHTML } from './criterio_avisos.js';   // #1136
 
-const root = () => document.getElementById('modal-root');
-
-function openShell(html, { small = false } = {}) {
-  const r = root();
-  r.hidden = false;
-  r.innerHTML = `<div class="modal${small ? ' modal--sm' : ''}" role="dialog" aria-modal="true">${html}</div>`;
-  const modal = r.querySelector('.modal');
-  /* #302 (lo encontro Eco barriendo el .exe): un modal se pinta AL ABRIRLO, o sea
-     despues de que applyI18n haya recorrido el documento, asi que NINGUN modal se
-     traducia. Con la interfaz en ingles, «Nuevo job agentico» salia con sus 35
-     etiquetas en espaniol.
-     Va aqui porque por este openShell pasan CINCO modales (crear tarea, evidencia,
-     motivo, proyecto, despachar) y arreglarlos uno a uno seria repetir el mismo
-     olvido cinco veces.
-     CUIDADO: NO es el unico openShell de la app. job_modal.js tiene el suyo y
-     necesita su propia llamada. Yo escribi aqui que era el unico sin comprobarlo,
-     y el modal mas grande —35 etiquetas— se quedo sin traducir.
-     (Yo ya le puse applyI18n a la CAJA DE ERRORES de este mismo modal esta maniana
-     — arregle el sintoma que tenia delante y no mire el contenedor.) */
-  applyI18n(modal);
-  const first = modal.querySelector('input, select, textarea, button');
-  first?.focus();
-  return modal;
-}
-
-function close() {
-  const r = root();
-  r.hidden = true;
-  r.innerHTML = '';
-}
-
-function wireCancel(modal, resolve) {
-  modal.querySelector('[data-cancel]')?.addEventListener('click', () => { close(); resolve(null); });
-  root().addEventListener('click', function onScrim(e) {
-    if (e.target === root()) { close(); resolve(null); root().removeEventListener('click', onScrim); }
-  });
-  document.addEventListener('keydown', function onEsc(e) {
-    if (e.key === 'Escape') { close(); resolve(null); document.removeEventListener('keydown', onEsc); }
-  });
-}
+/* #357: openShell, close y wireCancel viven en shell.js (una sola pieza para todas las ventanas,
+   también la de job_modal.js). La historia del #302 está allí. */
 
 /* ================= crear tarea ================= */
 
@@ -81,16 +46,21 @@ function showFieldError(modal, field, message) {
   }
 }
 
-export function createTaskModal(meta, projects, agents, onSubmit) {
-  return new Promise((resolve) => {
+export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
+  return new Promise((resolve0) => {
+    /* #1136: una vez creada, cerrar de cualquier forma (Escape, fuera, «Dejarlo así») devuelve
+       la tarea creada y no «cancelado»: la tarea existe aunque el criterio lleve una nota */
+    let guardada = null;
+    const resolve = (v) => resolve0(v ?? guardada);
     const projOpts = projects.filter(p => !p.archived)
       .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    // #574: el nombre del nivel, no su código (el value sigue siendo el código)
     const vlevels = (meta.verification_levels ?? ['self', 'peer', 'auto'])
-      .map(v => `<option value="${esc(v)}"${v === (meta.defaults.verification_level ?? 'auto') ? ' selected' : ''}>${esc(v)}</option>`).join('');
+      .map(v => `<option value="${esc(v)}"${v === (meta.defaults.verification_level ?? 'auto') ? ' selected' : ''}>${esc(VLEVEL[v]?.[0] ?? v)}</option>`).join('');
     const agentOpts = ['', ...(agents ?? [])]
       .map(a => `<option value="${esc(a)}">${a ? esc(a) : 'sin responsable'}</option>`).join('');
 
-    const modal = openShell(`
+    const modal = openModal(`
       <h2 class="modal__title">Nueva tarea</h2>
       <p class="hint" style="margin:-0.6rem 0 var(--sp-3)">Tarea para un agente con nombre. Lo automatizado con LLM se crea en <b>Agentes → Nuevo job</b>.</p>
 
@@ -157,11 +127,13 @@ export function createTaskModal(meta, projects, agents, onSubmit) {
         <div class="field">
           <label for="f-vlevel">Nivel de verificación</label>
           <select id="f-vlevel" data-field="verification_level">${vlevels}</select>
+          <div class="hint" id="f-vlevel-txt"></div>
         </div>
         <div class="field">
           <label for="f-criteria">Criterio de verificación</label>
-          <input type="text" id="f-criteria" placeholder="qué prueba deja esta tarea cuando está bien hecha">
+          <input type="text" id="f-criteria" data-field="verify_criteria" placeholder="qué prueba deja esta tarea cuando está bien hecha">
           <div class="hint">el verificador se corre contra esto</div>
+          <div id="f-crit-note"></div>
         </div>
 
         <div class="modal__footer">
@@ -169,9 +141,8 @@ export function createTaskModal(meta, projects, agents, onSubmit) {
           <button type="submit" class="btn btn--primary">Crear tarea</button>
         </div>
       </form>
-    `);
+    `, resolve);
 
-    wireCancel(modal, resolve);
 
     const allday = modal.querySelector('#f-allday');
     const timeF = modal.querySelector('#f-time');
@@ -187,6 +158,12 @@ export function createTaskModal(meta, projects, agents, onSubmit) {
     };
     whenF.addEventListener('input', pintaDia);
     pintaDia();
+    /* #574: debajo del nivel, qué pasa con él (tr: se escribe después del recorrido de i18n) */
+    const vlevelF = modal.querySelector('#f-vlevel');
+    const vlevelTxt = modal.querySelector('#f-vlevel-txt');
+    const pintaNivel = () => { vlevelTxt.textContent = tr(VLEVEL[vlevelF.value]?.[1] ?? ''); };
+    vlevelF.addEventListener('change', pintaNivel);
+    pintaNivel();
     allday.addEventListener('change', () => {
       timeF.disabled = allday.checked;
       durF.disabled = allday.checked;
@@ -225,35 +202,96 @@ export function createTaskModal(meta, projects, agents, onSubmit) {
 
       /* Sin onSubmit se comporta como antes (resolver el ticket y cerrar): así los
          llamantes viejos y los tests de fixtures siguen funcionando. */
-      if (typeof onSubmit !== 'function') { close(); resolve(ticket); return; }
+      if (typeof onSubmit !== 'function') { modal.finish(ticket); return; }
 
       const btn = modal.querySelector('#task-form button[type=submit]');
+      if (guardada) { await guardarCriterio(btn); return; }   // #1136: segunda vuelta, la tarea ya existe
       const label = btn.textContent;
       btn.disabled = true; btn.textContent = 'Creando…';
       try {
         const created = await onSubmit(ticket);
-        close();
-        resolve(created ?? ticket);
+        const avisos = created?.criterion_warnings ?? [];
+        if (!avisos.length || typeof onPatch !== 'function') { modal.finish(created ?? ticket); return; }
+        guardada = created;
+        modoNota(avisos);
+        return;
       } catch (err) {
         /* el dueño: «si falta un campo debería decírmelo en el propio menú, no sacarme de
            la creación y obligarme a volver a crearlo». El formulario NO se toca. */
         showFieldError(modal, err?.field ?? null, err?.reason ?? err?.message ?? String(err));
       } finally {
-        btn.disabled = false; btn.textContent = label;
+        btn.disabled = false;
+        if (!guardada) btn.textContent = label;   // en modo nota el botón ya dice otra cosa
       }
     });
+
+    /* #1136: la tarea se ha creado y el motor deja una nota sobre el criterio. El diálogo NO
+       se cierra: lo ya guardado se queda quieto (deshabilitado) y solo el criterio y su nivel
+       se pueden tocar. «Guardar el criterio» manda un PATCH; «Dejarlo así» cierra. */
+    function pintarNota(avisos) {
+      const caja = modal.querySelector('#f-crit-note');
+      caja.innerHTML = notaHTML(avisos, modal.querySelector('#f-criteria').value, { guardada: true });
+      caja.firstElementChild?.scrollIntoView({ block: 'nearest' });   // en escritorio quedaba cortada al fondo del diálogo
+    }
+    function modoNota(avisos) {
+      modal.querySelector('#task-form').classList.add('is-saved');
+      modal.querySelectorAll('#task-form input, #task-form select, #task-form textarea').forEach(el => {
+        if (el.id !== 'f-criteria' && el.id !== 'f-vlevel') el.disabled = true;
+      });
+      pintarNota(avisos);
+      const ok = modal.querySelector('#task-form button[type=submit]');
+      ok.textContent = tr('Guardar el criterio');
+      const cancel = modal.querySelector('#task-form [data-cancel]');
+      cancel.textContent = tr('Dejarlo así');       // y cerrar devuelve la tarea (resolve de arriba)
+      modal.querySelector('#f-criteria').focus();
+    }
+    async function guardarCriterio(btn) {
+      const tk = guardada.ticket ?? guardada;
+      const criterio = modal.querySelector('#f-criteria').value.trim();
+      const patch = { verify_criteria: criterio, verification_level: modal.querySelector('#f-vlevel').value };
+      btn.disabled = true; btn.textContent = tr('Guardando…');
+      try {
+        const res = await onPatch(tk.id, patch);
+        const avisos = res?.criterion_warnings ?? [];
+        guardada = { ...guardada, criterion_warnings: avisos };
+        if (!avisos.length) { modal.finish(guardada); return; }
+        pintarNota(avisos);
+      } catch (err) {
+        showFieldError(modal, err?.field ?? 'verify_criteria', err?.reason ?? err?.message ?? String(err));
+      } finally {
+        btn.disabled = false; btn.textContent = tr('Guardar el criterio');
+      }
+    }
   });
 }
 
 /* ================= evidencia (completar) ================= */
 
-export function evidenceDialog(meta, ticket) {
+/* #601: los tipos de evidencia por su nombre (salían file_path, command_output…) */
+const EV_NAMES = {
+  file_path: 'ruta de un fichero',
+  command_output: 'salida de un comando',
+  memory_id: 'memoria de EcoDB',
+  peer_attestation: 'lo da por bueno otro miembro',
+  proof: 'prueba que corre el verificador',
+};
+/* #601: lo escrito se guarda por tarea hasta que completar sale bien: si el motor rechaza la
+   evidencia (un «proof» mal formado, un repo no admitido), al volver a abrir el diálogo sigue ahí */
+const evDrafts = new Map();
+export function clearEvidenceDraft(id) { evDrafts.delete(id); }
+
+function proofPlantilla(repos) {
+  return JSON.stringify({ repo: repos[0] ?? '', commit: '', prueba: 'python -m pytest tests/…', rojo_en_padre: true }, null, 2);
+}
+
+export function evidenceDialog(meta, ticket, { proofRepos = [] } = {}) {
   return new Promise((resolve) => {
+    const draft = evDrafts.get(ticket.id);
     const types = (meta.evidence_types ?? ['file_path', 'command_output', 'memory_id', 'peer_attestation'])
       .filter(t => t !== 'run_output') // run_output lo pone el runner, no la mano
-      .map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+      .map(t => `<option value="${esc(t)}"${draft?.evidence_type === t ? ' selected' : ''}>${esc(tr(EV_NAMES[t] ?? t))}</option>`).join('');
 
-    const modal = openShell(`
+    const modal = openModal(`
       <h2 class="modal__title">Completar «${esc(ticket.title)}»</h2>
       <p style="font-size:var(--text-small);color:var(--color-text-soft);margin-bottom:var(--sp-3);">
         Completar exige evidencia. Sin evidencia el motor no acepta «hecha».
@@ -264,10 +302,11 @@ export function evidenceDialog(meta, ticket) {
           <label for="ev-type">Tipo de evidencia</label>
           <select id="ev-type">${types}</select>
         </div>
-        <div class="field">
+        <div class="field" id="ev-value-field">
           <label for="ev-value">Evidencia</label>
           <input type="text" id="ev-value" required placeholder="ruta, salida de comando, id…">
         </div>
+        <p class="hint ev-proof-hint" id="ev-proof-hint" hidden></p>
         <div class="field">
           <label for="ev-note">Nota</label>
           <input type="text" id="ev-note" placeholder="opcional">
@@ -277,9 +316,35 @@ export function evidenceDialog(meta, ticket) {
           <button type="submit" class="btn btn--primary">Completar</button>
         </div>
       </form>
-    `, { small: true });
+    `, resolve, { variant: 'sm' });
 
-    wireCancel(modal, resolve);
+    /* #601: «proof» es un JSON (repo, commit, prueba, rojo_en_padre…): un cuadro de varias líneas con la
+       plantilla y lo que el código comprueba antes del juez. Los demás tipos, una línea. */
+    const hint = modal.querySelector('#ev-proof-hint');
+    const ponValor = (tipo, valor) => {
+      const old = modal.querySelector('#ev-value');
+      const proof = tipo === 'proof';
+      if ((old.tagName === 'TEXTAREA') !== proof) {
+        const nuevo = document.createElement(proof ? 'textarea' : 'input');
+        nuevo.id = 'ev-value'; nuevo.required = true;
+        if (proof) { nuevo.rows = 7; nuevo.className = 'mono'; nuevo.spellcheck = false; }
+        else { nuevo.type = 'text'; nuevo.placeholder = old.placeholder || 'ruta, salida de comando, id…'; }
+        old.replaceWith(nuevo);
+      }
+      const el = modal.querySelector('#ev-value');
+      if (valor != null) el.value = valor;
+      else if (proof && !el.value.trim()) el.value = proofPlantilla(proofRepos);
+      hint.hidden = !proof;
+      hint.textContent = proof
+        ? `${tr('Antes que el juez, y en una copia sin claves, el código comprueba que el commit existe y está en master, que los ficheros existen y que la prueba sale con 0; con «rojo_en_padre», además, que esa misma prueba falla sobre el código del commit anterior.')} ${proofRepos.length
+            ? `${tr('Repos admitidos:')} ${proofRepos.join(' · ')}`
+            : tr('No hay ningún repo admitido todavía: añádelo en Agentes › Ajustes.')}`
+        : '';
+    };
+    modal.querySelector('#ev-type').addEventListener('change', (e) => ponValor(e.target.value, null));
+    ponValor(modal.querySelector('#ev-type').value, draft?.evidence ?? null);
+    if (draft?.note) modal.querySelector('#ev-note').value = draft.note;
+
     modal.querySelector('#ev-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const out = {
@@ -287,17 +352,17 @@ export function evidenceDialog(meta, ticket) {
         evidence: modal.querySelector('#ev-value').value.trim(),
         note: modal.querySelector('#ev-note').value.trim() || null,
       };
-      close();
-      resolve(out);
+      evDrafts.set(ticket.id, out);
+      modal.finish(out);
     });
   });
 }
 
 /* ================= motivo (bloquear / rechazar) ================= */
 
-export function reasonDialog(title, cta, { min = 1, hint = 'por qué — quedará en el historial' } = {}) {
+export function reasonDialog(title, cta, { min = 1, hint = 'por qué — quedará en el historial', value = '', tone = 'danger' } = {}) {
   return new Promise((resolve) => {
-    const modal = openShell(`
+    const modal = openModal(`
       <h2 class="modal__title">${esc(title)}</h2>
       <form id="rs-form">
         <div class="field">
@@ -306,21 +371,21 @@ export function reasonDialog(title, cta, { min = 1, hint = 'por qué — quedar�
         </div>
         <div class="modal__footer">
           <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
-          <button type="submit" class="btn btn--danger" disabled>${esc(cta)}</button>
+          <button type="submit" class="btn btn--${tone === 'danger' ? 'danger' : 'primary'}" disabled>${esc(cta)}</button>
         </div>
       </form>
-    `, { small: true });
+    `, resolve, { variant: 'sm' });
 
     const ta = modal.querySelector('#rs-note');
     const ok = modal.querySelector('button[type=submit]');
+    /* #482: al cambiar un motivo se parte del que hay, para corregirlo y no reescribirlo a ciegas */
+    if (value) { ta.value = value; ok.disabled = value.trim().length < min; ta.select(); }
     ta.addEventListener('input', () => { ok.disabled = ta.value.trim().length < min; }); // sin motivo no se envía
-    wireCancel(modal, resolve);
     modal.querySelector('#rs-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const note = ta.value.trim();
       if (note.length < min) return;
-      close();
-      resolve({ note });
+      modal.finish({ note });
     });
   });
 }
@@ -332,7 +397,7 @@ export function reasonDialog(title, cta, { min = 1, hint = 'por qué — quedar�
 export function projectDialog(project = null) {
   const editing = Boolean(project);
   return new Promise((resolve) => {
-    const modal = openShell(`
+    const modal = openModal(`
       <h2 class="modal__title">${editing ? 'Editar proyecto' : 'Nuevo proyecto'}</h2>
       <form id="pj-form">
         <div class="field">
@@ -350,19 +415,16 @@ export function projectDialog(project = null) {
           <button type="submit" class="btn btn--primary">${editing ? 'Guardar' : 'Crear proyecto'}</button>
         </div>
       </form>
-    `, { small: true });
+    `, resolve, { variant: 'sm' });
 
-    wireCancel(modal, resolve);
     if (editing) {
       modal.querySelector('[data-archive]').addEventListener('click', () => {
-        close();
-        resolve({ archived: 1 });
+        modal.finish({ archived: 1 });
       });
     }
     modal.querySelector('#pj-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      close();
-      resolve({
+      modal.finish({
         name: modal.querySelector('#pj-name').value.trim(),
         color: modal.querySelector('#pj-color').value,
       });
@@ -376,7 +438,7 @@ export function dispatchDialog(t, agents, suggested) {
   return new Promise((resolve) => {
     const opts = agents
       .map(a => `<option value="${esc(a)}"${a === suggested ? ' selected' : ''}>${esc(a)}</option>`).join('');
-    const modal = openShell(`
+    const modal = openModal(`
       <h2 class="modal__title">Despachar «${esc(t.plan_key ?? t.title)}»</h2>
       <form id="dp-form">
         <div class="field">
@@ -394,18 +456,101 @@ export function dispatchDialog(t, agents, suggested) {
           <button type="submit" class="btn btn--primary">Despachar</button>
         </div>
       </form>
-    `, { small: true });
+    `, resolve, { variant: 'sm' });
 
-    wireCancel(modal, resolve);
     modal.querySelector('#dp-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const out = {
         to: modal.querySelector('#dp-to').value,
         note: modal.querySelector('#dp-note').value.trim() || null,
       };
-      close();
-      resolve(out);
+      modal.finish(out);
     });
+  });
+}
+
+/* ================= suspender o borrar un agente (#252) ================= */
+
+/* SUSPENDER (Pepe, 30-sep: «prefiero suspenderlo»). Resuelve {reassignTo} (null si no tenía
+   abiertas) o null si cancela. Con tareas abiertas no se puede suspender sin decir a quién
+   pasan: el motor da 409 si no.
+   SIN DESTINATARIO PRESELECCIONADO, a propósito. Google Workspace, al borrar un usuario,
+   hace BUSCAR a quién pasan sus datos («In the Search for a user field, enter the name or
+   email address») en vez de proponer uno. Aquí se proponía al dueño, y un Enter por inercia le
+   echaba encima todo el trabajo del que se va. «Suspender» no se activa hasta que se elige.
+   Y dice lo que pasa con el nombre, como Google dice lo que pasa con lo no transferido
+   («Any data that's not transferred is deleted»): una consecuencia se escribe entera. */
+export function suspendAgentDialog(agent, others) {
+  const n = agent.open_tickets ?? 0;
+  return new Promise((resolve) => {
+    const opts = `<option value="" disabled selected>elige a quién</option>`
+      + others.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+    const modal = openModal(`
+      <h2 class="modal__title">Suspender a «${esc(agent.name)}»</h2>
+      <form id="ra-form">
+        ${n ? `
+        <p class="roster-dlg__lead">«${esc(agent.name)}» tiene ${n} ${n === 1 ? 'tarea abierta' : 'tareas abiertas'}.</p>
+        <div class="field">
+          <label for="ra-to">Pasan a</label>
+          <select id="ra-to">${opts}</select>
+        </div>` : `
+        <p class="roster-dlg__lead">«${esc(agent.name)}» no tiene tareas abiertas.</p>`}
+        <p class="hint">Deja de aparecer en los selectores y no recibe tareas nuevas. Sigue en la lista y sus tareas cerradas lo siguen nombrando. Se puede reactivar.</p>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
+          <button type="submit" class="btn btn--danger"${n ? ' disabled' : ''}>Suspender</button>
+        </div>
+      </form>
+    `, resolve, { variant: 'sm' });
+
+    const sel = modal.querySelector('#ra-to');
+    sel?.addEventListener('change', () => { modal.querySelector('button[type=submit]').disabled = !sel.value; });
+    modal.querySelector('#ra-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (n && !sel.value) return;
+      const out = { reassignTo: n ? sel.value : null };
+      modal.finish(out);
+    });
+  });
+}
+
+/* BORRAR: solo existe para un nombre que nunca tuvo tareas (creado por error). Resuelve
+   true o null. Con historia, el motor da 409 y la fila ofrece Suspender en su lugar. */
+export function deleteAgentDialog(agent) {
+  return new Promise((resolve) => {
+    const modal = openModal(`
+      <h2 class="modal__title">Borrar a «${esc(agent.name)}»</h2>
+      <form id="da-form">
+        <p class="roster-dlg__lead">«${esc(agent.name)}» no ha tenido nunca ninguna tarea.</p>
+        <p class="hint">Se borra de la lista del todo. Si lo necesitas otra vez, se vuelve a añadir.</p>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
+          <button type="submit" class="btn btn--danger">Borrar</button>
+        </div>
+      </form>
+    `, resolve, { variant: 'sm' });
+    modal.querySelector('#da-form').addEventListener('submit', (e) => { e.preventDefault(); modal.finish(true); });
+  });
+}
+
+/* #460: BORRAR UNA CLAVE. Si FarOS la está usando, lo dice: al borrarla, ese tipo se
+   queda sin clave hasta que se marque otra. Resuelve true o null. */
+export function deleteCredentialDialog(c, usoTexto) {
+  return new Promise((resolve) => {
+    const modal = openModal(`
+      <h2 class="modal__title">Borrar la clave «${esc(c.name)}»</h2>
+      <form id="dc-form">
+        ${c.in_use
+          ? `<p class="roster-dlg__lead">${esc(usoTexto)}</p>
+             <p class="hint">Al borrarla, FarOS se queda sin esa clave hasta que marques otra.</p>`
+          : '<p class="roster-dlg__lead">Se borra de la lista. Si la necesitas otra vez, la vuelves a pegar.</p>'}
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
+          <button type="submit" class="btn btn--danger">Borrar</button>
+        </div>
+      </form>
+    `, resolve, { variant: 'sm' });
+    modal.querySelector('#dc-form').addEventListener('submit', (e) => { e.preventDefault(); modal.finish(true); });
   });
 }
 
@@ -413,7 +558,7 @@ export function dispatchDialog(t, agents, suggested) {
 
 export function handoffComposer(draftContent, workflowName) {
   return new Promise((resolve) => {
-    const modal = openShell(`
+    const modal = openModal(`
       <h2 class="modal__title">Handoff — ${esc(workflowName)}</h2>
       <p class="hint" style="margin-bottom:var(--sp-3);">
         El borrador lo redacta el motor desde el estado real. Edita la sección
@@ -428,16 +573,14 @@ export function handoffComposer(draftContent, workflowName) {
           <button type="submit" class="btn btn--primary">Guardar handoff</button>
         </div>
       </form>
-    `);
+    `, resolve);
     modal.querySelector('#ho-content').value = draftContent ?? '';
 
-    wireCancel(modal, resolve);
     modal.querySelector('#ho-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const content = modal.querySelector('#ho-content').value.trim();
       if (!content) return;
-      close();
-      resolve({ content });
+      modal.finish({ content });
     });
   });
 }

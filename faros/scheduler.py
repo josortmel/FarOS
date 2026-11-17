@@ -1,8 +1,9 @@
 """Scheduler del daemon (SPEC §7): tick asyncio, puntuales + recurrentes + catch-up.
 
-Regla de catch-up (lección L47 de Faro): al arrancar, para cada job recurrente se
-lanza UNA vez si el último fire teórico no tiene run posterior — no se re-ejecuta
-cada ventana perdida. Las 'once' vencidas hace más de MISSED_GRACE_H horas se
+Regla de catch-up (lección L47 de Faro): en CADA tick (no solo al arrancar), para cada
+job recurrente se lanza UNA vez si el último fire teórico no tiene run posterior — no se
+re-ejecuta cada ventana perdida. Un fire anterior al último cambio de calendario
+(schedule_changed_at, #431) no cuenta como perdido. Las 'once' vencidas hace más de MISSED_GRACE_H horas se
 marcan missed en history y se deshabilitan.
 """
 
@@ -14,7 +15,7 @@ import logging
 import time
 from datetime import datetime, date, time as dtime, timedelta
 
-from . import service, runner, backup, schedule as schedule_mod
+from . import service, runner, backup, notify, schedule as schedule_mod
 
 log = logging.getLogger("faros.scheduler")
 
@@ -86,11 +87,57 @@ def due_jobs(conn, now: datetime) -> list[dict]:
             # Catch-up L47: si el último disparo teórico no tiene run posterior,
             # se lanza UNA vez — aunque el hueco cubra varios disparos.
             fire = schedule_mod.last_fire(sched, job["created_at"], now)
-            if fire is None:
+            if fire is None or _antes_del_cambio(job, fire):
                 continue
             if last_run is None or _parse_iso(last_run["started_at"]) < fire:
                 due.append(job)
     return due
+
+
+def _antes_del_cambio(job: dict, fire: datetime) -> bool:
+    """#431: un disparo de antes del último cambio de calendario, o de antes de que el job
+    existiera, no se «perdió»: no existía cuando tocaba. Sin esto, cambiar la hora a una ya
+    pasada lanzaba el job al momento, y crear un diario de las 11:00 a las 15:00 también (lo vio
+    Lienzo en la e2e, 16-oct)."""
+    desde = max(x for x in (job.get("created_at"), job.get("schedule_changed_at")) if x)
+    return fire < _parse_iso(desde)
+
+
+def skipped_jobs(conn, now: datetime) -> list[dict]:
+    """#518: jobs recurrentes que tocarían ahora y NO se lanzan porque la tarea manual de la
+    que cuelgan está cerrada. Antes se saltaban en silencio (la revista del 15-oct). Cada
+    uno lleva «fire», el disparo que se pierde, para avisar una sola vez por disparo."""
+    rows = conn.execute(
+        "SELECT j.*, t.status AS ticket_status FROM agent_jobs j JOIN tickets t ON t.id = j.ticket_id"
+        " WHERE j.enabled = 1 AND j.status = 'active' AND t.closed_at IS NOT NULL"
+        " AND t.kind != 'agentic'").fetchall()
+    out = []
+    for row in rows:
+        job = dict(row)
+        sched = json.loads(job["schedule"])
+        if sched.get("type") not in ("recurring", "weekly"):
+            continue
+        fire = schedule_mod.last_fire(sched, job["created_at"], now)
+        if fire is None or _antes_del_cambio(job, fire):
+            continue
+        last_run = conn.execute("SELECT started_at FROM runs WHERE job_id=? ORDER BY id DESC LIMIT 1",
+                                (job["id"],)).fetchone()
+        if last_run is None or _parse_iso(last_run["started_at"]) < fire:
+            job["fire"] = fire.isoformat(timespec="minutes")
+            out.append(job)
+    return out
+
+
+def _avisar_saltados(conn, now: datetime, avisados: set) -> None:
+    for job in skipped_jobs(conn, now):
+        if (job["id"], job["fire"]) in avisados:
+            continue
+        avisados.add((job["id"], job["fire"]))
+        texto = (f"FarOS: el job #{job['id']} «{job['name']}» no se ha lanzado ({job['fire']}) porque su"
+                 f" tarea #{job['ticket_id']} está cerrada ({job['ticket_status']}). Desenlázalo o"
+                 " cuélgalo de una tarea abierta.")
+        log.warning(texto)
+        notify.telegram(conn, texto)
 
 
 async def scheduler_loop(conn, emit=None, stop_event: asyncio.Event | None = None):
@@ -111,6 +158,12 @@ async def scheduler_loop(conn, emit=None, stop_event: asyncio.Event | None = Non
             log.exception("job #%s reventó fuera del contrato", job_id)
 
     last_backup_check = 0.0
+    avisados: set = set()  # #518: (job, disparo) ya avisados como saltados
+    from . import timbre as timbre_mod   # #1184: el timbre de franjas por el relay
+    timbre = None
+    if timbre_mod.activo():   # FAROS_TIMBRE=0 lo quita del todo; el interruptor de la app se mira en cada vuelta
+        estado_f, registro_f = timbre_mod.ficheros(conn)   # junto a la base: sobreviven al reinicio
+        timbre = timbre_mod.Timbre(estado=estado_f, registro=registro_f)
     last_verify = time.monotonic()
     last_expire = 0.0
 
@@ -155,6 +208,41 @@ async def scheduler_loop(conn, emit=None, stop_event: asyncio.Event | None = Non
                 task.add_done_callback(in_flight.discard)
         except Exception:
             log.exception("tick del scheduler falló — sigo vivo")
+        try:
+            _avisar_saltados(conn, datetime.now(), avisados)
+        except Exception:
+            log.exception("aviso de jobs saltados falló — sigo vivo")
+        if timbre is not None:
+            # La base se lee en este hilo; el relay se habla en otro (red, puede tardar).
+            plan, res = None, None
+            try:
+                if timbre_mod.activo(conn):
+                    plan = timbre.preparar(conn)
+                    avisos = timbre.avisos(plan)
+                    res = await asyncio.to_thread(timbre_mod.enviar, avisos) if avisos else {}
+                    if avisos:
+                        log.info("timbre %s: %s", plan["ahora"].strftime("%H:%M"), res)
+                else:
+                    timbre.saltar()    # apagado desde la app: pasa el tiempo sin sonar
+            except Exception:
+                log.exception("timbre de franjas falló (¿relay caído?) — se reintenta en la vuelta siguiente")
+            if plan is not None:
+                timbre.confirmar(plan, res)
+            try:   # #1189: lo del dueño, por el bot de Telegram (sin token o sin chat, no suena)
+                from . import telegram_bot
+                cfg = telegram_bot.datos(conn) if timbre_mod.activo(conn) and telegram_bot.activo() else None
+                suyos = timbre.del_dueno(conn) if cfg else []
+                if suyos:
+                    ahora = datetime.now()
+                    try:
+                        await asyncio.to_thread(telegram_bot.mandar, *cfg, telegram_bot.texto_timbre(suyos, ahora))
+                        resultado = "enviado"
+                    except telegram_bot.BotError as e:
+                        resultado = f"error: {e}"
+                    timbre.marcar_dueno(suyos, ahora, resultado)
+                    log.info("timbre del dueño %s: %s", ahora.strftime("%H:%M"), resultado)
+            except Exception as e:
+                log.warning("timbre del dueño falló (%s) — se reintenta en la vuelta siguiente", type(e).__name__)
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=TICK_SECONDS)
         except asyncio.TimeoutError:

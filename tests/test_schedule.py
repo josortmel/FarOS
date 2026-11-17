@@ -79,6 +79,9 @@ def test_weekly_job_due_only_on_its_days(conn):
     conn.execute("UPDATE agent_jobs SET created_at=? WHERE id=?", (CREATED, j["id"])); conn.commit()
     assert due_jobs(conn, datetime(2026, 9, 1, 9, 0)) == []                      # martes
     assert [x["id"] for x in due_jobs(conn, datetime(2026, 9, 2, 8, 1))] == [j["id"]]  # miércoles
-    assert jobs.get_job(conn, j["id"])["next_fire"].startswith("2026-09-")
+    # #392: el próximo disparo depende del reloj real (el 30-sep caía en octubre): se
+    # comprueba lo que importa — un lunes/miércoles/viernes a las 08:00, no el mes.
+    nf = datetime.fromisoformat(jobs.get_job(conn, j["id"])["next_fire"])
+    assert nf.weekday() in (0, 2, 4) and nf.strftime("%H:%M") == "08:00", nf
     assert schedule.human(j["schedule"]) == "lunes, miércoles, viernes a las 08:00"
     assert schedule.human({"type": "recurring", "every_days": 1, "at": ["08:00", "20:00"]}) == "cada día a las 08:00 y 20:00"

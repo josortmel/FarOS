@@ -57,6 +57,8 @@ class _Missing(HarnessAdapter):
 
 from . import claude_cli as _claude  # noqa: E402  (registro al importar)
 register(_claude.ClaudeCliAdapter)
+from . import claude_cli_deepseek as _claude_ds  # noqa: E402  (#463)
+register(_claude_ds.ClaudeCliDeepSeekAdapter)
 
 try:  # T1.4 (Prima): adapter opencode; si no existe aún, no pasa nada
     from . import opencode as _opencode  # noqa: E402

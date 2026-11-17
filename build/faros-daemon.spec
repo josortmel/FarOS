@@ -23,8 +23,12 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
+    # setuptools & co. (#387, 5-oct): ningun modulo de faros los importa; entraban
+    # solo por el runtime hook pyi_rth_setuptools porque el venv de build los tiene
+    # (dependencia de PyInstaller). Medido en el xref del build: unico importador.
     excludes=['matplotlib', 'numpy', 'PIL', 'tkinter', '_tkinter', 'IPython', 'scipy', 'pandas',
-              'contourpy', 'kiwisolver', 'openpyxl', 'notebook', 'jupyter', 'pytest'],
+              'contourpy', 'kiwisolver', 'openpyxl', 'notebook', 'jupyter', 'pytest',
+              'setuptools', '_distutils_hack', 'pkg_resources', 'distutils'],
     noarchive=False,
     optimize=0,
 )

@@ -40,6 +40,23 @@ DEFAULTS: dict[str, dict] = {
     "repo_root_default": {"default": "", "secret": False, "kind": "str", "env": "AGENTICOS_REPO_ROOT"},
     # v3.1 (T5.4): resultado del último refresco del catálogo de modelos {at, models:{id:{validated,validated_at}}}
     "model_catalog": {"default": {}, "secret": False, "kind": "json", "env": None},
+    # #594 (decisión 49): repos cuya prueba puede correr el verificador en una copia, separados por «;»
+    "proof_repos": {"default": "", "secret": False, "kind": "str", "env": "FAROS_PROOF_REPOS"},
+    # #600: con esto activo la cola del verificador no corre — las medidas que necesitan el
+    # ordenador quieto no se mezclan con el trabajo del daemon
+    "maquina_quieta": {"default": False, "secret": False, "kind": "bool", "env": "FAROS_MAQUINA_QUIETA"},
+    # #483 (22-oct): carpetas donde el juez de un run puede leer los ficheros que la evidencia nombra por su ruta,
+    # separadas por «;». Vacío = no lee ninguno.
+    "verifier_read_roots": {"default": "", "secret": False, "kind": "str", "env": "FAROS_VERIFIER_READ_ROOTS"},
+    # #1184/#1217: el timbre de franjas por el relay, encendido o apagado desde la app. FAROS_TIMBRE=0 en el entorno
+    # lo apaga por encima de esto (tests y copias de prueba de la casa).
+    "timbre_activo": {"default": True, "secret": False, "kind": "bool", "env": None},
+    # Las franjas de tiempo libre suenan con el texto de cada uno en vez de «tenías planeado»:
+    # {"tareas": [ids de las recurrentes de descanso], "textos": {agente: ruta del .md con su invitación}}.
+    "timbre_tiempo_libre": {"default": {"tareas": [], "textos": {}}, "secret": False, "kind": "json", "env": None},
+    # Cada uno silencia SU timbre sin pedir permiso (condición de Eco, 13-nov): {agente: "AAAA-MM-DDTHH:MM:SS" | "siempre"}.
+    # Se toca con timbre.silenciar (API POST /api/timbre/silencio y la tool silenciar_timbre), no a mano.
+    "timbre_silencio": {"default": {}, "secret": False, "kind": "json", "env": None},
 }
 
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -142,7 +159,7 @@ def get_all(conn) -> dict:
     return out
 
 
-def patch(conn, agent: str, changes: dict) -> dict:
+def patch(conn, agent: str, changes: dict, probados: dict | None = None) -> dict:
     """Solo familia. Valida cada clave; un valor '••••' en un secreto significa
     'no tocar' (la UI reenvía lo que ve)."""
     _validate_agent(agent, family_only=True)
@@ -151,15 +168,30 @@ def patch(conn, agent: str, changes: dict) -> dict:
     unknown = set(changes) - set(DEFAULTS)
     if unknown:
         raise TicketError(f"settings desconocidos: {sorted(unknown)} (válidos: {sorted(DEFAULTS)})")
-    now = datetime.now().isoformat(timespec="seconds")
-    for key, value in changes.items():
-        spec = DEFAULTS[key]
-        if spec["secret"] and value == MASK:
-            continue
-        clean = _validate(key, value)
-        conn.execute(
-            "INSERT INTO settings (key, value, secret, updated_at) VALUES (?, ?, ?, ?)"
-            " ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-            (key, json.dumps(clean), 1 if spec["secret"] else 0, now))
+    from . import credentials   # aquí y no arriba: credentials importa este módulo
+    usos = {k for k in credentials.USO.values() if k}
+    try:
+        for key, value in changes.items():
+            spec = DEFAULTS[key]
+            if spec["secret"] and value == MASK:
+                continue
+            clean = _validate(key, value)
+            if key in usos:
+                # #460: las claves con uso viven en la lista de Claves; esto escribe en la
+                # marcada «en uso» (con la misma prueba que la pantalla) y abajo se copia aquí.
+                credentials.desde_ajuste(conn, agent, key, clean, (probados or {}).get(key))
+            _guardar(conn, key, clean)
+    except Exception:
+        conn.rollback()   # un PATCH con una clave que no vale no deja a medias las de antes
+        raise
     conn.commit()
     return get_all(conn)
+
+
+def _guardar(conn, key: str, clean) -> None:
+    """Escribe un ajuste ya validado (sin commit)."""
+    conn.execute(
+        "INSERT INTO settings (key, value, secret, updated_at) VALUES (?, ?, ?, ?)"
+        " ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+        (key, json.dumps(clean), 1 if DEFAULTS[key]["secret"] else 0,
+         datetime.now().isoformat(timespec="seconds")))

@@ -17,7 +17,7 @@
         "pct": 40
       }
     ],
-    "created_at": "2026-08-17T09:00:00"
+    "created_at": "2026-08-31T09:00:00"
   },
   {
     "id": 2,
@@ -33,7 +33,7 @@
         "pct": 18
       }
     ],
-    "created_at": "2026-09-10T09:00:00"
+    "created_at": "2026-09-24T09:00:00"
   },
   {
     "id": 3,
@@ -53,6 +53,38 @@
         "pct": 100
       }
     ],
-    "created_at": "2026-07-02T09:00:00"
+    "created_at": "2026-07-16T09:00:00"
+  },
+  {
+    "id": 4,
+    "name": "billing-v2-debt",
+    "status": "closed",
+    "coordinator": "bob",
+    "kind": "build",
+    "pct_global": 100,
+    "open_findings": 0,
+    "phases_summary": [
+      {
+        "phase": "1-fix",
+        "pct": 100
+      }
+    ],
+    "created_at": "2026-09-09T09:00:00"
+  },
+  {
+    "id": 5,
+    "name": "mobile-spike",
+    "status": "cancelled",
+    "coordinator": "alice",
+    "kind": "build",
+    "pct_global": 30,
+    "open_findings": 0,
+    "phases_summary": [
+      {
+        "phase": "1-spike",
+        "pct": 30
+      }
+    ],
+    "created_at": "2026-08-21T09:00:00"
   }
 ]

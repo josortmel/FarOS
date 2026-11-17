@@ -119,10 +119,12 @@ _ENV_WHITELIST = {
 }
 
 
-def _env_for(conn, adapter) -> dict:
+def _env_for(conn, adapter, run_token: str | None = None) -> dict:
     """Clean env for the subprocess: only whitelisted OS vars + what the adapter
     asks from settings. Prevents leaking GITHUB_TOKEN, AWS keys, etc. (F-SEG-02).
-    Only the settings declared in adapter.required_settings reach env() (F-SEG-04)."""
+    Only the settings declared in adapter.required_settings reach env() (F-SEG-04).
+    #1109: an adapter with via_proxy gets the daemon's forwarder and a per-run token instead
+    of the key; without a token it gets the placeholder (fails closed, never the key)."""
     from . import settings as settings_mod
     env = {k: v for k, v in os.environ.items() if k.upper() in _ENV_WHITELIST}
     try:
@@ -131,6 +133,10 @@ def _env_for(conn, adapter) -> dict:
         env.update({k: str(v) for k, v in adapter.env(needed).items() if v})
     except Exception:
         pass
+    if getattr(adapter, "via_proxy", False):
+        from . import deepseek_proxy
+        env["ANTHROPIC_BASE_URL"] = deepseek_proxy.url_local()
+        env["ANTHROPIC_AUTH_TOKEN"] = run_token or adapter.TOKEN_RELLENO
     return env
 
 
@@ -161,6 +167,28 @@ async def _kill_tree(proc: asyncio.subprocess.Process, job=None) -> None:
     try:
         await asyncio.wait_for(proc.wait(), timeout=10)
     except asyncio.TimeoutError:
+        pass
+
+
+LEER_TRAS_S = 5   # #1281: tras acabar (o matar) el proceso, lo que se espera a que las tuberías terminen de vaciarse
+
+
+async def _leer(stream, buf: bytearray) -> None:
+    while True:
+        trozo = await stream.read(65536)
+        if not trozo:
+            return
+        buf.extend(trozo)
+
+
+async def _alimentar(proc, datos: bytes | None) -> None:
+    """El prompt por stdin, como hacía communicate(): si el proceso ya no lee, no es un error del runner."""
+    try:
+        if datos:
+            proc.stdin.write(datos)
+            await proc.stdin.drain()
+        proc.stdin.close()
+    except (BrokenPipeError, ConnectionResetError):
         pass
 
 
@@ -203,6 +231,8 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
 
     timed_out = False
     cancelled = False
+    from . import deepseek_proxy
+    run_token = deepseek_proxy.emitir(f"run #{run['id']}") if getattr(adapter, "via_proxy", False) else None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -210,7 +240,7 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env={**_env_for(conn, adapter), **(job.get("_env") or {})},  # _env: T5.8 (OPENCODE_CONFIG)
+            env={**_env_for(conn, adapter, run_token), **(job.get("_env") or {})},  # _env: T5.8 (OPENCODE_CONFIG)
             # T1.1: sin consola (el dueño, queja 5ª). CREATE_NEW_CONSOLE+SW_HIDE se midió el 4-sep y NO
             # evita las ventanas de los nietos con Windows Terminal como terminal por defecto.
             **hidden_popen_kwargs(),
@@ -221,14 +251,20 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
             except Exception:
                 pass  # fallback to taskkill
         LIVE_RUNS[run["id"]] = (proc, job_obj)
+        # #1281: se lee MIENTRAS corre (antes, communicate() juntaba todo y un timeout lo tiraba: «sin output»).
+        out_buf, err_buf = bytearray(), bytearray()
+        lectores = [asyncio.create_task(_leer(proc.stdout, out_buf)), asyncio.create_task(_leer(proc.stderr, err_buf))]
         try:
-            stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(stdin_bytes),
-                timeout=job["timeout_s"])
+            await asyncio.wait_for(asyncio.gather(_alimentar(proc, stdin_bytes), proc.wait()),
+                                   timeout=job["timeout_s"])
         except asyncio.TimeoutError:
             timed_out = True
             await _kill_tree(proc, job=job_obj)
-            stdout_b, stderr_b = b"", b"(timeout)"
+        # Muerto el árbol, las tuberías se cierran; si un nieto se las quedó, no se espera más de LEER_TRAS_S.
+        _hechos, colgados = await asyncio.wait(lectores, timeout=LEER_TRAS_S)
+        for t in colgados:
+            t.cancel()
+        stdout_b, stderr_b = bytes(out_buf), bytes(err_buf) + (b"\n(timeout)" if timed_out else b"")
         stdout = stdout_b.decode("utf-8", errors="replace")
         stderr = stderr_b.decode("utf-8", errors="replace")
         exit_code = proc.returncode
@@ -238,6 +274,7 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
         stdout, stderr, exit_code = "", f"spawn failed: {exc}", -1
     finally:
         LIVE_RUNS.pop(run["id"], None)
+        deepseek_proxy.revocar(run_token)   # #1109: el token muere con su run
         if job_obj is not None:
             job_obj.close()
         _reg.cleanup(mcp_tmp)  # secretos fuera de disco en cuanto el proceso muere
@@ -245,8 +282,11 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
     # A partir de aquí NADA puede dejar el run en 'running': parse o escritura
     # de artifacts que reviente se registra como error, no como run zombi.
     try:
-        if timed_out:
-            result = RunResult("timeout", exit_code, None, None, stdout, None)
+        if timed_out:   # #1281: lo que llevaba escrito, marcado como parcial (antes quedaba «sin output»)
+            parcial = (f"(PARCIAL: el run cortó por timeout a los {job['timeout_s']} s; esto es lo que el proceso "
+                       f"llevaba escrito)\n\n{stdout}" if stdout.strip()
+                       else f"(PARCIAL: el run cortó por timeout a los {job['timeout_s']} s sin haber escrito nada)")
+            result = RunResult("timeout", exit_code, None, None, parcial, None)
         else:
             result = adapter.parse_output(stdout, exit_code if exit_code is not None else -1)
 

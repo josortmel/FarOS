@@ -9,13 +9,19 @@ DELETE sobre esa tabla.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sqlite3
+import unicodedata
 from datetime import datetime, date, timedelta
 
 # Roster de la casa: configuración, no código (roster.py). El público no trae
 # los nombres de nadie dentro del .py.
 from .roster import AGENTS, HOUSE_OWNER  # noqa: F401  (re-export histórico)
+from . import roster  # #1186: roster.WORKFLOW_EXTRA se lee en caliente
+
+log = logging.getLogger(__name__)
+
 # Roles de workflow (SPEC v2 §1): peers de relay que operan tareas y findings,
 # pero NO crean proyectos/workflows ni despachan (eso es del coordinador/familia).
 WORKFLOW_AGENTS = {"code", "verificador", "adv-code", "adv-seg"}
@@ -38,8 +44,24 @@ SOURCES = {"encargo", "recurrente", "cola_autonoma", "proposed"}
 # usan (318 tickets: 278 proposed, 23 recurrente, 17 cola_autonoma, 0 este).
 # Comprobado sobre una COPIA de la base, no sobre la viva.
 PRIORITIES = {"alta", "media", "baja"}
-VERIFICATION_LEVELS = {"self", "peer", "auto"}
-EVIDENCE_TYPES = {"file_path", "command_output", "memory_id", "peer_attestation", "run_output"}
+VERIFICATION_LEVELS = {"self", "peer", "auto", "external"}  # external: #465, decisión 22 (DeepSeek ×3)
+# #414 (decisión 48): el criterio pide que verifique otro, pero el nivel es self (pasó con #285 y #367)
+_PIDE_OTRO = re.compile(r"otra persona|otro miembro|\bpeer\b|no lo verifica quien|"
+                        r"verific\w*\s+(?:de|por)\s+otr|lo verifica(?:n)?\s+(?!quien)\w+", re.I)
+AVISO_PIDE_OTRO = ("AVISO: el criterio pide que verifique otra persona, pero el nivel es «self» (propia) y"
+                   " se sella sola: súbelo con update_ticket(verification_level=\"peer\")")
+
+
+def _pide_otro(verification_level, cadence_days, verify_criteria) -> bool:
+    return (verification_level == "self" and not cadence_days
+            and bool(_PIDE_OTRO.search(verify_criteria or "")))
+EVIDENCE_TYPES = {"file_path", "command_output", "memory_id", "peer_attestation", "run_output",
+                  "proof"}  # proof: #594, la prueba que el verificador corre en una copia (decisión 49)
+
+
+def proof_repos(conn) -> list[str]:
+    from . import settings
+    return [r.strip() for r in (settings.get(conn, "proof_repos") or "").split(";") if r.strip()]
 KINDS = {"manual", "agentic"}
 from . import harness as _harness  # registro de adapters (agenticos/harness)
 HARNESSES = set(_harness.names())
@@ -79,12 +101,45 @@ def _days_since(iso: str) -> int:
     return (date.today() - date.fromisoformat(iso[:10])).days
 
 
-def _append_history(conn, ticket_id, old_status, new_status, changed_by, note=None):
+def _append_history(conn, ticket_id, old_status, new_status, changed_by, note=None, provenance=None):
     conn.execute(
-        "INSERT INTO ticket_history (ticket_id, old_status, new_status, changed_by, changed_at, note)"
-        " VALUES (?, ?, ?, ?, ?, ?)",
-        (ticket_id, old_status, new_status, changed_by, _now(), note),
+        "INSERT INTO ticket_history (ticket_id, old_status, new_status, changed_by, changed_at, note,"
+        " provenance) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (ticket_id, old_status, new_status, changed_by, _now(), note, provenance),
     )
+
+
+PROVENANCE_MAX = 120
+
+
+def _check_provenance(declared, agent=None):
+    """#377: lo único que se declara es `deterministic:<herramienta>` (el test, el grep, el script
+    que hizo la comprobación). external y same-family no se declaran: salen de quién verifica.
+    #465: la excepción es el verificador, que declara `external:<modelo>` cuando juzga otra familia."""
+    if declared is None:
+        return None
+    if agent == "verifier-bot" and declared.startswith("external:"):
+        tool = declared[len("external:"):]
+    else:
+        tool = declared[len("deterministic:"):] if declared.startswith("deterministic:") else ""
+    if (not tool.strip() or len(declared) > PROVENANCE_MAX
+            or any(c in declared for c in "\r\n\0")):
+        raise TicketError(
+            f"procedencia inválida: {declared[:60]!r}. Solo se declara 'deterministic:<herramienta>'"
+            f" (una línea, hasta {PROVENANCE_MAX} caracteres); external y same-family las pone FarOS"
+            " según quién verifica", field="provenance", code="verify.provenance_invalid")
+    return declared
+
+
+def _provenance(agent, t, declared=None):
+    """#377 (decisión 21 de Pepe, 8-oct): de dónde viene una verificación. El dueño de la casa es
+    externo a la familia de modelos; cualquier otro (agentes y verifier-bot, que juzga con Claude)
+    es same-family, y `:self` si quien sella es la dueña de la tarea."""
+    if declared:
+        return declared
+    if agent == HOUSE_OWNER:
+        return "external"
+    return "same-family:self" if agent == t["owner"] else "same-family"
 
 
 def _expire_lazy(conn) -> None:
@@ -120,10 +175,18 @@ def _get(conn, ticket_id) -> sqlite3.Row:
     return row
 
 
+def laborable(d: date) -> date:
+    """Sáb/dom no hay trabajo (acuerdo 13-ago): el primer día de lunes a viernes desde d."""
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
 def next_due_date(d: dict) -> str | None:
     """Próxima fecha teórica de una recurrente (ISO date): next_due_override si
     existe (T0.3: mover la próxima sin tocar la cadencia), si no last_done +
-    cadencia; sin last_done → hoy (ya toca)."""
+    cadencia; sin last_done → hoy (ya toca). Una diaria (cadencia 1) es de lunes a
+    viernes (Pepe, 6-nov: los descansos salen «todos los días entre semana»)."""
     if not d.get("cadence_days"):
         return None
     if d.get("next_due_override"):
@@ -139,9 +202,10 @@ def next_due_date(d: dict) -> str | None:
         nxt = base + timedelta(days=(int(weekday) - base.weekday()) % 7)
         return (nxt + timedelta(weeks=cadence // 7 - 1)).isoformat()
     if d.get("last_done_at"):
-        return (date.fromisoformat(d["last_done_at"][:10])
-                + timedelta(days=cadence)).isoformat()
-    return date.today().isoformat()
+        nxt = date.fromisoformat(d["last_done_at"][:10]) + timedelta(days=cadence)
+    else:
+        nxt = date.today()
+    return (laborable(nxt) if cadence == 1 else nxt).isoformat()
 
 
 def _as_dict(conn, row: sqlite3.Row) -> dict:
@@ -167,6 +231,11 @@ def _as_dict(conn, row: sqlite3.Row) -> dict:
             d["last_run"] = dict(last) if last else None
         else:
             d["linked_job"] = _linked_job(jd, dict(last) if last else None)
+            if (d.get("closed_at") and jd["status"] == "active" and jd["enabled"]
+                    and jd["schedule"].get("type") != "manual"):
+                # #518: cerrar la tarea apaga al job que cuelga de ella; que se diga al cerrar
+                d["job_warning"] = (f"el job #{jd['id']} «{jd['name']}» cuelga de esta tarea cerrada y no se"
+                                    " dispara: desenlázalo (update_job con clear=[\"ticket_id\"]) o páusalo")
     _apply_virtual_expiry(d)
     return d
 
@@ -275,7 +344,7 @@ def _batch_enrich(conn, rows: list[sqlite3.Row]) -> list[dict]:
 
 def _validate_agent(agent: str, allow_system: bool = False,
                     family_only: bool = False) -> str:
-    valid = AGENTS if family_only else (AGENTS | WORKFLOW_AGENTS)
+    valid = AGENTS if family_only else (AGENTS | WORKFLOW_AGENTS | roster.WORKFLOW_EXTRA)
     if allow_system:
         valid = valid | SYSTEM_AGENTS
     if agent not in valid:
@@ -350,7 +419,7 @@ TEMPORAL_FIELDS = {"scheduled_at", "duration_min", "all_day", "preferred_time",
                    "next_due_override", "weekday"}
 
 
-def _validate_temporal(fields: dict, cadence_days) -> dict:
+def _validate_temporal(fields: dict, cadence_days, weekday=None) -> dict:
     """Valida y normaliza los campos temporales (T0.3). Devuelve los valores
     normalizados. scheduled_at 'YYYY-MM-DDTHH:MM'; duration_min int > 0;
     all_day 0/1; preferred_time 'HH:MM'; next_due_override 'YYYY-MM-DD' y solo
@@ -409,19 +478,23 @@ def _validate_temporal(fields: dict, cadence_days) -> dict:
                 raise TicketError(f"next_due_override inválido: {v!r} (YYYY-MM-DD)")
             # #224 (el dueño 12-sep: snap, no rechazar): sáb/dom no hay trabajo (acuerdo
             # 13-ago) — un override en fin de semana se mueve al lunes siguiente.
-            if nd.weekday() >= 5:
+            # #1069: salvo que la recurrente esté anclada a ESE día («Entreno sábado», weekday 5).
+            if nd.weekday() >= 5 and nd.weekday() != weekday:
                 nd += timedelta(days=7 - nd.weekday())
             out[k] = nd.isoformat()
     return out
 
 
-def _next_workday_slot(hhmm: str) -> str:
-    """Próximo día laborable (L-V) a la hora dada, 'YYYY-MM-DDTHH:MM'."""
-    from datetime import datetime as _dt, timedelta as _td
-    d = _dt.now().date() + _td(days=1)
-    while d.weekday() >= 5:
-        d += _td(days=1)
-    return f"{d.isoformat()}T{hhmm}"
+def _weekday_de_su_fecha(cadence_days, *fechas) -> int | None:
+    """#376 (Pepe, 25-sep): una semanal no cambia de día. Si su dueño le ha dado una
+    fecha y no un día de la semana, el día sale de ESA fecha (la primera que haya).
+    Sin fecha no se inventa ninguno (#364): se queda «por ubicar»."""
+    if not cadence_days or int(cadence_days) % 7:
+        return None
+    for f in fechas:
+        if f:
+            return date.fromisoformat(str(f)[:10]).weekday()
+    return None
 
 
 def propose_ticket(conn, agent, title, description="", owner=None, source="proposed",
@@ -493,19 +566,13 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
                                    "all_day": all_day, "preferred_time": preferred_time,
                                    "weekday": weekday},
                                   cadence_days)
+    if temporal.get("weekday") is None:
+        temporal["weekday"] = _weekday_de_su_fecha(cadence_days, temporal.get("scheduled_at"), due_at)
 
-    # v3.1 (el dueño, 4-sep): «no puede haber tareas sin hora». Un ticket manual que nace sin
-    # ancla temporal recibe una automática — recurrente: hora preferida 14:00 (franja
-    # «Retomar pendientes / cola autónoma»); puntual: el próximo día laborable a las 14:00.
-    auto_anchor = None
-    if kind == "manual":
-        if cadence_days and not temporal["preferred_time"]:
-            temporal["preferred_time"] = "14:00"
-            auto_anchor = "hora preferida 14:00"
-        elif not cadence_days and not temporal["scheduled_at"] and not temporal["all_day"] and not due_at:
-            temporal["scheduled_at"] = _next_workday_slot("14:00")
-            temporal["duration_min"] = temporal["duration_min"] or 60
-            auto_anchor = f"programada {temporal['scheduled_at']}"
+    # #364 (Pepe, 30-sep): NO hay ancla automática. «Agendar automáticamente a las 14:00 es lo
+    # mismo que no poner horario»; tampoco se le exige la fecha a quien crea (eso le pasaba la
+    # gestión a Pepe). Una tarea sin fecha nace «por ubicar» y es su DUEÑO quien la coloca:
+    # le sale en my_board()["por_ubicar"] y en board()["laterals"]["por_ubicar"].
 
     _expire_lazy(conn)
     duplicates = _find_duplicates(conn, title, description)
@@ -522,11 +589,17 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
          temporal["preferred_time"], temporal["weekday"]),
     )
     ticket_id = cur.lastrowid
+    # #152: el único 500 de dispatch_finding (3-sep) fue este INSERT con el rowid ya ocupado
+    # en el índice. El id acaba de nacer: una fila del índice con ese rowid es huérfana por
+    # fuerza. Se quita, se indexa la tarea y el log dice qué había, para seguirle la pista.
+    huerfana = conn.execute("SELECT title FROM tickets_fts WHERE rowid=?", (ticket_id,)).fetchone()
+    if huerfana:
+        log.warning("#152 fila huérfana en tickets_fts con rowid %s (título %r): se quita al "
+                    "indexar la tarea nueva %r", ticket_id, huerfana[0], title)
+        conn.execute("DELETE FROM tickets_fts WHERE rowid=?", (ticket_id,))
     conn.execute("INSERT INTO tickets_fts (rowid, title, description) VALUES (?, ?, ?)",
                  (ticket_id, title, description))
-    _append_history(conn, ticket_id, None, "proposed", agent,
-                    f"[ancla automática] nació sin hora → {auto_anchor}; muévela en el calendario"
-                    if auto_anchor else None)
+    _append_history(conn, ticket_id, None, "proposed", agent, None)
     if auto_accept:
         conn.execute("UPDATE tickets SET status='accepted' WHERE id=?", (ticket_id,))
         _append_history(conn, ticket_id, "proposed", "accepted", agent, "auto-accept (creado desde la UI)")
@@ -547,7 +620,10 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
                          max_budget_usd=job.get("max_budget_usd"),
                          timeout_s=job.get("timeout_s", 1800), verify_level="none",
                          _legacy=True)
-    return {"ticket": _as_dict(conn, _get(conn, ticket_id)), "possible_duplicates": duplicates}
+    res = {"ticket": _as_dict(conn, _get(conn, ticket_id)), "possible_duplicates": duplicates}
+    if _pide_otro(verification_level, cadence_days, verify_criteria):
+        res["warning"] = AVISO_PIDE_OTRO
+    return res
 
 
 def _validate_job_fields(job: dict) -> None:
@@ -593,10 +669,14 @@ _STOPWORDS_ES = frozenset(
     " todos todas otro otra solo bien ahora".split()
 )
 _DEDUP_OVERLAP_MIN = 0.5  # keep candidates where >= 50% of query words appear
+_DEDUP_SHARED_MIN = 2  # #73: and at least 2 shared words (1 if the query has only one)
 
 
 def _normalize_word(w: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", w.lower())
+    # #73: quitar la tilde, no la letra. FTS5 (unicode61) guarda «vacío» como «vacio»;
+    # borrando la «í» salía «vaco» y la palabra no casaba nunca.
+    w = unicodedata.normalize("NFKD", w.lower())
+    return re.sub(r"[^a-z0-9]", "", w)
 
 
 def _find_duplicates(conn, title, description) -> list[dict]:
@@ -615,7 +695,9 @@ def _find_duplicates(conn, title, description) -> list[dict]:
     result = []
     for r in rows:
         cand_words = {_normalize_word(w) for w in r["title"].split()} - _STOPWORDS_ES - {""}
-        if cand_words and len(words & cand_words) / len(words) >= _DEDUP_OVERLAP_MIN:
+        shared = len(words & cand_words)
+        if (cand_words and shared / len(words) >= _DEDUP_OVERLAP_MIN
+                and shared >= min(_DEDUP_SHARED_MIN, len(words))):
             result.append(dict(r))
     return result[:5]
 
@@ -627,19 +709,46 @@ def accept_ticket(conn, agent, ticket_id) -> dict:
 def reject_ticket(conn, agent, ticket_id, reason) -> dict:
     if not (reason or "").strip():
         raise TicketError("reject requiere reason", field="reason", code="reject.reason_required")
-    result = _transition(conn, agent, ticket_id,
-                         from_={"proposed", "accepted", "blocked"}, to="rejected",
-                         note=reason, close=True)
+    # #666: una rechazada con hora dejaba citas fantasma en el tablero, y cerrada ya no se podía
+    # reprogramar. Rechazar vacía la fecha; lo que tenía queda en la nota del historial.
+    fecha = _fecha_de(_get(conn, ticket_id))
+    nota = f"{reason} [#666, fecha vaciada al rechazar: {fecha}]" if fecha else reason
+    _transition(conn, agent, ticket_id,
+                from_={"proposed", "accepted", "blocked"}, to="rejected",
+                note=nota, close=True)
+    if fecha:
+        conn.execute("UPDATE tickets SET scheduled_at=NULL, duration_min=NULL, preferred_time=NULL"
+                     " WHERE id=?", (ticket_id,))
     for hook in CLOSED_HOOKS:
         hook(conn, ticket_id, "rejected")
     conn.commit()
-    return result
+    return _as_dict(conn, _get(conn, ticket_id))
+
+
+def _fecha_de(t) -> str:
+    """#666: «scheduled_at=…, duration_min=…» con los campos de fecha que tiene, o "" si ninguno."""
+    return ", ".join(f"{k}={t[k]}" for k in ("scheduled_at", "duration_min", "preferred_time")
+                     if t[k] is not None)
+
+
+def _en_nombre_del_dueno(t, agent) -> str:
+    """#640 (Pepe, 19-oct: «necesito que podáis modificar y verificar las tareas a mi nombre»):
+    cualquiera de la casa puede empezar, completar (y así sellar las de nivel self) o pausar una tarea
+    del dueño de la casa. Devuelve la marca para el historial, o "" si no es ese caso."""
+    if t["owner"] == HOUSE_OWNER and agent != HOUSE_OWNER and agent not in SYSTEM_AGENTS:
+        return f"[en nombre de {HOUSE_OWNER}]"
+    return ""
+
+
+def _con_marca(note, marca) -> str | None:
+    return " ".join(p for p in (note, marca) if p) or None
 
 
 def start_ticket(conn, agent, ticket_id, note="") -> dict:
     _validate_agent(agent, allow_system=True)
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
+    marca = _en_nombre_del_dueno(t, agent)
     if t["status"] not in {"accepted", "blocked"}:
         raise TicketError(f"start ilegal desde {t['status']!r} (requiere accepted|blocked)",
                           code="transition.illegal")
@@ -652,13 +761,16 @@ def start_ticket(conn, agent, ticket_id, note="") -> dict:
         # claim implícito: quien arranca sin dueño se convierte en owner (v0)
         conn.execute("UPDATE tickets SET owner=? WHERE id=?", (agent, ticket_id))
         note = (note + " " if note else "") + f"[claim: {agent} se hace owner]"
-    elif t["owner"] != agent and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER:
+    elif (t["owner"] != agent and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER
+          and t["verification_level"] != "peer" and not marca):
         # v3.1: el dueño (dueño de la Casa) arranca cualquiera; queda en el history como suyo.
+        # #367 (Pepe, salida A): con verificación peer lo arranca también quien lo ejecuta.
+        # #640: y cualquiera de la casa arranca una tarea DEL dueño, en su nombre.
         raise TicketError(f"start solo puede hacerlo el owner ({t['owner']}), no {agent}",
                           code="transition.not_owner")
     conn.execute("UPDATE tickets SET status='in_progress', blocked_reason=NULL WHERE id=?",
                  (ticket_id,))
-    _append_history(conn, ticket_id, t["status"], "in_progress", agent, note or None)
+    _append_history(conn, ticket_id, t["status"], "in_progress", agent, _con_marca(note, marca))
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
 
@@ -669,8 +781,17 @@ def block_ticket(conn, agent, ticket_id, reason) -> dict:
     _validate_agent(agent, allow_system=True)
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
+    if t["status"] == "blocked":
+        # #482: el motivo que ya no es cierto se reescribe sin desbloquear; el viejo queda en el historial.
+        if reason == t["blocked_reason"]:
+            return _as_dict(conn, t)
+        conn.execute("UPDATE tickets SET blocked_reason=? WHERE id=?", (reason, ticket_id))
+        _append_history(conn, ticket_id, "blocked", "blocked", agent,
+                        f"motivo cambiado: «{t['blocked_reason'] or '-'}» → «{reason}»")
+        conn.commit()
+        return _as_dict(conn, _get(conn, ticket_id))
     if t["status"] not in {"accepted", "in_progress"}:
-        raise TicketError(f"block ilegal desde {t['status']!r} (requiere accepted|in_progress)",
+        raise TicketError(f"block ilegal desde {t['status']!r} (requiere accepted|in_progress|blocked)",
                           code="transition.illegal")
     conn.execute("UPDATE tickets SET status='blocked', blocked_reason=? WHERE id=?",
                  (reason, ticket_id))
@@ -679,30 +800,74 @@ def block_ticket(conn, agent, ticket_id, reason) -> dict:
     return _as_dict(conn, _get(conn, ticket_id))
 
 
-def complete_ticket(conn, agent, ticket_id, evidence_type, evidence) -> dict:
+def pause_ticket(conn, agent, ticket_id, note) -> dict:
+    """#482 (Pepe, 16-oct): una tarea que se pasó a «en curso» y no se ha empezado de verdad vuelve a
+    «aceptada», con nota obligatoria, para que el tablero diga la verdad sobre qué está en curso.
+    La pausa la hace su dueña o el dueño de la casa."""
+    _validate_agent(agent)
+    note = (note or "").strip()
+    if len(note) < REWORK_MIN_REASON:
+        raise TicketError(f"pause requiere una nota de al menos {REWORK_MIN_REASON} caracteres"
+                          " (por qué no está en curso de verdad)", field="note", code="pause.note_required")
+    _expire_lazy(conn)
+    t = _get(conn, ticket_id)
+    if t["status"] != "in_progress":
+        raise TicketError(f"pause ilegal desde {t['status']!r} (requiere in_progress)",
+                          code="transition.illegal")
+    marca = _en_nombre_del_dueno(t, agent)
+    if agent not in {t["owner"], HOUSE_OWNER} and not marca:
+        raise TicketError(f"pause solo puede hacerlo la dueña ({t['owner']}) o {HOUSE_OWNER}, no {agent}",
+                          code="pause.not_owner")
+    conn.execute("UPDATE tickets SET status='accepted' WHERE id=?", (ticket_id,))
+    _append_history(conn, ticket_id, "in_progress", "accepted", agent, _con_marca(f"[pausa] {note}", marca))
+    conn.commit()
+    return _as_dict(conn, _get(conn, ticket_id))
+
+
+def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=None) -> dict:
     """Completa con evidencia obligatoria. Sin evidencia no hay done (SPEC §4)."""
     _validate_agent(agent, allow_system=True)
     if evidence_type not in EVIDENCE_TYPES:
-        raise TicketError(f"evidence_type inválido: {evidence_type!r} (válidos: {sorted(EVIDENCE_TYPES)})")
+        raise TicketError(f"evidence_type inválido: {evidence_type!r} (válidos: {sorted(EVIDENCE_TYPES)})",
+                          field="evidence_type", code="complete.evidence_required")
     if not (evidence or "").strip():
         raise TicketError("complete requiere evidencia — 'done' sin evidencia no existe",
                           field="evidence", code="complete.evidence_required")
+    provenance = _check_provenance(provenance, agent)
+    if evidence_type == "proof":
+        from . import prueba
+        try:
+            prueba.leer(evidence, proof_repos(conn))
+        except prueba.PruebaError as e:
+            raise TicketError(f"{e} (los repos admitidos están en Ajustes › proof_repos)",
+                              field="evidence", code="complete.proof_invalid")
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
+    marca = _en_nombre_del_dueno(t, agent)
     if t["status"] not in {"in_progress", "accepted"}:
         raise TicketError(f"complete ilegal desde {t['status']!r} (requiere in_progress|accepted)",
                           code="transition.illegal")
+    if provenance and (t["cadence_days"] or t["verification_level"] != "self"):
+        # Solo verifica quien completa una tarea de nivel self; en las demás lo hará otro.
+        raise TicketError("la procedencia va con una verificación: este complete no verifica"
+                          f" (nivel {t['verification_level']}{', recurrente' if t['cadence_days'] else ''})",
+                          field="provenance", code="verify.provenance_not_a_verification")
     if t["owner"] is None:
         # Claim implícito (fix F1 de v0): evita bypass del guard de peer con owner=None.
         conn.execute("UPDATE tickets SET owner=? WHERE id=?", (agent, ticket_id))
         t = _get(conn, ticket_id)
-    elif t["owner"] != agent and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER:
+    elif (t["owner"] != agent and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER
+          and t["verification_level"] != "peer" and not marca):
+        # #640: cualquiera de la casa completa una tarea DEL dueño, en su nombre.
+        # #367 (Pepe, salida A): con verificación peer lo completa también quien lo ejecutó;
+        # el sello sigue siendo de un tercero (verify_ticket rechaza al que completó).
         # el dueño es el dueño de la Casa: puede completar/estampar por cualquiera desde la
         # app (regla del 3-sep, hallazgo de Lienzo en T2.9). Queda en el history como
         # transición del dueño sobre un ticket ajeno; verifier != owner sigue intacto.
         raise TicketError(f"complete solo puede hacerlo el owner ({t['owner']}), no {agent}",
                           code="transition.not_owner")
     now = _now()
+    aviso = _pide_otro(t["verification_level"], t["cadence_days"], t["verify_criteria"])
 
     if t["cadence_days"]:
         # Recurrente: estampa y sigue viva. La cronología queda en history.
@@ -712,7 +877,7 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence) -> dict:
             (now, evidence_type, evidence, ticket_id),
         )
         _append_history(conn, ticket_id, t["status"], "accepted", agent,
-                        f"recurrente ejecutada [{evidence_type}] {evidence}")
+                        _con_marca(f"recurrente ejecutada [{evidence_type}] {evidence}", marca))
     elif t["verification_level"] == "self":
         conn.execute(
             "UPDATE tickets SET status='verified', evidence_type=?, evidence=?,"
@@ -720,7 +885,9 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence) -> dict:
             (evidence_type, evidence, agent, now, ticket_id),
         )
         _append_history(conn, ticket_id, t["status"], "verified", agent,
-                        f"self-verified [{evidence_type}] {evidence}")
+                        _con_marca(f"self-verified [{evidence_type}] {evidence}"
+                                   + (f" — {AVISO_PIDE_OTRO}" if aviso else ""), marca),
+                        provenance=_provenance(agent, t, provenance))
         for hook in VERIFIED_HOOKS:
             hook(conn, ticket_id)
     else:  # peer | auto → cola de verificación (columna "Hechas sin verificar")
@@ -729,16 +896,27 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence) -> dict:
             (evidence_type, evidence, ticket_id),
         )
         _append_history(conn, ticket_id, t["status"], "done", agent,
-                        f"[{evidence_type}] {evidence}")
+                        _con_marca(f"[{evidence_type}] {evidence}", marca))
     conn.commit()
-    return _as_dict(conn, _get(conn, ticket_id))
+    out = _as_dict(conn, _get(conn, ticket_id))
+    if aviso:
+        out["warning"] = AVISO_PIDE_OTRO  # #414: se sella igual (es un aviso), pero lo dice
+    try:    # Biblioteca (#850): DESPUÉS del commit; cerrar nunca falla ni cambia por esto
+        from . import library
+        library.al_cerrar(conn, ticket_id, evidence_type, evidence)
+    except Exception:
+        log.exception("biblioteca: el gancho de cierre falló en #%s", ticket_id)
+    return out
 
 
-def verify_ticket(conn, agent, ticket_id, verdict, note="") -> dict:
-    """peer: humano que no sea el owner. auto: verifier-bot (o humano no-owner)."""
+def verify_ticket(conn, agent, ticket_id, verdict, note="", provenance=None) -> dict:
+    """peer: humano que no sea el owner. auto: verifier-bot (o humano no-owner).
+    #377: provenance solo admite 'deterministic:<herramienta>'; si no viene, se deduce."""
     _validate_agent(agent, allow_system=True)
     if verdict not in {"pass", "fail"}:
-        raise TicketError(f"verdict inválido: {verdict!r} (pass|fail)")
+        raise TicketError(f"verdict inválido: {verdict!r} (pass|fail)", field="verdict",
+                          code="verify.verdict_invalid")
+    provenance = _check_provenance(provenance, agent)
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
     if t["status"] != "done":
@@ -749,13 +927,32 @@ def verify_ticket(conn, agent, ticket_id, verdict, note="") -> dict:
     if agent == t["owner"]:
         raise TicketError(f"el verificador no puede ser el owner ({agent})",
                           code="verify.owner_cannot_verify")
+    if (t["verify_claimed_by"] and t["verify_claimed_by"] != agent
+            and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER):
+        raise TicketError(f"la verificación la tiene {t['verify_claimed_by']} (#481); que la suelte primero",
+                          code="verify.claimed_by_other")
     if t["verification_level"] == "peer" and agent in SYSTEM_AGENTS:
         raise TicketError("verification_level=peer exige verificador humano/miembro, no un bot")
+    if t["verification_level"] == "external" and agent not in {"verifier-bot", HOUSE_OWNER}:
+        # #465 (decisión 22): se marcó «externa» para que NO la juzgue la familia que la hizo.
+        raise TicketError(f"una tarea de verificación externa la sella el verificador de otra familia"
+                          f" (DeepSeek) o {HOUSE_OWNER}, no {agent}", code="verify.external_only")
+    # #367: quien completó no sella su propio trabajo (puede no ser el owner desde la salida A)
+    # #439: solo cuenta la transición HACIA done; editar un ticket ya hecho deja una fila
+    # done→done a nombre de quien edita y no le convierte en quien lo completó.
+    last_done = conn.execute(
+        "SELECT changed_by FROM ticket_history WHERE ticket_id=? AND new_status='done'"
+        " AND (old_status IS NULL OR old_status != 'done')"
+        " ORDER BY id DESC LIMIT 1", (ticket_id,)).fetchone()
+    if last_done and last_done["changed_by"] == agent:
+        raise TicketError(f"el verificador no puede ser quien lo completó ({agent})",
+                          code="verify.completer_cannot_verify")
     if verdict == "pass":
         now = _now()
         conn.execute("UPDATE tickets SET status='verified', verified_by=?, closed_at=? WHERE id=?",
                      (agent, now, ticket_id))
-        _append_history(conn, ticket_id, "done", "verified", agent, note or None)
+        _append_history(conn, ticket_id, "done", "verified", agent, note or None,
+                        provenance=_provenance(agent, t, provenance))
         for hook in VERIFIED_HOOKS:
             hook(conn, ticket_id)
     else:
@@ -763,9 +960,91 @@ def verify_ticket(conn, agent, ticket_id, verdict, note="") -> dict:
             raise TicketError("verify fail requiere note (qué falta)", field="note",
                               code="verify.note_required")
         conn.execute("UPDATE tickets SET status='in_progress' WHERE id=?", (ticket_id,))
-        _append_history(conn, ticket_id, "done", "in_progress", agent, f"verify FAIL: {note}")
+        _append_history(conn, ticket_id, "done", "in_progress", agent, f"verify FAIL: {note}",
+                        provenance=_provenance(agent, t, provenance))
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
+
+
+def claim_verification(conn, agent, ticket_id) -> dict:
+    """#481 (decisión 47): apuntarse a verificar EN la tarea. El orden lo pone la base, no la
+    sala: el UPDATE solo prospera si nadie la tenía, así que de dos a la vez uno la consigue y
+    el otro recibe «ya la tiene X». Apuntarse otra vez a la propia no hace nada."""
+    _validate_agent(agent)
+    t = _get(conn, ticket_id)
+    if t["closed_at"] is not None:
+        raise TicketError(f"ticket #{ticket_id} está cerrado ({t['status']})", code="transition.illegal")
+    if t["verification_level"] == "self":
+        raise TicketError("es de nivel «self»: la sella quien la hace, no hay verificación que coger",
+                          code="verify.not_needed")
+    if agent == t["owner"]:
+        raise TicketError(f"el verificador no puede ser el owner ({agent})", code="verify.owner_cannot_verify")
+    cur = conn.execute("UPDATE tickets SET verify_claimed_by=?, verify_claimed_at=? WHERE id=?"
+                       " AND (verify_claimed_by IS NULL OR verify_claimed_by=?)",
+                       (agent, _now(), ticket_id, agent))
+    if cur.rowcount == 0:
+        conn.rollback()
+        quien = conn.execute("SELECT verify_claimed_by FROM tickets WHERE id=?", (ticket_id,)).fetchone()[0]
+        raise TicketError(f"ya la tiene {quien}", code="verify.already_claimed")
+    if t["verify_claimed_by"] != agent:
+        _append_history(conn, ticket_id, t["status"], t["status"], agent, f"[verificación] la coge {agent}")
+    conn.commit()
+    return _as_dict(conn, _get(conn, ticket_id))
+
+
+def release_verification(conn, agent, ticket_id) -> dict:
+    """#481: soltar una verificación cogida. Solo quien la tiene, o el dueño de la casa."""
+    _validate_agent(agent)
+    t = _get(conn, ticket_id)
+    if t["verify_claimed_by"] is None:
+        return _as_dict(conn, t)
+    if agent != t["verify_claimed_by"] and agent != HOUSE_OWNER:
+        raise TicketError(f"la tiene {t['verify_claimed_by']}: solo la suelta quien la tiene o el dueño",
+                          code="verify.not_claimer")
+    conn.execute("UPDATE tickets SET verify_claimed_by=NULL, verify_claimed_at=NULL WHERE id=?", (ticket_id,))
+    _append_history(conn, ticket_id, t["status"], t["status"], agent,
+                    f"[verificación] la suelta {t['verify_claimed_by']}")
+    conn.commit()
+    return _as_dict(conn, _get(conn, ticket_id))
+
+
+def defer_to_peer(conn, agent, ticket_id, note) -> dict:
+    """#451: el juez dice «incierto» de un ticket de nivel auto. Sigue done, pasa a
+    verificación de par (un bot ya no lo sella) y el motivo queda en el historial."""
+    _validate_agent(agent, allow_system=True)
+    t = _get(conn, ticket_id)
+    if t["status"] != "done" or t["verification_level"] != "auto":
+        raise TicketError(f"solo un ticket done de nivel auto pasa a par"
+                          f" (está {t['status']}/{t['verification_level']})")
+    conn.execute("UPDATE tickets SET verification_level='peer' WHERE id=?", (ticket_id,))
+    _append_history(conn, ticket_id, "done", "done", agent,
+                    f"verificador incierto: {note} — pasa a verificación de par")
+    conn.commit()
+    return _as_dict(conn, _get(conn, ticket_id))
+
+
+EXTERNAL_NO_MAJORITY = "verificación externa sin mayoría"
+
+
+def defer_external(conn, agent, ticket_id, note) -> dict:
+    """#465: DeepSeek ×3 sin mayoría en una tarea «externa». Sigue done y externa (ningún Claude la
+    sella); la decide el dueño de la casa. El verificador no la vuelve a juzgar hasta que alguien la
+    devuelva y se complete otra vez (external_deferred)."""
+    _validate_agent(agent, allow_system=True)
+    t = _get(conn, ticket_id)
+    if t["status"] != "done" or t["verification_level"] != "external":
+        raise TicketError(f"solo un ticket done de nivel external (está {t['status']}/{t['verification_level']})")
+    _append_history(conn, ticket_id, "done", "done", agent,
+                    f"{EXTERNAL_NO_MAJORITY}: {note} — la decide {HOUSE_OWNER}")
+    conn.commit()
+    return _as_dict(conn, _get(conn, ticket_id))
+
+
+def external_deferred(conn, ticket_id) -> bool:
+    last = conn.execute("SELECT changed_by, new_status, note FROM ticket_history WHERE ticket_id=?"
+                        " ORDER BY id DESC LIMIT 1", (ticket_id,)).fetchone()
+    return bool(last and last["changed_by"] == "verifier-bot" and last["new_status"] == "done"
+                and (last["note"] or "").startswith(EXTERNAL_NO_MAJORITY))
 
 
 def reopen_ticket(conn, agent, ticket_id, note="") -> dict:
@@ -783,17 +1062,20 @@ def rework_ticket(conn, agent, ticket_id, to, reason) -> dict:
     Permitido a: owner, verificador anterior, dueño. Recurrentes: no aplica."""
     _validate_agent(agent)
     if to not in {"accepted", "in_progress"}:
-        raise TicketError(f"rework: destino inválido {to!r} (accepted|in_progress)")
+        raise TicketError(f"rework: destino inválido {to!r} (accepted|in_progress)",
+                          field="to", code="rework.to_invalid")
     reason = (reason or "").strip()
     if len(reason) < REWORK_MIN_REASON:
         raise TicketError(f"rework requiere un motivo de al menos {REWORK_MIN_REASON} caracteres"
-                          " (por qué se devuelve — esa historia vale)")
+                          " (por qué se devuelve — esa historia vale)",
+                          field="reason", code="rework.reason_required")
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
     if t["status"] not in {"done", "verified"}:
-        raise TicketError(f"rework ilegal desde {t['status']!r} (requiere done|verified)")
+        raise TicketError(f"rework ilegal desde {t['status']!r} (requiere done|verified)",
+                          code="transition.illegal")
     if t["cadence_days"]:
-        raise TicketError("las recurrentes no se devuelven: estampan y siguen")
+        raise TicketError("las recurrentes no se devuelven: estampan y siguen", code="rework.recurring")
     allowed = agent == HOUSE_OWNER or agent == t["owner"] or (t["verified_by"] and agent == t["verified_by"])
     if not allowed:
         raise TicketError(f"rework solo puede hacerlo el owner ({t['owner']}), quien la verificó"
@@ -802,17 +1084,9 @@ def rework_ticket(conn, agent, ticket_id, to, reason) -> dict:
     conn.execute("UPDATE tickets SET status=?, closed_at=NULL, verified_by=NULL WHERE id=?",
                  (to, ticket_id))
     _append_history(conn, ticket_id, prev, to, agent, f"[rechazo] {reason}")
-    # v3.2 (T1.3, el dueño: «la tarea desaparece»): una devuelta es sensible al tiempo.
-    # Sin ningún ancla temporal no entraría en Hoy/Semana (_in_view) y solo viviría
-    # en Todas. Vence HOY: hay que rehacerla ahora, no el próximo laborable.
+    # #364 (Pepe, 30-sep): tampoco aquí se coloca sola. Una devuelta sin fecha no
+    # desaparece (T1.3): sale en «por ubicar» de su dueño, que es quien la recoloca.
     anchored = False
-    if (t["kind"] == "manual" and not t["scheduled_at"] and not t["due_at"]
-            and not t["all_day"]):
-        today_iso = date.today().isoformat()
-        conn.execute("UPDATE tickets SET due_at=? WHERE id=?", (today_iso, ticket_id))
-        _append_history(conn, ticket_id, to, to, agent,
-                        f"[ancla] devuelta sin fecha → vence hoy ({today_iso})")
-        anchored = True
     for hook in REWORK_HOOKS:
         hook(conn, ticket_id, prev)
     conn.commit()
@@ -820,9 +1094,10 @@ def rework_ticket(conn, agent, ticket_id, to, reason) -> dict:
 
 
 def backlog_ticket(conn, agent, ticket_id, note="") -> dict:
-    """Retroceso del kanban: in_progress → accepted (devolver a la cola)."""
-    return _transition(conn, agent, ticket_id, from_={"in_progress"}, to="accepted",
-                       note=note or "devuelto a aceptadas desde el tablero")
+    """Retroceso del kanban: in_progress → accepted. Desde el #482 es un ALIAS de pause_ticket, con sus
+    reglas (nota de al menos 10 caracteres; la dueña o el dueño de la casa): antes hacía lo mismo sin
+    nota y a nombre de cualquiera, y era una puerta trasera a la regla (lo vio Lienzo el 16-oct)."""
+    return pause_ticket(conn, agent, ticket_id, note)
 
 
 def _transition(conn, agent, ticket_id, from_, to, note=None, close=False) -> dict:
@@ -924,7 +1199,24 @@ def list_tickets(conn, status=None, owner=None, query=None, include_closed=False
 
 
 UPDATABLE_FIELDS = {"title", "description", "priority", "due_at", "verify_criteria",
-                    "project_id", "owner", "evidence"} | TEMPORAL_FIELDS
+                    "project_id", "owner", "evidence", "verification_level"} | TEMPORAL_FIELDS
+
+
+def _validate_level_change(t, agent, nivel) -> None:
+    """#414 (decisión 48): subir el nivel lo hace cualquiera de la casa; BAJARLO a self, solo el
+    dueño (si no, quien hizo el trabajo podría cambiarlo y sellárselo)."""
+    if nivel not in VERIFICATION_LEVELS:
+        raise TicketError(f"verification_level inválido: {nivel!r} (válidos: {sorted(VERIFICATION_LEVELS)})",
+                          field="verification_level", code="ticket.level_invalid")
+    if t["closed_at"] is not None:
+        raise TicketError(f"ticket #{t['id']} está cerrado ({t['status']}) — su nivel ya no cambia",
+                          field="verification_level", code="ticket.level_closed")
+    if t["cadence_days"] or t["kind"] == "agentic":
+        raise TicketError("las recurrentes y las agénticas no cambian de nivel (se verifican de otra forma)",
+                          field="verification_level", code="ticket.level_fixed")
+    if nivel == "self" and t["verification_level"] != "self" and agent != HOUSE_OWNER:
+        raise TicketError("bajar el nivel a «self» solo lo hace el dueño de la casa",
+                          field="verification_level", code="ticket.level_to_self_owner_only")
 
 
 def update_ticket(conn, agent, ticket_id, **fields) -> dict:
@@ -942,6 +1234,8 @@ def update_ticket(conn, agent, ticket_id, **fields) -> dict:
         raise TicketError(f"ticket #{ticket_id} está cerrado ({t['status']}) — no se reprograma")
     if "priority" in fields and fields["priority"] not in PRIORITIES:
         raise TicketError(f"priority inválida: {fields['priority']!r}")
+    if "verification_level" in fields:
+        _validate_level_change(t, agent, fields["verification_level"])
     if "owner" in fields and fields["owner"] is not None:
         _validate_agent(fields["owner"])
     if "project_id" in fields:
@@ -954,7 +1248,14 @@ def update_ticket(conn, agent, ticket_id, **fields) -> dict:
                               field="evidence")
         if not (fields["evidence"] or "").strip():
             raise TicketError("evidence vacía", field="evidence")
-    fields = {**fields, **_validate_temporal(fields, t["cadence_days"])}
+    wd = fields.get("weekday", t["weekday"])
+    wd = int(wd) if isinstance(wd, (int, str)) and str(wd).strip().lstrip("-").isdigit() else None
+    fields = {**fields, **_validate_temporal(fields, t["cadence_days"], wd)}
+    if t["weekday"] is None and fields.get("weekday") is None:
+        # el override NO cuenta: mover una ocurrencia no es colocar la serie
+        wd = _weekday_de_su_fecha(t["cadence_days"], fields.get("scheduled_at"), fields.get("due_at"))
+        if wd is not None:
+            fields["weekday"] = wd
     sets = ", ".join(f"{k}=?" for k in fields)
     conn.execute(f"UPDATE tickets SET {sets} WHERE id=?", [*fields.values(), ticket_id])
     if "title" in fields or "description" in fields:
@@ -970,7 +1271,7 @@ def update_ticket(conn, agent, ticket_id, **fields) -> dict:
 def ticket_history(conn, ticket_id) -> dict:
     t = _get(conn, ticket_id)
     rows = conn.execute(
-        "SELECT old_status, new_status, changed_by, changed_at, note"
+        "SELECT old_status, new_status, changed_by, changed_at, note, provenance"
         " FROM ticket_history WHERE ticket_id=? ORDER BY id", (ticket_id,)).fetchall()
     return {"ticket": _as_dict(conn, t), "history": [dict(r) for r in rows]}
 
@@ -1006,6 +1307,11 @@ def board(conn, project_id=None, view="all") -> dict:
         fecha vive en 'Todas', no ensucia today/week (fix B1: week ya no ≈ all)."""
         if view == "all":
             return True
+        if t["status"] == "proposed":
+            # #604 (Pepe, 16-oct): «las que propongáis deberían de salir siempre». Una propuesta
+            # espera una decisión, no una fecha: si caía la semana siguiente, en Hoy/Semana no salía
+            # y no se podía aceptar hasta navegar a su semana.
+            return True
         if t["status"] == "done" and view in ("today", "week"):
             # v3.1 (el dueño §1.2, reproducido por Lienzo): una HECHA espera verificación —
             # es tan sensible al tiempo como una en curso. Sin esto, una done sin
@@ -1034,7 +1340,9 @@ def board(conn, project_id=None, view="all") -> dict:
 
     visible = [t for t in open_tickets if _in_view(t)]
     columns = {s: [] for s in ("proposed", "accepted", "in_progress", "done")}
-    laterals = {"blocked": []}
+    laterals = {"blocked": [],
+                # #364: lo que su dueño aún no ha colocado; sale en todas las vistas hasta que lo ubique
+                "por_ubicar": [t for t in open_tickets if _unplaced(t) and t["status"] != "blocked"]}
     for t in visible:
         if t["status"] == "blocked":
             laterals["blocked"].append(t)
@@ -1052,19 +1360,53 @@ def board(conn, project_id=None, view="all") -> dict:
     else:
         verified_col = verified_all[:30]
 
+    # #388: ¿ha tenido la base alguna vez una tarea del tablero? Con la vista vacía, la UI
+    # distingue «acabas de llegar» (cómo entra la primera tarea) de «cambia de vista».
+    # Cualquier estado y cualquier proyecto; las agénticas viven en Agentes y no cuentan.
+    # Si ya hay alguna a la vista no hace falta preguntar: la consulta extra solo corre
+    # cuando lo cargado está vacío (test_board_query_count sigue en 8).
+    started = any(t.get("kind") != "agentic" for t in (*open_tickets, *verified_all)) or conn.execute(
+        "SELECT EXISTS(SELECT 1 FROM tickets WHERE kind != 'agentic')").fetchone()[0] == 1
+
     return {
         "view": view,
         "project_id": project_id,
+        "started": started,
         "projects": list_projects(conn),
         "columns": {**columns, "verified": verified_col},
         "laterals": laterals,
         "counts": {**{k: len(v) for k, v in columns.items()},
-                   "verified": len(verified_col), "blocked": len(laterals["blocked"])},
+                   "verified": len(verified_col), "blocked": len(laterals["blocked"]),
+                   "por_ubicar": len(laterals["por_ubicar"])},
     }
 
 
-def my_board(conn, agent) -> dict:
+_SLIM_KEYS = ("id", "title", "status", "priority", "owner", "kind", "project_id", "source",
+              "created_by", "created_at", "scheduled_at", "duration_min", "due_at", "due_state",
+              "cadence_days", "preferred_time", "weekday", "next_due", "due", "overdue",
+              "verification_level", "verified_by", "verify_claimed_by", "blocked_reason",
+              "last_change", "workflow_id",
+              "plan_key", "age_days")
+
+
+def _slim(t: dict) -> dict:
+    """#367: lo que hace falta para decidir qué toca + un recorte del cuerpo. El cuerpo
+    entero lo sirve get_ticket (o my_board(full=True))."""
+    out = {k: t[k] for k in _SLIM_KEYS if k in t}
+    body = " ".join((t.get("description") or "").split())
+    out["resumen"] = body[:200] + ("…" if len(body) > 200 else "")
+    return out
+
+
+def my_board(conn, agent, full: bool = False) -> dict:
     _validate_agent(agent)
+    b = _my_board_full(conn, agent)
+    if full:
+        return b
+    return {k: [_slim(t) for t in v] for k, v in b.items()}
+
+
+def _my_board_full(conn, agent) -> dict:
     mine = list_tickets(conn, owner=agent)
     return {
         "mine_open": [t for t in mine if not t.get("cadence_days")],
@@ -1073,8 +1415,25 @@ def my_board(conn, agent) -> dict:
         "needs_my_verification": [
             t for t in list_tickets(conn, status="done")
             if t["verification_level"] == "peer" and t["owner"] != agent
+            and t.get("verify_claimed_by") in (None, agent)
+        ],
+        # #481: las que me he cogido para verificar (abiertas, hechas o todavía no)
+        "verifications_i_claimed": [
+            t for t in list_tickets(conn) if t.get("verify_claimed_by") == agent
+            and t["status"] not in CLOSED_STATUSES
         ],
         "my_proposals_pending": [
             t for t in list_tickets(conn, status="proposed") if t["created_by"] == agent
         ],
+        # #364: lo mío sin fecha. Colocarlo es trabajo mío, no de quien lo creó ni de Pepe.
+        "por_ubicar": [t for t in mine if _unplaced(t)],
     }
+
+
+def _unplaced(t: dict) -> bool:
+    """#364: tarea abierta que nadie ha colocado todavía en el tiempo."""
+    if t["status"] in CLOSED_STATUSES or t.get("kind") != "manual":
+        return False
+    if t.get("cadence_days"):
+        return not t.get("preferred_time")
+    return not (t.get("scheduled_at") or t.get("due_at"))

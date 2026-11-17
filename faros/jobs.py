@@ -11,6 +11,7 @@ Tablero = agentes con nombre. Agentes = jobs. Aquí vive lo segundo.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from . import service, harness
@@ -33,6 +34,23 @@ def _billing_for(harness_name: str) -> str | None:
         return harness.get(harness_name).billing
     except Exception:
         return None
+
+
+def _tope_no_aplicable(harness_name: str, billing: str | None) -> str | None:
+    """Por qué un max_budget_usd no se puede aplicar en este harness, o None si sí. #580 (Lienzo, 16-oct):
+    además de billing=api hace falta que el harness dé un coste fiable (capabilities.budget). En
+    claude-cli-deepseek el coste se anula (el de Claude Code es falso con DeepSeek), así que el tope nunca
+    saltaría: una promesa falsa."""
+    if billing != "api":
+        return (f"el harness {harness_name!r} factura por {billing or 'modo desconocido'}, "
+                "el tope en USD solo aplica a billing=api")
+    try:
+        puede = getattr(harness.get(harness_name).capabilities, "budget", True)
+    except Exception:
+        puede = True
+    if not puede:
+        return f"el harness {harness_name!r} no puede aplicar un tope en USD (no da un coste fiable)"
+    return None
 
 
 def _normalize(fields: dict, conn=None, harness_current=None) -> dict:
@@ -147,10 +165,16 @@ def _hydrate(conn, row) -> dict:
     except Exception:
         d["next_fire"] = None
     if d.get("ticket_id"):
-        t = conn.execute("SELECT id, title, status FROM tickets WHERE id=?", (d["ticket_id"],)).fetchone()
+        t = conn.execute("SELECT id, title, status, closed_at FROM tickets WHERE id=?",
+                         (d["ticket_id"],)).fetchone()
         d["ticket"] = dict(t) if t else None
     else:
         d["ticket"] = None
+    if d["ticket"] and d["ticket"]["closed_at"] and d["status"] == "active" and d["enabled"]:
+        # #518: el scheduler no lanza un job colgado de una tarea cerrada; que tampoco lo anuncie
+        d["next_fire"] = None
+        d["not_firing"] = (f"no se dispara: la tarea #{d['ticket_id']} está cerrada ({d['ticket']['status']});"
+                           " desenlázalo (ticket_id a null) o cuélgalo de una tarea abierta")
     return d
 
 
@@ -176,9 +200,9 @@ def create_job(conn, agent, name, prompt, harness_name="claude-cli", model="haik
     _validate_link(conn, ticket_id, legacy=legacy)
     billing = _billing_for(fields["harness"])
     warning = None
-    if fields.get("max_budget_usd") not in (None, "", 0) and billing != "api":
-        warning = (f"max_budget_usd ignorado: el harness {fields['harness']!r} factura por "
-                   f"{billing or 'modo desconocido'}, el tope en USD solo aplica a billing=api")
+    motivo = _tope_no_aplicable(fields["harness"], billing)
+    if fields.get("max_budget_usd") not in (None, "", 0) and motivo:
+        warning = f"max_budget_usd ignorado: {motivo}"
         fields["max_budget_usd"] = None
     fields["billing_mode"] = billing
     fields.setdefault("timeout_s", 1800)
@@ -246,10 +270,14 @@ def update_job(conn, agent, job_id, **fields) -> dict:
         fields["billing_mode"] = _billing_for(fields["harness"])
     billing = fields.get("billing_mode", row["billing_mode"])
     warning = None
-    if fields.get("max_budget_usd") not in (None, "", 0) and billing != "api":
-        warning = f"max_budget_usd ignorado: billing={billing or 'desconocido'} (solo aplica a api)"
+    motivo = _tope_no_aplicable(fields.get("harness", row["harness"]), billing)
+    if fields.get("max_budget_usd") not in (None, "", 0) and motivo:
+        warning = f"max_budget_usd ignorado: {motivo}"
         fields["max_budget_usd"] = None
     fields["updated_at"] = _now()
+    if "schedule" in fields and json.loads(fields["schedule"]) != json.loads(row["schedule"] or "{}"):
+        # #431: solo el cambio de calendario (no cualquier edición, que anularía una recuperación L47)
+        fields["schedule_changed_at"] = fields["updated_at"]
     sets = ", ".join(f"{k}=?" for k in fields)
     conn.execute(f"UPDATE agent_jobs SET {sets} WHERE id=?", [*fields.values(), job_id])
     conn.commit()
@@ -337,6 +365,17 @@ def create_run(conn, job_id) -> dict:
     return dict(conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone())
 
 
+def _streak_already_open(conn, job_id, run_id) -> bool:
+    """#662, decisión 74 de Pepe: «uno por racha». True si el run ANTERIOR del mismo job ya fue un
+    fallo (terminó error/timeout/cancelled, o terminó ok y el verificador dijo fail): entonces ya
+    se avisó al empezar la racha y este fallo no avisa. Un run bueno la cierra."""
+    prev = conn.execute(
+        "SELECT status, verdict FROM runs WHERE job_id=? AND id<? AND status!='running'"
+        " ORDER BY id DESC LIMIT 1", (job_id, run_id)).fetchone()
+    return prev is not None and (prev["status"] in ("error", "timeout", "cancelled")
+                                 or prev["verdict"] == "fail")
+
+
 def finish_run(conn, run_id, status, exit_code=None, cost_usd=None, session_id=None,
                output_path=None, result_summary=None) -> dict:
     if status not in {"ok", "error", "timeout", "cancelled"}:
@@ -355,10 +394,18 @@ def finish_run(conn, run_id, status, exit_code=None, cost_usd=None, session_id=N
         " session_id=?, output_path=?, result_summary=? WHERE id=? AND status='running'",
         (_now(), status, exit_code, cost_usd, cost_kind, session_id, output_path,
          result_summary, run_id))
+    try:    # Biblioteca (#850): artifacts/run_<id> con su job y su ticket; antes del cierre del ticket
+        from . import library
+        library.al_terminar_run(conn, run_id, run["job_id"], run["ticket_id"])
+    except Exception:
+        logging.getLogger(__name__).exception("biblioteca: el gancho de run falló en #%s", run_id)
     if status in ("error", "timeout", "cancelled"):
-        try:  # T4.4 (Eco): aviso al dueño; sin token es no-op
+        try:  # T4.4 (Eco): aviso al dueño; sin token es no-op. #662: uno por racha
             from . import notify
-            notify.on_run_failed(conn, job["name"], run_id, status, result_summary or "")
+            if _streak_already_open(conn, run["job_id"], run_id):
+                notify.log.info("aviso omitido: run #%s de «%s» sigue una racha de fallos", run_id, job["name"])
+            else:
+                notify.on_run_failed(conn, job["name"], run_id, status, result_summary or "")
         except Exception:
             pass
     ticket_id = run["ticket_id"]
@@ -378,26 +425,32 @@ def finish_run(conn, run_id, status, exit_code=None, cost_usd=None, session_id=N
     return dict(conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone())
 
 
-def set_verdict(conn, run_id, verdict, reason, by="verifier-bot") -> dict:
+def set_verdict(conn, run_id, verdict, reason, by="verifier-bot", provenance=None) -> dict:
     """Veredicto POR RUN (deuda v1.1 cerrada). pass + ticket vinculado abierto →
     completa el ticket con evidencia run_output (y lo verifica si su nivel es auto,
-    para no juzgar dos veces). fail → nota en el ticket, estado intacto."""
-    if verdict not in {"pass", "fail"}:
-        raise TicketError(f"verdict inválido: {verdict!r} (pass|fail)")
+    para no juzgar dos veces). fail → nota en el ticket, estado intacto.
+    uncertain (#451) → como fail pero sin aviso: no completa nada, no se vuelve a juzgar
+    solo, y una persona lo resuelve después con pass o fail."""
+    if verdict not in {"pass", "fail", "uncertain"}:
+        raise TicketError(f"verdict inválido: {verdict!r} (pass|fail|uncertain)")
     run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
     if run is None:
         raise TicketError(f"run #{run_id} no existe")
     if run["status"] != "ok":
         raise TicketError(f"run #{run_id} no terminó ok ({run['status']}) — no se juzga")
-    if run["verdict"]:
+    if run["verdict"] and not (run["verdict"] == "uncertain" and verdict != "uncertain"):
         raise TicketError(f"run #{run_id} ya tiene veredicto ({run['verdict']})")
     reason = (reason or "").strip()[:1000] or "(sin motivo)"
     conn.execute("UPDATE runs SET verdict=?, verdict_reason=?, verified_at=? WHERE id=?",
                  (verdict, reason, _now(), run_id))
     if verdict == "fail":
-        try:  # T4.4 (Eco)
+        try:  # T4.4 (Eco). #662: uno por racha
             from . import notify
-            notify.on_verdict_fail(conn, get_job(conn, run["job_id"])["name"], run_id, reason)
+            name = get_job(conn, run["job_id"])["name"]
+            if _streak_already_open(conn, run["job_id"], run_id):
+                notify.log.info("aviso omitido: run #%s de «%s» sigue una racha de fallos", run_id, name)
+            else:
+                notify.on_verdict_fail(conn, name, run_id, reason)
         except Exception:
             pass
     ticket_id = run["ticket_id"]
@@ -407,10 +460,12 @@ def set_verdict(conn, run_id, verdict, reason, by="verifier-bot") -> dict:
             done = service.complete_ticket(conn, "runner-bot", ticket_id, "run_output", str(run_id))
             if done["status"] == "done" and t["verification_level"] == "auto":
                 service.verify_ticket(conn, "verifier-bot", ticket_id, "pass",
-                                      note=f"veredicto pass del run #{run_id}: {reason}")
+                                      note=f"veredicto pass del run #{run_id}: {reason}",
+                                      provenance=provenance)
         elif t["closed_at"] is None:
+            etiqueta = "incierto (lo resuelve una persona)" if verdict == "uncertain" else verdict
             _append_history(conn, ticket_id, t["status"], t["status"], by,
-                            f"run #{run_id} veredicto {verdict}: {reason}")
+                            f"run #{run_id} veredicto {etiqueta}: {reason}")
     conn.commit()
     return dict(conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone())
 

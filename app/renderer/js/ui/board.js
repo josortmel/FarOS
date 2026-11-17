@@ -24,6 +24,7 @@ function runGlyph(status) {
     case 'timeout':   return { g: '✕', cls: 'timeout',   label: 'run agotó el tiempo' };
     case 'running':   return { g: '●', cls: 'running',   label: 'run en curso' };
     case 'cancelled': return { g: '⊘', cls: 'cancelled', label: 'run cancelado' };
+    case 'uncertain': return { g: '?', cls: 'uncertain', label: 'run incierto: lo resuelve una persona' };  // #470
     default:          return { g: '▸', cls: 'none',      label: 'sin runs' };
   }
 }
@@ -80,7 +81,9 @@ export function renderCard(t, board, { draggable = true } = {}) {
   if (who) {
     const meta = document.createElement('div');
     meta.className = 'card__meta';
-    meta.innerHTML = `<span>${esc(who)}</span>`;
+    /* #481: quien se ha quedado la verificación, a la vista en la tarjeta */
+    meta.innerHTML = `<span>${esc(who)}</span>${t.verify_claimed_by && !t.closed_at
+      ? `<span class="card__claim">${esc(tb('verifica'))} <b>${esc(t.verify_claimed_by)}</b></span>` : ''}`;
     el.appendChild(meta);
   }
 
@@ -98,14 +101,14 @@ export function renderCard(t, board, { draggable = true } = {}) {
      y su veredicto; el job vive en Agentes, aquí solo se ve el brazo */
   if (t.linked_job) {
     const lj = t.linked_job; const lr = lj.last_run;
-    const { g, cls, label } = runGlyph(lr?.status === 'ok' && lr?.verdict ? (lr.verdict === 'pass' ? 'ok' : 'error') : lr?.status);
+    const { g, cls, label } = runGlyph(lr?.status === 'ok' && lr?.verdict ? ({ pass: 'ok', uncertain: 'uncertain' }[lr.verdict] ?? 'error') : lr?.status);  // #470
     const arm = document.createElement('button');
     arm.className = 'card__arm';
     arm.type = 'button';
     arm.title = 'ver el job en Agentes';  // #262
     arm.setAttribute('aria-label', 'brazo automático: ver el job en Agentes');  // #262
     arm.innerHTML = `<span class="card__run-glyph card__run-glyph--${cls}" title="${label}">${g}</span>
-      <span class="card__arm-text"><span class="card__arm-tag">brazo automático</span> · ${esc(lj.name)}${lr ? ` · run ${lr.id} ${esc(lr.status)}${lr.verdict ? (lr.verdict === 'pass' ? ' · pasa' : ' · falla') : ''}` : ' · sin runs'}</span>
+      <span class="card__arm-text"><span class="card__arm-tag">brazo automático</span> · ${esc(lj.name)}${lr ? ` · run ${lr.id} ${esc(lr.status)}${lr.verdict ? ' · ' + esc(tb({ pass: 'pasa', fail: 'falla', uncertain: 'incierto' }[lr.verdict] ?? lr.verdict)) : ''}` : ' · sin runs'}</span>
       <span class="card__arm-go">Agentes →</span>`;
     arm.addEventListener('click', (e) => { e.stopPropagation(); handlers.onOpenJob?.(lj.id); });
     el.appendChild(arm);
@@ -262,7 +265,12 @@ export function renderBoard(state) {
   if (total === 0) {
     const empty = document.createElement('div');
     empty.className = 'board-empty';
-    empty.innerHTML = `<b>Nada en esta vista.</b> <span>Cambia de vista o crea una tarea con «Nueva tarea».</span>`;
+    /* #388: a quien acaba de llegar no le sirve «cambia de vista» —no hay ninguna a la
+       que cambiar—: necesita saber cómo entra la primera tarea. `started` lo calcula el
+       daemon sobre toda la base; si no viene (daemon antiguo), el aviso de siempre. */
+    empty.innerHTML = board.started === false
+      ? `<b>Aún no hay tareas.</b> <span>Crea la primera con «Nueva tarea», o pide a un agente que la proponga por MCP: llegará a Propuestas y decides tú si se acepta.</span>`
+      : `<b>Nada en esta vista.</b> <span>Cambia de vista o crea una tarea con «Nueva tarea».</span>`;
     root.appendChild(empty);
   }
 
@@ -284,13 +292,18 @@ export function renderBoard(state) {
 
 /* ---------------- laterales ---------------- */
 
-let lateralsCollapsed = false; // con la Casa real hay 10 bloqueadas: plegable
+/* Pepe, 13-nov: «to place y blocked que salgan de base siempre escondidas a no ser que yo las abra»
+   (bloqueadas no las usa; las por ubicar ya las ve en propuestas). Cada grupo se pliega por su
+   cuenta (antes un solo interruptor plegaba los cuatro); lo abierto dura mientras la app está
+   abierta y al recargar vuelve a esto. Rechazadas y expiradas, como estaban: abiertas. */
+const lateralAbierto = { por_ubicar: false, blocked: false, rejected: true, expired: true };
 
 export function renderLaterals(state) {
   const root = document.getElementById('laterals');
   const board = state.board;
   if (!board) { root.hidden = true; return; }
   const groups = [
+    ['por_ubicar', 'Por ubicar'],   // #364: sin fecha; la coloca su dueño
     ['blocked', 'Bloqueadas'],
     ['rejected', 'Rechazadas'],
     ['expired', 'Expiradas'],
@@ -307,13 +320,15 @@ export function renderLaterals(state) {
 
     const toggle = document.createElement('button');
     toggle.className = 'laterals__toggle';
-    toggle.textContent = lateralsCollapsed ? tb('mostrar ▸') : tb('ocultar ▾');
-    toggle.setAttribute('aria-expanded', String(!lateralsCollapsed));
-    toggle.addEventListener('click', () => { lateralsCollapsed = !lateralsCollapsed; renderLaterals(state); });
+    const abierto = lateralAbierto[key] ?? true;
+    toggle.textContent = abierto ? tb('ocultar ▾') : tb('mostrar ▸');
+    toggle.setAttribute('aria-expanded', String(abierto));
+    toggle.dataset.lateral = key;
+    toggle.addEventListener('click', () => { lateralAbierto[key] = !abierto; renderLaterals(state); });
     head.appendChild(toggle);
     root.appendChild(head);
 
-    if (lateralsCollapsed) continue;
+    if (!abierto) continue;
     const row = document.createElement('div');
     row.className = 'laterals__row';
     for (const t of arr) row.appendChild(renderCard(t, board, { draggable: true }));

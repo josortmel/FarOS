@@ -11,7 +11,7 @@ desarrollo. Hace GET /api/health; si no responde, arranca la tarea del daemon
 con `schtasks /Run` (oculto, procutil) y deja una línea en watchdog.log.
 Nunca escribe a stdout: bajo pythonw no existe.
 
-Uso: python -m faros.watchdog [--port 8756] [--task AgenticOS-daemon] [--home DIR]
+Uso: python -m faros.watchdog [--port 8756] [--task FarOS-daemon] [--home DIR]
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from pathlib import Path
 from . import env as _env
 
 DEFAULT_PORT = 8756
-DEFAULT_TASK = "AgenticOS-daemon"
+DEFAULT_TASK = "FarOS-daemon"   # #288 (antes AgenticOS-daemon; las tareas pasan --task explícito)
 
 
 def _data_dir() -> Path:

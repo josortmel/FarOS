@@ -6,18 +6,23 @@
   "models": [
     {
       "alias": "haiku",
-      "label": "Haiku 4.5",
+      "label": "Haiku (barato/rápido)",
       "tier": "cheap"
     },
     {
       "alias": "sonnet",
-      "label": "Sonnet 5",
+      "label": "Sonnet (equilibrado)",
       "tier": "mid"
     },
     {
       "alias": "opus",
-      "label": "Opus 4.8",
+      "label": "Opus (potente)",
       "tier": "high"
+    },
+    {
+      "alias": "fable",
+      "label": "Fable (máximo)",
+      "tier": "max"
     }
   ],
   "permission_modes": [
@@ -36,7 +41,8 @@
   "verification_levels": [
     "self",
     "peer",
-    "auto"
+    "auto",
+    "external"
   ],
   "defaults": {
     "model": "haiku",
@@ -55,5 +61,6 @@
     "dave"
   ],
   "docs_dir": "$FAROS_HOME/docs",
-  "owner": "owner"
+  "owner": "owner",
+  "fixtures_hoy": "2026-09-30"
 }

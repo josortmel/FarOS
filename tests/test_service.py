@@ -192,6 +192,24 @@ def test_dedup_finds_similar_open_ticket(conn):
     assert any("Backup" in d["title"] for d in dups)
 
 
+def test_dedup_matches_words_with_accents(conn):
+    """#73: _normalize_word borraba la letra con tilde («vacío» → «vaco») y FTS5,
+    que quita los diacríticos, guarda «vacio»: la palabra no casaba nunca.
+    Medido en la casa el 14-oct: #498 no veía a #285."""
+    t = _propose(conn, title="El tablero vacío debe enseñar sus columnas")
+    res = s.propose_ticket(conn, "bob", "Tablero vacio sin columnas, ensenar las vacías")
+    assert [d["id"] for d in res["possible_duplicates"]] == [t["id"]]
+
+
+def test_dedup_short_title_needs_two_shared_words(conn):
+    """#73: con un título de dos palabras, una sola en común ya era el 50 %
+    («Actualizar FARO_ESTADO» casaba con cualquier «Actualizar …»)."""
+    _propose(conn, title="Actualizar tabla de modelos que caben en la GPU")
+    t = _propose(conn, title="Actualizar FARO_ESTADO con las lecciones")
+    res = s.propose_ticket(conn, "bob", "Actualizar FARO_ESTADO")
+    assert [d["id"] for d in res["possible_duplicates"]] == [t["id"]]
+
+
 def test_my_board_sections(conn):
     t1 = _propose(conn, owner="alice", title="Tarea abierta uno")
     s.accept_ticket(conn, "owner", t1["id"])
@@ -378,7 +396,7 @@ def test_kanban_backward_transitions(conn):
     t = _propose(conn, owner="alice", verification_level="peer")
     s.accept_ticket(conn, "owner", t["id"])
     s.start_ticket(conn, "alice", t["id"])
-    b = s.backlog_ticket(conn, "alice", t["id"])
+    b = s.backlog_ticket(conn, "alice", t["id"], "devuelta a la cola sin empezar")  # #482: con nota
     assert b["status"] == "accepted"
     s.start_ticket(conn, "alice", t["id"])
     s.complete_ticket(conn, "alice", t["id"], "file_path", "x.py")
@@ -418,13 +436,14 @@ def test_board_views_are_distinct(conn):
     p = s.create_project(conn, "owner", "Vistas")
     today = date.today().isoformat()
     next_month = (date.today() + timedelta(days=20)).isoformat()
-    # v3.1: ya no existe 'sin fecha' (ancla automática al próximo laborable 14:00, que cae en
-    # la semana). El backlog lejano se programa a 20 días: solo en 'future' y 'all'.
+    # #364: sin ancla automática; lo que nace sin fecha va a «por ubicar» de su dueño.
+    # El backlog lejano se programa a 20 días: solo en 'future' y 'all'.
     backlog = _propose(conn, owner="alice", project_id=p["id"], title="backlog lejano",
                        scheduled_at=f"{next_month}T14:00")
     s.accept_ticket(conn, "owner", backlog["id"])
     auto = _propose(conn, owner="alice", project_id=p["id"], title="nace sin hora")
-    assert auto["scheduled_at"] and auto["scheduled_at"][11:16] == "14:00"
+    assert auto["scheduled_at"] is None
+    assert auto["id"] in {t["id"] for t in s.board(conn, project_id=p["id"], view="today")["laterals"]["por_ubicar"]}
     # con due hoy: en today y week
     hoy = _propose(conn, owner="alice", project_id=p["id"], title="vence hoy", due_at=today)
     s.accept_ticket(conn, "owner", hoy["id"])
@@ -580,15 +599,36 @@ def test_next_due_override_weekend_snaps_to_monday(conn):
     assert fri["next_due_override"] == "2026-09-11"
 
 
+def test_next_due_override_respeta_la_semanal_anclada_al_sabado(conn):
+    """#1069 (Eco, 7-nov): «Entreno sábado» (weekday 5) pidió un sábado y FarOS lo pasó al lunes. Una
+    semanal anclada a ese día lo conserva; otro día de fin de semana sigue saltando al lunes."""
+    t = _propose(conn, owner="carol", cadence_days=7)
+    s.accept_ticket(conn, "owner", t["id"])
+    s.update_ticket(conn, "carol", t["id"], weekday=5)
+    sat = s.update_ticket(conn, "carol", t["id"], next_due_override="2026-09-12")  # sábado
+    assert sat["next_due_override"] == "2026-09-12"
+    sun = s.update_ticket(conn, "carol", t["id"], next_due_override="2026-09-13")  # domingo
+    assert sun["next_due_override"] == "2026-09-14"
+    # el día y la fecha en la misma petición también valen (weekday llega como texto)
+    t2 = _propose(conn, owner="carol", cadence_days=7)
+    s.accept_ticket(conn, "owner", t2["id"])
+    r = s.update_ticket(conn, "carol", t2["id"], weekday="6", next_due_override="2026-09-13")  # domingo
+    assert r["next_due_override"] == "2026-09-13"
+
+
 def test_update_ticket_clears_temporal_with_none(conn):
     """3a: null explícito borra scheduled_at / next_due_override (lo que manda el
     MCP con clear=[...]); el motor no lo rechaza."""
     t = _propose(conn, owner="alice", cadence_days=7, scheduled_at="2026-09-07T14:00")
     s.accept_ticket(conn, "owner", t["id"])
-    s.update_ticket(conn, "alice", t["id"], next_due_override="2026-09-30")
+    # #392: el override va LEJOS de hoy. Con una fecha fija, el día en que coincidía con
+    # el next_due natural (el 30-sep) el test fallaba sin que nada estuviera roto.
+    from datetime import date, timedelta
+    lejos = s.update_ticket(conn, "alice", t["id"],
+                            next_due_override=(date.today() + timedelta(days=40)).isoformat())["next_due_override"]
     u = s.update_ticket(conn, "alice", t["id"], scheduled_at=None, next_due_override=None)
     assert u["scheduled_at"] is None and u["next_due_override"] is None
-    assert u["next_due"] != "2026-09-30"
+    assert u["next_due"] != lejos
 
 
 def test_mcp_update_ticket_clear_sends_nulls(monkeypatch):
@@ -603,6 +643,45 @@ def test_mcp_update_ticket_clear_sends_nulls(monkeypatch):
     sent.clear()
     r = m.update_ticket("carol", 7, clear=["title"])
     assert r["error"] and not sent
+
+
+def test_mcp_update_job_fields_are_real_parameters(monkeypatch):
+    """#401: **fields salía en el esquema MCP como UN parámetro «fields» y el daemon
+    lo rechazaba. Se prueba a través de FastMCP (como un cliente real), no llamando
+    a la función de Python, que sí aceptaba **kwargs."""
+    import asyncio
+    from faros import jobs
+    from faros import mcp_server as m
+    sent = {}
+    monkeypatch.setattr(m, "_call", lambda method, path, **kw: sent.update(method=method, path=path, **kw) or {"ok": 1})
+    tool = [t for t in asyncio.run(m.mcp.list_tools()) if t.name == "update_job"][0]
+    props = tool.inputSchema["properties"]
+    assert "fields" not in props and tool.inputSchema["required"] == ["agent", "job_id"]
+    assert jobs.EDITABLE <= set(props)  # todo lo editable se puede mandar por MCP
+    asyncio.run(m.mcp.call_tool("update_job", {"agent": "carol", "job_id": 13, "prompt": "nuevo", "enabled": False}))
+    assert sent["method"] == "PATCH" and sent["path"] == "/api/jobs/13"
+    assert sent["json"] == {"agent": "carol", "prompt": "nuevo", "enabled": False}  # el False viaja
+    sent.clear()
+    # #339: un campo no editable no está en el esquema y FastMCP lo RECHAZA nombrándolo (antes lo tiraba en
+    # silencio y la tool contestaba «sin ningún campo editable»). En ningún caso sale un PATCH.
+    with pytest.raises(Exception) as e:
+        asyncio.run(m.mcp.call_tool("update_job", {"agent": "carol", "job_id": 13, "billing_mode": "api"}))
+    assert not sent and "billing_mode" in str(e.value)
+    # sin ningún campo editable sigue sin salir un PATCH vacío con 200
+    r = asyncio.run(m.mcp.call_tool("update_job", {"agent": "carol", "job_id": 13}))
+    assert not sent and "sin ningún campo editable" in str(r)
+
+
+def test_ninguna_herramienta_mcp_declara_kwargs():
+    """#401: FastMCP publica **kwargs como UN parámetro con ese nombre, y la herramienta
+    deja de servir sin que nada falle. Ninguna herramienta lo puede volver a usar."""
+    import asyncio
+    import inspect
+    from faros import mcp_server as m
+    con_kwargs = [t.name for t in asyncio.run(m.mcp.list_tools())
+                  if any(p.kind is p.VAR_KEYWORD
+                         for p in inspect.signature(getattr(m, t.name)).parameters.values())]
+    assert con_kwargs == []
 
 
 def test_evidence_is_editable_after_stamp(conn):
@@ -628,7 +707,9 @@ def test_board_recurrente_with_scheduled_at_uses_next_due(conn):
     from datetime import date, timedelta
     from faros import agenda as cal
     today = date.today()
-    far = (today + timedelta(days=20)).isoformat()
+    # #376: la fecha del dueño ancla el día de la semana; a 21 días cae en el de hoy, así
+    # que next_due sigue siendo hoy y el test prueba lo mismo que antes (tablero = agenda).
+    far = (today + timedelta(days=21)).isoformat()
     t = _propose(conn, owner="carol", cadence_days=7, scheduled_at=f"{far}T14:00")
     s.accept_ticket(conn, "owner", t["id"])  # sin last_done → next_due = hoy
     ids = lambda v: {x["id"] for col in s.board(conn, view=v)["columns"].values() for x in col}

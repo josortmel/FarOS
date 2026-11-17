@@ -19,7 +19,7 @@
 param(
     [int]$Port = 8756,
     [string]$Exe = "",
-    [string]$TaskName = "AgenticOS-daemon",
+    [string]$TaskName = "FarOS-daemon",
     [string]$DataHome = "",
     [switch]$Start
 )
@@ -69,8 +69,17 @@ if ($existing) {
 }
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
     -Settings $Settings -Principal $Principal `
-    -Description "AgenticOS daemon (API 127.0.0.1:$Port + scheduler). Arranca al iniciar sesión; vigilante cada 5 min." | Out-Null
+    -Description "FarOS daemon (API 127.0.0.1:$Port + scheduler). Arranca al iniciar sesión; vigilante cada 5 min." | Out-Null
 
+# #288: la tarea se llamaba AgenticOS-daemon. Al registrar la nueva con su nombre por
+# defecto se quita la vieja: dos tareas lanzando daemons se pelearian por el puerto.
+# Con un nombre de prueba (-TaskName) no se toca la real.
+if ($TaskName -eq "FarOS-daemon" -and (Get-ScheduledTask -TaskName "AgenticOS-daemon" -ErrorAction SilentlyContinue)) {
+    # Sin Stop: el daemon que ya corre (el que usa la app ahora mismo) sigue vivo; dar de
+    # baja la tarea no mata su proceso. El vigilante nuevo lo cuida desde aqui.
+    Unregister-ScheduledTask -TaskName "AgenticOS-daemon" -Confirm:$false
+    Write-Host "Tarea vieja 'AgenticOS-daemon' eliminada (#288)."
+}
 Write-Host "Tarea '$TaskName' registrada — modo $modo (ONLOGON + vigilante 5 min, oculta, sin límite de tiempo)."
 if ($Start) {
     Start-ScheduledTask -TaskName $TaskName

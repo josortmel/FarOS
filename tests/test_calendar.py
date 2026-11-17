@@ -127,3 +127,19 @@ def test_closed_ticket_shows_on_closing_day_only(conn):
     assert mine[0]["start"] == "09:00" and mine[0]["closed_at"] == "2026-09-03T10:15:00"
     assert cal.occurrences(conn, "2026-09-04", "2026-09-30")["items"] == [
         i for i in cal.occurrences(conn, "2026-09-04", "2026-09-30")["items"] if i["ticket_id"] != t["id"]]
+
+
+def test_diaria_solo_de_lunes_a_viernes(conn):
+    """Pepe, 6-nov: las diarias salen entre semana. El viernes 6-nov-2026 se hizo:
+    la próxima es el lunes 9 y el calendario no enseña ni sábado ni domingo."""
+    t = _recurrente(conn, "2026-11-06T12:00:00", 1, preferred_time="12:00", duration_min=30)
+    assert s.next_due_date(dict(s._get(conn, t["id"]))) == "2026-11-09"
+    items = cal.occurrences(conn, "2026-11-06", "2026-11-17")["items"]
+    assert _dates(items, t["id"]) == ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12",
+                                      "2026-11-13", "2026-11-16", "2026-11-17"]
+
+
+def test_semanal_de_sabado_sigue_saliendo_en_sabado(conn):
+    """El salto del fin de semana es solo para las diarias: el entreno del sábado se queda."""
+    t = _recurrente(conn, "2026-10-31T12:00:00", 7, preferred_time="12:00", duration_min=40)
+    assert s.next_due_date(dict(s._get(conn, t["id"]))) == "2026-11-07"

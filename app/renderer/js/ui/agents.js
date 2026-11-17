@@ -9,6 +9,11 @@
    ============================================================ */
 
 import { renderMcpSettings } from './mcp_settings.js';
+import { renderRoster } from './roster_settings.js';
+import { renderCredentials } from './credentials_settings.js';
+import { renderProofSettings } from './proof_settings.js';   // #601
+import { renderQuietSetting, renderReadRootsSetting } from './verifier_settings.js';   // #695
+import { renderTimbreSetting } from './timbre_settings.js';   // #1217
 /* #262: la fecha larga salia con 'es-ES' clavado en la llamada */
 import { fechaDiaMes, t as tr } from '../i18n.js';
 import { renderCalendar } from './calendar.js';
@@ -24,6 +29,7 @@ function agStatus(it) {
   if (it.kind === 'run') {
     if (it.status === 'running') return 'running';
     if (it.verdict === 'pass') return 'pasa';
+    if (it.verdict === 'uncertain') return 'incierto';  // #470: no es un fallo
     if (it.verdict === 'fail' || ['error', 'timeout', 'cancelled'].includes(it.status)) return 'falla';
     return 'sinveredicto';
   }
@@ -80,9 +86,29 @@ const RUN_GLYPH = { ok: '✓', error: '✕', timeout: '✕', running: '●', can
 function runGlyph(r) {
   if (!r) return { g: '—', cls: 'none' };
   if (r.status === 'running') return { g: '●', cls: 'running' };
-  if (r.verdict) return { g: r.verdict === 'pass' ? '✓' : '✕', cls: r.verdict };
+  if (r.verdict) return { g: VERDICT_GLYPH[r.verdict] ?? '✕', cls: r.verdict };
   return { g: RUN_GLYPH[r.status] ?? '·', cls: r.status === 'ok' ? 'pending' : r.status };
 }
+
+/* #470: tres veredictos. «incierto» (uncertain, #451) no es un fallo: el juez no pudo
+   comprobarlo con la evidencia y queda para que una persona lo resuelva con pasa/falla. */
+const VERDICT_GLYPH = { pass: '✓', fail: '✕', uncertain: '?' };
+const VERDICT_TXT = { pass: 'pasa', fail: 'falla', uncertain: 'incierto' };
+const verdictTxt = (v) => VERDICT_TXT[v] ?? v;
+
+/* #667: cómo acabó el último run, dicho junto al nombre del job (no solo con color). El caso
+   peligroso es «terminó pero no pasó su verificación»: antes se leía «ok · falla» y parecía sano.
+   Un run sano o sin runs no lleva aviso. */
+function runHealth(r) {
+  if (!r || r.status === 'running') return null;
+  if (['error', 'timeout'].includes(r.status)) return { cls: 'bad', txt: `✕ ${tr('no terminó')}` };
+  if (r.verdict === 'fail') return { cls: 'bad', txt: `✕ ${tr('no pasó su verificación')}` };
+  if (r.verdict === 'uncertain') return { cls: 'unsure', txt: `? ${tr('por resolver')}` };
+  if (r.status === 'cancelled') return { cls: 'mute', txt: `⊘ ${tr('cancelado')}` };
+  return null;
+}
+/* La celda la encabeza el veredicto cuando lo hay: «run 17 · falla», no «run 17 · ok · falla». */
+const runCellTxt = (r) => `run ${r.id} · ${esc(r.verdict ? tr(verdictTxt(r.verdict)) : r.status)}`;
 
 function costTxt(r) {
   if (!r || r.cost_usd == null) return '';
@@ -91,9 +117,25 @@ function costTxt(r) {
 
 /* ---------------- barra: pestañas + pulso + nuevo job ---------------- */
 
+/* #810: la barra se rehace entera con cada cambio de estado; si el foco estaba en uno de sus botones,
+   se perdía (quien usa teclado volvía al principio de la página y «Nuevo job» no recuperaba el foco al
+   cerrar su ventana). Se apunta cuál era por su id o sus data-* y se le devuelve al nuevo. */
+function focusKey(el) {
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  for (const k of ['agMode', 'ag', 'agCal']) {
+    if (el.dataset?.[k] != null) return `[data-${k.replace(/[A-Z]/g, c => '-' + c.toLowerCase())}="${CSS.escape(el.dataset[k])}"]`;
+  }
+  return null;
+}
+
 export function renderAgentsBar(state) {
   const bar = document.getElementById('ag-bar');
+  const focused = bar.contains(document.activeElement) ? focusKey(document.activeElement) : null;
   bar.innerHTML = '';
+  try { buildAgentsBar(bar, state); } finally { if (focused) bar.querySelector(focused)?.focus(); }
+}
+
+function buildAgentsBar(bar, state) {
 
   /* T5.2: el mismo conmutador que el Tablero — Kanban (las pestañas de siempre) o Calendario */
   const isCal = state.agMode === 'calendar';
@@ -150,9 +192,11 @@ export function renderAgentsBar(state) {
   const active = jobs.filter(j => j.status === 'active').length;
   const next = jobs.filter(j => j.status === 'active' && j.next_fire).sort((a, b) => a.next_fire.localeCompare(b.next_fire))[0];
   const failed = (state.agResults ?? []).filter(r => r.last_run?.verdict === 'fail' || ['error', 'timeout'].includes(r.last_run?.status)).length;
+  const unsure = (state.agResults ?? []).filter(r => r.last_run?.verdict === 'uncertain').length;  // #470
   const bits = [];
   if (running) bits.push(`<span class="boardpulse__live">● ${running} en ejecución</span>`);
   if (failed) bits.push(`<span class="boardpulse__bad">✕ ${failed} con fallo</span>`);
+  if (unsure) bits.push(`<span class="boardpulse__unsure">? ${unsure} por resolver</span>`);
   bits.push(`<span>${active} activo${active === 1 ? '' : 's'}</span>`);
   /* #262: misma razon que en util.js — la etiqueta se traduce aparte del dato */
   if (next) bits.push(`<span>${esc(tr('próxima'))} ${esc(fmtRelative(next.next_fire))} · ${esc(next.name)}</span>`);
@@ -196,8 +240,26 @@ export function renderAgentsBody(state) {
     case 'running':   return renderRunning(body, state);
     case 'results':   return renderResults(body, state);
     case 'jobs':      return renderJobs(body, state);
-    case 'mcp':       return renderMcpSettings(body, state); // T5.9
+    case 'mcp':       return renderSettings(body, state); // T5.9 + #252
   }
+}
+
+/* Ajustes: la cabecera una vez y debajo cada ajuste en su sección. #277: la pantalla
+   dice su nombre — el que pulsa «Ajustes» tiene que leer «Ajustes» al llegar. */
+function renderSettings(body, state) {
+  const head = document.createElement('div');
+  head.className = 'pane__head';
+  head.innerHTML = `
+    <span class="pane__title"><span class="settings__gear" aria-hidden="true">⚙</span> Ajustes</span>
+    <span class="pane__hint">Agentes de la casa, claves y servidores MCP.</span>`;
+  body.appendChild(head);
+  renderRoster(body, state);
+  renderTimbreSetting(body, state);   // #1217
+  renderCredentials(body, state);   // #460
+  renderQuietSetting(body, state);   // #695
+  renderProofSettings(body, state);   // #601
+  renderReadRootsSetting(body, state);   // #695
+  renderMcpSettings(body, state);
 }
 
 /* Programados — agenda propia de los agentes, agrupada por día */
@@ -327,6 +389,7 @@ function renderResults(body, state) {
     if (!r) return 5;
     if (r.status === 'running') return 1;
     if (r.verdict === 'fail' || ['error', 'timeout'].includes(r.status)) return 0;
+    if (r.verdict === 'uncertain') return 0.5;  // #470: lo que espera a una persona, justo detrás de los fallos
     if (r.status === 'ok' && !r.verdict) return 2;
     return 3;
   };
@@ -353,7 +416,7 @@ function renderResults(body, state) {
     let verdict = '';
     if (r?.verdict) {
       const razon = mismo(r.verdict_reason, r.result_summary) ? '' : (r.verdict_reason ?? '');
-      verdict = `<div class="res__verdict res__verdict--${r.verdict}"><b>${esc(tr(r.verdict === 'pass' ? 'pasa' : 'falla'))}</b><span>${esc(razon)}</span></div>`;
+      verdict = `<div class="res__verdict res__verdict--${r.verdict}"><b>${esc(tr(verdictTxt(r.verdict)))}</b><span>${esc(razon)}</span></div>`;
     }
     else if (r?.status === 'ok') verdict = `<div class="res__verdict res__verdict--pending">sin veredicto todavía${job.verify_level === 'none' ? ' (este job no se verifica)' : ''}</div>`;
     row.innerHTML = `
@@ -367,14 +430,18 @@ function renderResults(body, state) {
       <div class="res__actions"></div>`;
     const acts = row.querySelector('.res__actions');
     if (r && r.status !== 'running') {
-      if (!r.verdict || r.verdict === 'fail') {
+      /* #470: los botones salen cuando el run no tiene veredicto o es «incierto», que es lo
+         único que el servidor deja sobrescribir (faros/jobs.py set_verdict). Antes salía
+         «Pasa» en un run que falló y «Falla…» en uno que pasó, y el servidor los rechazaba. */
+      const resolvible = !r.verdict || r.verdict === 'uncertain';
+      if (resolvible) {
         const ok = document.createElement('button');
         ok.className = 'btn btn--ghost btn--sm'; ok.textContent = 'Pasa';
         ok.title = tr('Veredicto manual: pasa');
         ok.addEventListener('click', (e) => { e.stopPropagation(); handlers.onVerdict(r, 'pass'); });
         acts.appendChild(ok);
       }
-      if (!r.verdict || r.verdict === 'pass') {
+      if (resolvible) {
         const ko = document.createElement('button');
         ko.className = 'btn btn--danger btn--sm'; ko.textContent = 'Falla…';
         ko.title = 'Veredicto manual: falla, con motivo';
@@ -418,6 +485,7 @@ function renderJobs(body, state) {
   for (const j of shown) {
     const r = j.last_run;
     const { g, cls } = runGlyph(r);
+    const health = runHealth(r);
     const row = document.createElement('article');
     row.className = `jobrow jobrow--${j.status}`;
     row.dataset.id = j.id;
@@ -426,11 +494,11 @@ function renderJobs(body, state) {
       : j.billing_mode === 'local' ? 'local · gratis' : `≈$${(j.total_equivalent_usd ?? 0).toFixed(2)} equiv. · suscripción`;
     row.innerHTML = `
       <div>
-        <div class="jobrow__name">${esc(j.name)} <span class="jobstate jobstate--${j.status}">${j.status === 'active' ? 'activo' : j.status === 'paused' ? 'pausado' : 'archivado'}</span></div>
+        <div class="jobrow__name">${esc(j.name)} <span class="jobstate jobstate--${j.status}">${j.status === 'active' ? 'activo' : j.status === 'paused' ? 'pausado' : 'archivado'}</span>${health ? ` <span class="jobhealth jobhealth--${health.cls}">${esc(health.txt)}</span>` : ''}</div>
         <div class="jobrow__sub">${esc(j.harness)} · ${esc(j.model)}${j.ticket_id ? ` · ${tr('brazo de')} #${j.ticket_id}` : ''}</div>
       </div>
-      <div class="jobrow__cell">${esc(fmtSchedule(j.schedule))}<small>${j.next_fire ? esc(tr('próxima')) + ' ' + esc(fmtRelative(j.next_fire)) + ' · ' + fmtWhen(j.next_fire) : j.status === 'active' ? esc(tr('sin próxima (manual)')) : '—'}</small></div>
-      <div class="jobrow__cell"><span class="res__glyph res__glyph--${cls}" style="font-size:1em">${g}</span> ${r ? `run ${r.id} · ${esc(r.status)}${r.verdict ? ' · ' + esc(tr(r.verdict === 'pass' ? 'pasa' : 'falla')) : ''}` : esc(tr('sin runs'))}<small>${r ? fmtWhen(r.finished_at ?? r.started_at) : ''}</small></div>
+      <div class="jobrow__cell">${esc(fmtSchedule(j.schedule))}<small>${j.not_firing ? `<span class="job-nofire">${esc(tr('no se dispara: su tarea está cerrada'))} (#${j.ticket_id})</span>` : j.next_fire ? esc(tr('próxima')) + ' ' + esc(fmtRelative(j.next_fire)) + ' · ' + fmtWhen(j.next_fire) : j.status === 'active' ? esc(tr('sin próxima (manual)')) : '—'}</small></div>
+      <div class="jobrow__cell"><span class="res__glyph res__glyph--${cls}" style="font-size:1em">${g}</span> ${r ? runCellTxt(r) : esc(tr('sin runs'))}<small>${r ? fmtWhen(r.finished_at ?? r.started_at) : ''}</small></div>
       <div class="jobrow__cell"><small>${esc(cost)}</small></div>
       <div class="jobrow__actions"></div>`;
     row.querySelector('.jobrow__name').addEventListener('click', () => handlers.onOpenJob(j.id));
@@ -477,6 +545,7 @@ export async function openJobPanel(job) {
       <span>harness <b>${esc(job.harness)}</b></span>
       <span>modelo <b>${esc(job.model)}</b></span>
       <span>programación <b>${esc(fmtSchedule(job.schedule))}</b></span>
+      ${job.not_firing ? `<span class="job-nofire">${esc(tr('no se dispara: la tarea de la que cuelga está cerrada. Desenlázalo (Editar…, sin tarea) o páusalo.'))} <b>#${job.ticket_id}</b></span>` : ''}
       ${job.next_fire ? `<span>${esc(tr('próxima'))} <b>${fmtWhen(job.next_fire)}</b> (${esc(fmtRelative(job.next_fire))})</span>` : ''}
       <span>facturación <b>${esc(job.billing_mode ?? '—')}</b>${job.billing_mode === 'api' && job.max_budget_usd != null ? ` · tope $${job.max_budget_usd}` : ''}</span>
       <span>coste <b>${job.billing_mode === 'api' ? '$' + (job.total_cost_usd ?? 0).toFixed(2) : '≈$' + (job.total_equivalent_usd ?? 0).toFixed(2) + ' equiv.'}</b></span>
@@ -555,7 +624,7 @@ export async function openJobPanel(job) {
         li.innerHTML = `
           <span>${g}</span>
           <span>${fmtWhen(r.started_at)}</span>
-          <span>run ${r.id} · ${esc(r.status)}${r.verdict ? ` · <span class="runs__verdict--${r.verdict}">${r.verdict === 'pass' ? 'pasa' : 'falla'}</span>${r.verdict_reason ? ' — ' + esc(r.verdict_reason) : ''}` : ''}</span>
+          <span>run ${r.id} · ${esc(r.status)}${r.verdict ? ` · <span class="runs__verdict--${r.verdict}">${esc(tr(verdictTxt(r.verdict)))}</span>${r.verdict_reason ? ' — ' + esc(r.verdict_reason) : ''}` : ''}</span>
           <span class="runs__cost">${costTxt(r)}</span>`;
         li.addEventListener('click', () => {
           list.querySelectorAll('li').forEach(x => x.classList.remove('is-open'));

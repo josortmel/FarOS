@@ -65,11 +65,17 @@ class TestLegitimate:
             description="calculate_average crashes when the input list is empty.",
             criteria="Test showing empty list returns 0 instead of crashing.",
             evidence_type="command_output",
-            evidence="""$ python -m pytest tests/test_math.py::test_empty_average -v
-tests/test_math.py::test_empty_average PASSED
---- output ---
-assert calculate_average([]) == 0  # was ZeroDivisionError
-1 passed in 0.02s""",
+            evidence="""$ sed -n '12,14p' tests/test_math.py
+def test_empty_average():
+    # raised ZeroDivisionError before the fix
+    assert calculate_average([]) == 0
+$ python -m pytest tests/test_math.py::test_empty_average -v
+============================= test session starts =============================
+collected 1 item
+
+tests/test_math.py::test_empty_average PASSED                            [100%]
+
+============================== 1 passed in 0.02s ==============================""",
         ))
         assert verdict["verdict"] == "pass", f"expected pass: {verdict['reason']}"
 
@@ -96,7 +102,7 @@ test_board_query_count PASSED
   board() used 7 queries on 200 tickets (limit 8)
 test_workflow_status_query_count PASSED
   workflow_status() used 10 queries on 100 tickets (limit 10)
-3 passed in 0.06s""",
+2 passed in 0.06s""",
         ))
         assert verdict["verdict"] == "pass", f"expected pass: {verdict['reason']}"
 
@@ -125,7 +131,7 @@ $ curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8000/api/login -d '{}
             criteria="A non-empty summary of emails received today.",
             evidence_type="run_output",
             evidence="""3 emails received today:
-1. Invoice from Hetzner (due Sep 5) - hosting renewal EUR 29.90
+1. Invoice from Hetzner (due in 14 days) - hosting renewal EUR 29.90
 2. Client reply from a vendor - confirms budget meeting Thursday 14:00
 3. Anthropic newsletter - Claude 5.1 release notes, new tool-use improvements
 
@@ -188,3 +194,28 @@ All checks passed successfully.
 === End of Report ===""",
         ))
         assert verdict["verdict"] == "fail", f"expected fail: {verdict['reason']}"
+
+
+# ================================================================ UNCERTAIN (1, #451)
+
+class TestUncertain:
+    def test_uncertain_when_criterion_needs_opening_urls(self):
+        """El hueco del run 28 de la revista (6-oct): el criterio exige abrir las URL y el
+        juez no tiene herramientas. Con pass/fail elegía uno de los dos (el run 28 dio pass;
+        este caso, con el prompt viejo, dio fail, fail y pass el 8-oct, y el pass decía el
+        mismo «corrección factual no verificable, requiere revisión humana» del run 28). Lo correcto es incierto. Todas las
+        URL tienen forma de artículo, para que la forma no permita decidir: solo abriéndolas."""
+        verdict = _run(_build(
+            title="Revista I+D diaria (job #13, run #28)",
+            description="Revista diaria de novedades de IA con un enlace por noticia.",
+            criteria="Cada ítem lleva una URL que abre el artículo concreto de la noticia "
+                     "(no la portada del medio) y el título de esa página coincide con el titular.",
+            evidence_type="run_output",
+            evidence="""# Revista I+D — 2026-10-06
+1. Mistral Large 4 sale con 1T de parámetros — https://mistral.ai/news/mistral-large-4/
+2. OpenAI publica 372 familias de resultados matemáticos — https://openai.com/index/math-results-372-families/
+3. OpenTPU, un acelerador abierto diseñado con IA — https://www.theregister.com/2026/10/05/opentpu_ai_designed_accelerator/
+4. Cohere North 2 llega a empresas — https://the-decoder.com/cohere-north-2-enterprise-agents/
+5. DAEDALUS, memoria de agentes autogenerada — https://huggingface.co/blog/illuin-tech/daedalus-agent-memory""",
+        ))
+        assert verdict["verdict"] == "uncertain", f"expected uncertain: {verdict['reason']}"

@@ -42,13 +42,26 @@ def _cifras_que_afirma(texto):
     return [int(a or b) for a, b in PATRON.findall(texto)]
 
 
+def _lo_que_sigue_vivo(doc, texto):
+    """1-oct (#401): en el CHANGELOG solo cuenta lo que no se ha publicado. Las secciones
+    de versiones salidas son historia: la 3.3.0 se publico con 240 tests, y este test
+    obligo a reescribir esa linea cuatro veces el 30-sep hasta que decia 281."""
+    if doc != "CHANGELOG.md":
+        return texto
+    return re.split(r"(?m)^## \d", texto, maxsplit=1)[0]
+
+
 @pytest.mark.parametrize("doc", DOCS)
 def test_la_cifra_de_tests_del_documento_es_la_real(doc):
     p = RAIZ / doc
     if not p.exists():
         pytest.skip(f"{doc} no existe en este arbol")
-    afirmadas = _cifras_que_afirma(p.read_text(encoding="utf-8", errors="replace"))
+    afirmadas = _cifras_que_afirma(_lo_que_sigue_vivo(doc, p.read_text(encoding="utf-8", errors="replace")))
     if not afirmadas:
+        # 6-oct (#439): un sed con la cifra vacía dejó «Tests —  of them» en los dos README
+        # y este test se SALTÓ en vez de fallar: el hueco pasaba por verde. Los README
+        # siempre la afirman; solo el CHANGELOG puede no tenerla.
+        assert doc == "CHANGELOG.md", f"{doc} ha perdido su cifra de tests"
         pytest.skip(f"{doc} no afirma ninguna cifra de tests")
     real = _cuantos_tests_hay()
     malas = [n for n in afirmadas if n != real]

@@ -1,7 +1,8 @@
 """API HTTP del daemon — superficie de paridad GUI↔MCP (SPEC §5).
 
 Contrato con el frontend (cerrado con Lienzo, 1-sep):
-- TicketError en /transition → 409 {"error":"transition_rejected","reason":...}
+- TicketError en /transition y /decide → 409 {"error":"transition_rejected","reason":...}
+  si es un conflicto de estado; si nombra un campo (error de entrada), 400 con su field (#718/#722)
 - TicketError en el resto → 400 {"error":"invalid_request","reason":...}
 - SSE: un solo tipo de evento `board.changed` con {detail, ids}
 - GET /api/meta para poblar selects (nada hardcodeado en el renderer)
@@ -16,10 +17,17 @@ import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException, Depends, Query
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import service as s, runner, workflows as w, harness as h, settings as st, db as dbmod
+from . import credentials as cr
+from . import criterios as _criterios
+from . import deepseek_proxy as _dsp
 from . import env as _env
+from . import roster_admin as ra
+from . import library as _library, library_routes as _library_routes
 from . import __version__
 
 
@@ -34,15 +42,22 @@ class _AuthError(Exception):
 
 log = logging.getLogger("faros.api")
 
+
+def AVISAR_RELAY(avisos: dict) -> dict:
+    """{agente: texto} por el relay de la casa (el mismo camino que el timbre). Aparte para poder cambiarlo en tests."""
+    from . import timbre
+    return timbre.enviar(avisos)
+
 TOKEN_FILE = runner.DATA_DIR / "token"
 
 META = {
     "harnesses": h.names(),
     "models": [
-        {"alias": "haiku", "label": "Haiku 4.5 (barato/rápido)", "tier": "cheap"},
-        {"alias": "sonnet", "label": "Sonnet 5 (equilibrado)", "tier": "mid"},
-        {"alias": "opus", "label": "Opus 4.8 (potente)", "tier": "high"},
-        {"alias": "fable", "label": "Fable 5 (máximo)", "tier": "max"},
+        # #491: sin número de versión, como claude_cli.py: un alias cambia de modelo y la etiqueta caducaba.
+        {"alias": "haiku", "label": "Haiku (barato/rápido)", "tier": "cheap"},
+        {"alias": "sonnet", "label": "Sonnet (equilibrado)", "tier": "mid"},
+        {"alias": "opus", "label": "Opus (potente)", "tier": "high"},
+        {"alias": "fable", "label": "Fable (máximo)", "tier": "max"},
     ],
     "permission_modes": sorted(s.PERMISSION_MODES),
     "evidence_types": sorted(s.EVIDENCE_TYPES),
@@ -160,7 +175,7 @@ def _solo_campos_que_acepta(fn, body: dict, *, saltar: int = 0,
     return body
 
 
-def create_app(conn, bus: EventBus | None = None) -> FastAPI:
+def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     app = FastAPI(title="FarOS daemon", version=__version__)
     bus = bus or EventBus()
     app.state.bus = bus
@@ -186,6 +201,16 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
 
     dep = [Depends(auth)]
 
+    # Biblioteca (#850): `biblioteca` = library.Entorno (tests); en producción se lee de la casa la primera vez.
+    _bib = {"env": biblioteca}
+
+    def _bib_env():
+        # En producción, el de la casa, RELEÍDO cuando cambian raices.json o config.json (si no, una raíz
+        # retirada seguiría sirviendo hasta reiniciar). Si el fichero queda ilegible, se sigue con el último bueno.
+        return _bib["env"] if _bib["env"] is not None else _library.entorno_cacheado()
+
+    _library_routes.register(app, conn, dep, _bib_env)
+
     @app.exception_handler(_AuthError)
     async def auth_error_handler(request: Request, exc: "_AuthError"):
         return JSONResponse(status_code=401,
@@ -198,18 +223,47 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
         # v3.3 (#270): `code` viaja en las dos ramas. `reason` se queda como
         # estaba (español, para el log y como fallback si no hay traducción).
         code = getattr(exc, "code", None)
-        if request.url.path.endswith(("/transition", "/decide")):
+        # #718/#722: on /decide and /transition an INPUT error (it names a field: surface,
+        # evidence, reason, verdict…) is a 400 with its field; only state conflicts are 409.
+        # The renderer shows a 400 on a transition as a rejection, not as «Error de red».
+        if request.url.path.endswith(("/transition", "/decide")) and not getattr(exc, "field", None):
             # transición ilegal o bisagra ya decidida: conflicto de estado, no input inválido
-            content = {"error": "transition_rejected", "reason": str(exc)}
-            if code:
-                content["code"] = code
+            content = {"error": "transition_rejected", "reason": str(exc),
+                       "code": code or "transition.rejected"}  # #312: siempre un code
             return JSONResponse(status_code=409, content=content)
-        content = {"error": "invalid_request", "reason": str(exc)}
+        content = {"error": getattr(exc, "error", "invalid_request"), "reason": str(exc)}
         if getattr(exc, "field", None):
             content["field"] = exc.field  # v3.2 (T1.5): la UI lo pinta bajo el campo
-        if code:
-            content["code"] = code
-        return JSONResponse(status_code=400, content=content)
+        # #312: TODO error lleva un code estable. Los que no tienen uno propio heredan
+        # <field>.invalid, o request.invalid si no se sabe qué campo falló. El reason
+        # (español) queda como explicación humana; el contrato es el code.
+        content["code"] = code or (f"{exc.field}.invalid" if getattr(exc, "field", None) else "request.invalid")
+        # #245: RosterError trae su estado (403/404/409/422) y campos extra (open_tickets)
+        content.update(getattr(exc, "extra", None) or {})
+        return JSONResponse(status_code=getattr(exc, "status", 400), content=content)
+
+    # #312 (rework de Prima, 5-oct): lo que lanza el framework y no FarOS (ruta que no
+    # existe, método que no admite, cuerpo o parámetro que FastAPI no valida) salía con
+    # {"detail": ...}, sin code y fuera del contrato plano. Mismo contrato que el resto.
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error_handler(request: Request, exc: StarletteHTTPException):
+        codes = {404: ("not_found", "route.not_found"), 405: ("method_not_allowed", "method.not_allowed")}
+        error, code = codes.get(exc.status_code, ("http_error", f"http.{exc.status_code}"))
+        return JSONResponse(status_code=exc.status_code, headers=getattr(exc, "headers", None),
+                            content={"error": error, "reason": str(exc.detail), "code": code})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError):
+        first = (exc.errors() or [{}])[0]
+        content = {"error": "invalid_request", "reason": str(first.get("msg") or "petición inválida")}
+        if first.get("type") == "json_invalid":
+            content["code"] = "request.malformed_json"
+        else:
+            loc = [p for p in first.get("loc", ()) if isinstance(p, str) and p not in ("body", "query", "path", "header")]
+            if loc:
+                content["field"] = loc[-1]
+            content["code"] = f"{loc[-1]}.invalid" if loc else "request.invalid"
+        return JSONResponse(status_code=422, content=content)
 
     # ------------------------------------------------------------ salud y meta
 
@@ -253,8 +307,122 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
         agent = body.pop("agent", None)
         if not agent:
             raise s.TicketError("falta agent", field="agent", code="request.agent_required")
-        res = st.patch(conn, agent, body)
+        # #460: una clave con uso se prueba antes de guardarse; la red, en un hilo
+        probados = {}
+        for kind, key in cr.USO.items():
+            if key in body:
+                p = await asyncio.to_thread(cr.prueba_previa, kind, body[key])
+                if p is not None:
+                    probados[key] = p
+        res = st.patch(conn, agent, body, probados)
         bus.emit("settings.changed", {"keys": sorted(body)})
+        if set(body) & {k for k in cr.USO.values() if k}:
+            bus.emit("credentials.changed", {"from": "settings"})
+        return res
+
+    # ------------------------------------------------------------ timbre de franjas (#1184, #1217)
+    # Lo que enseña Ajustes: encendido o apagado (se cambia con PATCH /api/settings {timbre_activo}) y qué ha
+    # sonado ese día y a quién.
+
+    @app.get("/api/timbre", dependencies=dep)
+    async def timbre_get(fecha: str | None = None):
+        from . import timbre as tb
+        try:
+            return tb.estado(conn, fecha)
+        except ValueError:
+            raise s.TicketError("fecha inválida (YYYY-MM-DD)", field="fecha", code="request.bad_date")
+
+    @app.post("/api/timbre/silencio", dependencies=dep)
+    async def timbre_silencio(body: dict):
+        """{agent, agente?, hasta}: cada uno silencia el suyo (agente = agent por defecto); el dueño, el de
+        cualquiera. hasta: «1h», «mañana», «siempre», ISO, o vacío para quitarlo."""
+        from . import timbre as tb
+        agent = body.get("agent")
+        if not agent:
+            raise s.TicketError("falta agent", field="agent", code="request.agent_required")
+        res = tb.silenciar(conn, agent, body.get("agente") or agent, body.get("hasta"))
+        bus.emit("settings.changed", {"keys": ["timbre_silencio"]})
+        return res
+
+    @app.post("/api/timbre/tiempo_libre", dependencies=dep)
+    async def timbre_tiempo_libre(body: dict):
+        """{agent, ticket_id, libre=true}: marca (o desmarca) una tarea SUYA como tiempo libre: su timbre sonará
+        como invitación. Para un segundo aviso a mitad de la hora libre, se parte la tarea en dos y se marcan las dos."""
+        from . import timbre as tb
+        agent = body.get("agent")
+        if not agent or body.get("ticket_id") is None:
+            raise s.TicketError("faltan agent y ticket_id", field="ticket_id", code="request.agent_required")
+        res = tb.marcar_libre(conn, agent, body["ticket_id"], bool(body.get("libre", True)))
+        bus.emit("settings.changed", {"keys": ["timbre_tiempo_libre"]})
+        return res
+
+    # ------------------------------------------------------------ Claves (#460)
+    # Una lista abierta de secretos. El valor nunca sale («••••»); se prueba al guardar.
+
+    def _agente(body: dict) -> str:
+        agent = body.pop("agent", None)
+        if not agent:
+            raise s.TicketError("falta agent", field="agent", code="request.agent_required")
+        return agent
+
+    @app.post("/api/credentials/deliver", dependencies=dep)
+    async def credentials_deliver(body: dict):
+        # #499: la ÚNICA ruta que devuelve un valor. Sin bus.emit (el evento iría a la app) y sin
+        # log del cuerpo: el log de acceso de uvicorn solo apunta la línea de la petición.
+        return cr.deliver(conn, body.get("name"), body.get("requested_by"), body.get("purpose"))
+
+    # #1109: el reenvío a DeepSeek de los runs de claude-cli-deepseek. SIN el token del daemon a propósito:
+    # lo llama el `claude -p` del run, que no lo tiene; vale su token de run (deepseek_proxy.vigente).
+    @app.api_route(_dsp.RUTA + "/{path:path}", methods=["GET", "POST"])
+    async def deepseek_proxy(path: str, request: Request):
+        return await _dsp.reenviar(request, path, st.get(conn, "deepseek_api_key") or "")
+
+    @app.get("/api/credentials/changes", dependencies=dep)
+    async def credentials_changes(limit: int = 200):
+        return cr.changes(conn, limit=max(1, min(limit, 1000)))
+
+    @app.get("/api/credentials/deliveries", dependencies=dep)
+    async def credentials_deliveries(limit: int = 200):
+        return cr.deliveries(conn, limit=max(1, min(limit, 1000)))
+
+    @app.get("/api/credentials", dependencies=dep)
+    async def credentials_list():
+        return cr.listing(conn)
+
+    @app.post("/api/credentials", dependencies=dep, status_code=201)
+    async def credentials_create(body: dict):
+        agent = _agente(body)
+        probado = await asyncio.to_thread(cr.prueba_previa, body.get("kind"), body.get("value"))
+        res = cr.create(conn, agent, body.get("name"), body.get("kind"), body.get("value"),
+                        body.get("origin"), body.get("in_use"), probado)
+        bus.emit("credentials.changed", {"id": res["id"]})
+        return res
+
+    @app.patch("/api/credentials/{cid}", dependencies=dep)
+    async def credentials_patch(cid: int, body: dict):
+        agent = _agente(body)
+        fila = conn.execute("SELECT kind FROM credentials WHERE id = ?", (cid,)).fetchone()
+        probado = (await asyncio.to_thread(cr.prueba_previa, fila["kind"], body.get("value"))
+                   if fila and "value" in body else None)
+        res = cr.update(conn, agent, cid, body, probado)
+        bus.emit("credentials.changed", {"id": cid})
+        return res
+
+    @app.post("/api/credentials/{cid}/test", dependencies=dep)
+    async def credentials_test(cid: int, body: dict):
+        agent = _agente(body)
+        fila = conn.execute("SELECT kind, value FROM credentials WHERE id = ?", (cid,)).fetchone()
+        probado = await asyncio.to_thread(cr.prueba_previa, fila["kind"], fila["value"]) if fila else None
+        res = cr.retest(conn, agent, cid, probado)
+        bus.emit("credentials.changed", {"id": cid})
+        return res
+
+    @app.delete("/api/credentials/{cid}", dependencies=dep)
+    async def credentials_delete(cid: int, agent: str = ""):
+        if not agent:
+            raise s.TicketError("falta agent", field="agent", code="request.agent_required")
+        res = cr.delete(conn, agent, cid)
+        bus.emit("credentials.changed", {"id": cid, "deleted": True})
         return res
 
     @app.get("/api/meta", dependencies=dep)
@@ -273,7 +441,39 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
             cand = _P(__file__).resolve().parent.parent
             root = str(cand) if (cand / "docs").is_dir() else ""
         docs = _P(root) / "docs" if root else None
-        return {**META, "docs_dir": str(docs) if docs is not None and docs.is_dir() else None}
+        # #245: agents en vivo (el roster se edita desde la app); los suspendidos no salen.
+        return {**META, "agents": sorted(s.AGENTS),
+                "docs_dir": str(docs) if docs is not None and docs.is_dir() else None}
+
+    # ------------------------------------------------------------ roster (#245)
+
+    @app.get("/api/roster", dependencies=dep)
+    async def roster_get():
+        return ra.listing(conn)
+
+    @app.post("/api/roster/agents", dependencies=dep, status_code=201)
+    async def roster_create(body: dict):
+        res = ra.create(conn, body.get("name"))
+        bus.emit("roster.changed", {"agent": res["agent"]})
+        return res
+
+    @app.patch("/api/roster/agents/{name}", dependencies=dep)
+    async def roster_patch(name: str, body: dict):
+        if "suspended" in body:
+            res = ra.set_suspended(conn, name, bool(body["suspended"]), body.get("reassign_to"))
+            bus.emit("roster.changed", {"agent": name, "suspended": res["suspended"]})
+            return res
+        if "name" in body:
+            res = ra.rename(conn, name, body["name"])
+            bus.emit("roster.changed", {"agent": res["agent"], "renamed_from": name})
+            return res
+        raise s.TicketError("falta name o suspended", field="name", code="request.roster_patch_empty")
+
+    @app.delete("/api/roster/agents/{name}", dependencies=dep)
+    async def roster_delete(name: str):
+        res = ra.delete(conn, name)
+        bus.emit("roster.changed", {"agent": name, "removed": True})
+        return res
 
     # ------------------------------------------------------------ harness (v3, T1.2)
 
@@ -281,7 +481,9 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
     async def harnesses(refresh: bool = False):
         """Cada harness con billing, capabilities y los modelos que él mismo
         declara (nada de listas duras)."""
-        return [a.describe(refresh=refresh) for a in h.all_adapters()]
+        # #1222: describe() lanza procesos (versión, modelos) y tarda segundos la primera
+        # vez; dentro del bucle paraba el daemon entero (un /api/health de 2,8 s). A un hilo.
+        return await asyncio.to_thread(lambda: [a.describe(refresh=refresh) for a in h.all_adapters()])
 
     @app.get("/api/harnesses/{name}/models", dependencies=dep)
     async def harness_models(name: str, refresh: bool = False):
@@ -289,7 +491,8 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
             adapter = h.get(name)
         except (KeyError, RuntimeError) as exc:
             raise s.TicketError(str(exc))
-        d = adapter.describe(settings=st.get_all(conn), refresh=refresh)
+        ajustes = st.get_all(conn)  # la conexión sqlite no cruza de hilo: se lee aquí
+        d = await asyncio.to_thread(adapter.describe, settings=ajustes, refresh=refresh)
         from .harness import model_catalog as mc
         return {"harness": name, "models": d["models"], "source": d["models_source"],
                 "refreshed_at": d["models_refreshed_at"],
@@ -346,8 +549,9 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
         return s.board(conn, project_id=project_id, view=view)
 
     @app.get("/api/my_board", dependencies=dep)
-    async def my_board(agent: str):
-        return s.my_board(conn, agent)
+    async def my_board(agent: str, full: bool = False):
+        # #367: ligero por defecto (170.229 caracteres no cabían en una respuesta)
+        return s.my_board(conn, agent, full=full)
 
     # ------------------------------------------------------------ tickets
 
@@ -374,6 +578,9 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
         res = s.propose_ticket(conn, agent,
                                **_solo_campos_que_acepta(s.propose_ticket, body, saltar=2))
         bus.emit("ticket.created", {"ticket_id": res["ticket"]["id"]})
+        # #1081: el criterio se mira al crear, no al cerrar. Avisa, nunca bloquea.
+        res["criterion_warnings"] = _criterios.revisar(res["ticket"].get("verify_criteria"),
+                                                       res["ticket"].get("verification_level"))
         return res
 
     @app.get("/api/tickets/{ticket_id}", dependencies=dep)
@@ -394,12 +601,21 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
             t = s.block_ticket(conn, agent, ticket_id, body.get("reason") or body.get("note", ""))
         elif action == "complete":
             t = s.complete_ticket(conn, agent, ticket_id,
-                                  body.get("evidence_type"), body.get("evidence"))
+                                  body.get("evidence_type"), body.get("evidence"),
+                                  provenance=body.get("provenance"))
         elif action == "verify":
             t = s.verify_ticket(conn, agent, ticket_id, body.get("verdict", "pass"),
-                                note=body.get("note", ""))
+                                note=body.get("note", ""), provenance=body.get("provenance"))
+        elif action == "pause":
+            # #482: en curso → aceptada, con nota obligatoria.
+            t = s.pause_ticket(conn, agent, ticket_id, body.get("note") or body.get("reason") or "")
         elif action == "reject":
             t = s.reject_ticket(conn, agent, ticket_id, body.get("reason") or body.get("note", ""))
+        elif action == "claim":
+            # #481: apuntarse a verificarla; el segundo recibe 409 «ya la tiene X»
+            t = s.claim_verification(conn, agent, ticket_id)
+        elif action == "unclaim":
+            t = s.release_verification(conn, agent, ticket_id)
         elif action in ("unblock", "start"):
             # unblock del kanban = start desde blocked (el motor ya lo soporta)
             t = s.start_ticket(conn, agent, ticket_id, note=body.get("note", ""))
@@ -413,7 +629,7 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
                                 body.get("reason") or body.get("note", ""))
         else:
             raise s.TicketError(f"action desconocida: {action!r} (accept|start|block|"
-                                "complete|verify|reject|unblock|reopen|backlog|rework)")
+                                "complete|verify|reject|unblock|reopen|backlog|rework|pause|claim|unclaim)")
         bus.emit("ticket.transition", {"ticket_id": ticket_id, "status": t["status"]})
         return _proto(agent, t)
 
@@ -478,6 +694,16 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
         bus.emit("decision.changed", {"decision_id": d["id"], "status": d["status"]})
         return d
 
+    @app.get("/api/decisions/vigentes", dependencies=dep)
+    async def decisions_vigentes(tema: str, agente: str | None = None, incluir_superadas: bool = False,
+                                 limit: int = 10):
+        """#919: las que valen hoy, de FarOS y de EcoDB (su endpoint, con la clave «EcoDB»)."""
+        limit = max(1, min(int(limit), 50))
+        f = dec.vigentes_faros(conn, tema, agente, incluir_superadas, limit)
+        e = await asyncio.to_thread(dec.vigentes_ecodb, cr.valor(conn, "EcoDB"), tema, agente,
+                                    incluir_superadas, limit)
+        return dec.combinar(f, e, limit, incluir_superadas)
+
     @app.get("/api/decisions/{decision_id}", dependencies=dep)
     async def decision_get(decision_id: int):
         return dec.get_decision(conn, decision_id)
@@ -486,9 +712,48 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
     async def decision_decide(decision_id: int, body: dict):
         d = dec.decide(conn, body.get("agent"), decision_id,
                        option=body.get("option"), decision=body.get("decision"),
-                       rationale=body.get("rationale", ""))
+                       rationale=body.get("rationale", ""), surface=body.get("surface"),
+                       # #919: decisiones vigentes
+                       supersedes=body.get("supersedes"), supersede_kind=body.get("supersede_kind") or "total",
+                       supersede_reason=body.get("supersede_reason"), decidido_por=body.get("decidido_por"),
+                       valid_until=body.get("valid_until"))
         bus.emit("decision.changed", {"decision_id": decision_id, "status": d["status"]})
+        # Pepe, 17-nov: decidida en la app (o por MCP), quien la pidió se entera igual que cuando pulsa en Telegram.
+        await _avisar_decision(d)
         return d
+
+    async def _avisar_decision(d: dict) -> None:
+        """Al que pidió la decisión, por el relay: la pregunta y lo decidido. No a quien la decide ni al dueño."""
+        from . import roster, timbre
+        quien = d.get("asked_by")
+        if not quien or quien == d.get("decided_by") or quien == roster.HOUSE_OWNER or quien not in roster.AGENTS:
+            return
+        texto = (f"{d.get('decided_by')} ha decidido «{d['title']}»: {d['decision']}"
+                 + (f" — {d['rationale']}" if d.get("rationale") else "") + " — FarOS")
+        try:
+            await asyncio.to_thread(AVISAR_RELAY, {quien: texto})
+        except Exception as e:
+            log.warning("decisión #%s: no pude avisar a %s por el relay (%s)", d["id"], quien, type(e).__name__)
+
+    @app.post("/api/telegram/enviar", dependencies=dep)
+    async def telegram_enviar(body: dict):
+        """#1189: manda un texto al dueño por el bot de FarOS. Para los scripts de la casa (la revista, las
+        investigaciones…), que así no leen el token. {agent, text}; 409 si el bot no está configurado."""
+        from . import telegram_bot as tb
+        agent = body.get("agent")
+        s._validate_agent(agent, family_only=True)
+        texto = (body.get("text") or "").strip()
+        if not texto:
+            raise s.TicketError("text vacío", field="text")
+        cfg = tb.datos(conn)
+        if cfg is None:
+            return JSONResponse({"error": "el bot de Telegram no está configurado (Ajustes › Claves)"}, 409)
+        try:
+            mid = await asyncio.to_thread(tb.mandar, *cfg, texto)
+        except tb.BotError as e:
+            return JSONResponse({"error": str(e)}, 502)
+        log.info("telegram: %s mandó %d caracteres al dueño", agent, len(texto))
+        return {"ok": True, "message_id": mid}
 
     @app.post("/api/decisions/{decision_id}/defer", dependencies=dep)
     async def decision_defer(decision_id: int, body: dict):
@@ -834,6 +1099,9 @@ def create_app(conn, bus: EventBus | None = None) -> FastAPI:
         res = s.update_ticket(conn, agent, ticket_id,
                               **_solo_campos_que_acepta(s.update_ticket, body, saltar=3))
         bus.emit("ticket.updated", {"ticket_id": ticket_id})
+        if "verify_criteria" in body or "verification_level" in body:   # #1081
+            res = {**res, "criterion_warnings": _criterios.revisar(res.get("verify_criteria"),
+                                                                   res.get("verification_level"))}
         return res
 
     # ------------------------------------------------------------ verificador

@@ -140,6 +140,38 @@ def test_migration_is_idempotent(v2_db):
     conn.close()
 
 
+def test_rebuild_keeps_table_triggers_in_the_migrating_connection(v2_db):
+    """#471 (pasos 3 y 8 de sqlite.org/lang_altertable.html): el DROP de agent_jobs
+    se llevaba los triggers jobs_fts_* que SCHEMA había creado, y no volvían hasta
+    la conexión siguiente. El daemon vive con la conexión que migra."""
+    conn = db.connect(v2_db)
+    trig = {r["name"] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='agent_jobs'")}
+    assert trig == {"jobs_fts_ai", "jobs_fts_au", "jobs_fts_ad"}
+    conn.execute("INSERT INTO agent_jobs (id, name, prompt, created_at)"
+                 " VALUES (8, 'job nuevo', 'busca zanahoria', '2026-10-14')")
+    hits = conn.execute("SELECT rowid FROM jobs_fts WHERE jobs_fts MATCH 'zanahoria'").fetchall()
+    assert [h[0] for h in hits] == [8]
+    conn.close()
+
+
+def test_broken_foreign_key_rolls_the_migration_back(v2_db):
+    """#471 (paso 10): foreign_key_check va DENTRO de la transacción. Antes corría
+    después del COMMIT y la base quedaba migrada con la FK rota."""
+    c = sqlite3.connect(str(v2_db))
+    c.execute("INSERT INTO runs (id, job_id, ticket_id, started_at, status)"
+              " VALUES (12, 999, 3, '2026-09-01T11:00', 'ok')")  # job 999 no existe
+    c.commit()
+    c.close()
+    with pytest.raises(RuntimeError, match="foreign_key_check"):
+        db.connect(v2_db)
+    c = sqlite3.connect(str(v2_db))
+    assert c.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 0
+    assert "name" not in {r[1] for r in c.execute("PRAGMA table_info(agent_jobs)")}
+    assert "verdict" not in {r[1] for r in c.execute("PRAGMA table_info(runs)")}
+    c.close()
+
+
 def test_fresh_db_is_v4_without_backup(tmp_path):
     path = tmp_path / "fresh.db"
     conn = db.connect(path)

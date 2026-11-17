@@ -1,7 +1,14 @@
 ﻿# FarOS - empaqueta el daemon con PyInstaller (T4.2) en build/dist/faros-daemon (onedir).
 # Uso: powershell -ExecutionPolicy Bypass -File tools\build_daemon.ps1
-# Requiere: pip install pyinstaller. El spec fijo vive en build/faros-daemon.spec
-# (datas: verify/ ; hiddenimports: adapters de harness + uvicorn + anyio).
+# Requiere: un python en el PATH (solo para crear el venv). El spec fijo vive en
+# build/faros-daemon.spec (datas: verify/ ; hiddenimports: adapters de harness + uvicorn + anyio).
+#
+# VENV LIMPIO (#387, 5-oct): PyInstaller empaqueta lo que encuentra en el Python
+# con el que se ejecuta. Desde el Python global (compartido) el exe arrastraba
+# trio, werkzeug, rich, websockets, yaml, bcrypt, dns, cryptography... 66 paquetes
+# de terceros, 52,6 MB. Ahora cada build crea build/venv-daemon desde cero con
+# SOLO `pip install . pyinstaller`: 24 paquetes, todos del cierre de faros, 29,7 MB.
+# En el venv no se instala NADA mas (ni pip-audit): lo que haya, entra.
 #
 # ARREGLADO 16-sep: este script ABORTABA SIEMPRE. PyInstaller escribe sus
 # lineas INFO por stderr, y con $ErrorActionPreference = "Stop" PowerShell
@@ -18,9 +25,18 @@ Set-Location $RepoRoot
 $exe = Join-Path $RepoRoot "build/dist/faros-daemon/faros-daemon.exe"
 $before = if (Test-Path $exe) { (Get-Item $exe).LastWriteTime } else { [datetime]::MinValue }
 
-# El nativo, fuera del alcance de -ErrorAction Stop.
+$venv = Join-Path $RepoRoot "build/venv-daemon"
+if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
+
+# Los nativos, fuera del alcance de -ErrorAction Stop; cada uno por SU exit code.
 $ErrorActionPreference = "Continue"
-python -m PyInstaller --noconfirm --clean --distpath build/dist --workpath build/work `
+python -m venv $venv
+if ($LASTEXITCODE -ne 0) { throw "python -m venv salio con codigo $LASTEXITCODE" }
+$py = Join-Path $venv "Scripts/python.exe"
+& $py -m pip install --quiet --disable-pip-version-check $RepoRoot pyinstaller *>&1 |
+    Tee-Object -FilePath build/pip_venv.log | Select-Object -Last 3
+if ($LASTEXITCODE -ne 0) { throw "pip install en el venv salio con codigo $LASTEXITCODE - mira build/pip_venv.log" }
+& $py -m PyInstaller --noconfirm --clean --distpath build/dist --workpath build/work `
     build/faros-daemon.spec *>&1 | Tee-Object -FilePath build/pyinstaller.log | Select-Object -Last 3
 $code = $LASTEXITCODE
 $ErrorActionPreference = "Stop"

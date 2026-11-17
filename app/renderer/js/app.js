@@ -10,14 +10,22 @@ import { getState, setState, subscribe, findTicket, findWorkflowTicket, persist,
 import { initCalendar, renderCalendar, rangeFor, flashDayItem, todayISO } from './ui/calendar.js';
 import { initAgents, renderAgentsBar, renderAgentsBody, renderAgentsSurfaceBadge, openJobPanel, isSettings } from './ui/agents.js';
 import { initMcpSettings } from './ui/mcp_settings.js';
+import { initRoster, clearRenameDraft } from './ui/roster_settings.js';
+import { initCredentials, USO as USO_CLAVE, clearCredentialDrafts } from './ui/credentials_settings.js';
+import { initProofSettings, clearProofDraft } from './ui/proof_settings.js';   // #601
+import { initVerifierSettings, clearRootsDraft } from './ui/verifier_settings.js';   // #695
+import { initTimbreSettings } from './ui/timbre_settings.js';   // #1217
 import { initI18n, applyI18n, setLang, getLang, onRepaint, locale, t as tr } from './i18n.js';
 import { jobModal } from './ui/job_modal.js';
 import { STATUS_LABEL, TRANSITIONS } from './transitions.js';
 import { initBoard, renderBoard, renderLaterals, flashCard, captureRects, flipFrom } from './ui/board.js';
 import { initPanel, openPanel, closePanel } from './ui/panel.js';
-import { createTaskModal, evidenceDialog, reasonDialog, projectDialog, sweepResultToastText, dispatchDialog, handoffComposer } from './ui/modal.js';
+import { createTaskModal, evidenceDialog, clearEvidenceDraft, reasonDialog, projectDialog, sweepResultToastText, dispatchDialog, handoffComposer, suspendAgentDialog, deleteAgentDialog, deleteCredentialDialog } from './ui/modal.js';
 import { initWorkflow, renderWorkflowSidebar, renderWorkflowBar, renderMilestoneBanner, renderPhaseStrip, renderWorkflowBoard, renderWorkflowPane, renderFindingsDrawer, renderSurfaceBadge, renderHandoff } from './ui/workflow.js';
 import { toast, toastReject } from './ui/toast.js';
+import { recordar as recordarAvisosCriterio } from './ui/criterio_avisos.js';   // #1136
+import { renderDecisionsPane } from './ui/decisions.js';   // #645
+import { abrirBiblioteca, refrescarIdioma, salirDeBiblioteca, seguirRutas } from './ui/library.js';   // #851
 import { esc, projectColor, humanError, fmtDayShort } from './util.js';
 
 /* ---------------- refetch ---------------- */
@@ -110,18 +118,34 @@ async function refetchWorkflows() {
 async function refetchAgents() {
   const { agScheduleDays } = getState();
   try {
-    const [agJobs, agSchedule, agResults, agRunning, mcpServers] = await Promise.all([
+    const [agJobs, agSchedule, agResults, agRunning, mcpServers, roster, credentials, credDeliveries, motorSettings, timbre] = await Promise.all([
       api().jobs(),
       api().agentsSchedule(agScheduleDays),
       api().agentsResults(),
       api().agentsRunning(),
       api().mcpServers().catch(() => []), // T5.9: daemon sin registro → lista vacía, sin ruido
+      api().roster().catch(() => null),   // #252: daemon sin roster editable → la sección lo dice
+      api().credentials().catch(() => null),   // #460: daemon sin Claves → la sección lo dice
+      api().credentialDeliveries().catch(() => null),   // #499: daemon sin entregas → no se pinta
+      api().settings().catch(() => null),   // #601: proof_repos; un daemon sin él no pinta la sección
+      api().timbre(getState().timbreFecha).catch(() => null),   // #1217: daemon sin timbre → no se pinta
     ]);
-    setState({ agJobs, agSchedule, agResults, agRunning, mcpServers });
+    setState({ agJobs, agSchedule, agResults, agRunning, mcpServers, roster, credentials, credDeliveries, timbre,
+               proofRepos: motorSettings && 'proof_repos' in motorSettings ? motorSettings.proof_repos : null,
+               // #695: los dos ajustes del verificador; un daemon sin ellos no pinta su sección
+               maquinaQuieta: motorSettings && 'maquina_quieta' in motorSettings ? motorSettings.maquina_quieta : null,
+               readRoots: motorSettings && 'verifier_read_roots' in motorSettings ? motorSettings.verifier_read_roots : null });
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) { setState({ agJobs: [], agSchedule: { items: [] }, agResults: [], agRunning: [] }); return; }
     toast(`${tr('No se pudo cargar Agentes:')} ${humanError(err)}`, 'reject');
   }
+}
+
+/* #645: todas las preguntas de la casa (con y sin workflow) — las mismas que ve el móvil */
+let decisionHandlers = {};
+async function refetchAllDecisions() {
+  try { setState({ allDecisions: await api().decisions(null) }); }
+  catch { setState({ allDecisions: getState().allDecisions ?? [] }); }
 }
 
 function scheduleRefetch() {
@@ -131,11 +155,15 @@ function scheduleRefetch() {
     if (getState().boardMode === 'calendar') refetchCalendar();
     if (getState().surface === 'workflow' || getState().workflows) refetchWorkflows();
     if (getState().surface === 'agents' || getState().agJobs) refetchAgents();
+    refetchAllDecisions();   // #645: el contador de Preguntas vale en todas las superficies
     if (getState().surface === 'agents' && getState().agMode === 'calendar') refetchAgCalendar(); // T5.2
   }, 120); // agrupa ráfagas de SSE
 }
 
 /* ---------------- transiciones ---------------- */
+
+/* #414 (decisión 48): el motor manda `warning` en español; aquí va la frase del catálogo */
+const AVISO_PIDE_OTRO = 'Aviso: el criterio pide que verifique otra persona, pero el nivel es «propia» y se sella sola. Súbelo a «otro miembro» en la ficha.';
 
 async function requestTransition(t, target, action) {
   const { agent } = getState();
@@ -143,13 +171,34 @@ async function requestTransition(t, target, action) {
 
   // completar exige evidencia — manual: se pide a la mano
   if (target === 'done') {
-    const ev = await evidenceDialog(getState().meta, t);
+    /* #601: con «proof», la plantilla lleva el primer repo admitido (Ajustes › proof_repos) */
+    const proofRepos = (getState().meta?.evidence_types ?? []).includes('proof')
+      ? await api().settings().then(s => String(s.proof_repos ?? '').split(';').map(x => x.trim()).filter(Boolean)).catch(() => [])
+      : [];
+    const ev = await evidenceDialog(getState().meta, t, { proofRepos });
     if (!ev) return; // canceló: la tarjeta no se movió
     Object.assign(body, ev);
   }
 
+  // #482: en una bloqueada, «bloquear» es cambiar el motivo: el diálogo parte del que hay
+  const recambio = target === 'blocked' && t.status === 'blocked';
+  if (recambio) {
+    const rs = await reasonDialog(`${tr('Cambiar el motivo del bloqueo:')} «${t.title}»`, 'Guardar el motivo', { value: t.blocked_reason ?? '', tone: 'neutral' });
+    if (!rs) return;
+    body.note = rs.note;
+  }
+
+  // #482: pausar (en curso → aceptadas) exige nota de ≥ 10 caracteres; queda en el historial como [pausa]
+  if (action === 'pause') {
+    const rs = await reasonDialog(`${tr('Pausar:')} «${t.title}»`, 'Pausar', {
+      min: 10, hint: 'por qué no está en curso de verdad — se guarda en el historial', tone: 'neutral',
+    });
+    if (!rs) return;
+    body.note = rs.note;
+  }
+
   // bloquear y rechazar exigen motivo
-  if (target === 'blocked' || target === 'rejected') {
+  if (!recambio && (target === 'blocked' || target === 'rejected')) {
     const verb = target === 'blocked' ? 'Bloquear' : 'Rechazar';
     const rs = await reasonDialog(`${verb} «${t.title}»`, verb);
     if (!rs) return;
@@ -167,9 +216,14 @@ async function requestTransition(t, target, action) {
 
   try {
     const res = await api().transition(t.id, body);
+    if (target === 'done') clearEvidenceDraft(t.id);  // #601: salió bien; el borrador ya no hace falta
     /* el motor devuelve el ticket: una recurrente estampada sigue «accepted» con last_done_at de hoy */
     if (res?.recurring_stamped || (t.cadence_days && target === 'done' && res?.status === 'accepted')) {
       toast(`Recurrente estampada: «${t.title}» vuelve a su ciclo.`, 'ok');
+    } else if (recambio) {
+      toast(`${tr('Motivo cambiado; sigue bloqueada:')} «${t.title}»`, 'ok');
+    } else if (action === 'pause') {
+      toast(`${tr('Pausada; vuelve a aceptadas:')} «${t.title}»`, 'ok');
     } else if (target === 'done' && res?.status === 'verified') {
       /* T2.2 (el dueño §1.2): una tarea de verificación propia no pasa por Hechas — se dice, no desaparece */
       toast(`«${t.title}» hecha y verificada (verificación propia): pasa a Verificadas.`, 'ok');
@@ -182,6 +236,14 @@ async function requestTransition(t, target, action) {
         ? `${tr(`«${t.title}» devuelta a`)} ${STATUS_LABEL[target] ?? target} — ${tr('vence hoy, la tienes en la vista de Hoy.')}`
         : `${tr(`«${t.title}» devuelta a`)} ${STATUS_LABEL[target] ?? target}.`, 'ok');
     }
+    /* #414: una «propia» cuyo criterio pide a otra persona se sella igual, pero el motor avisa */
+    if (res?.warning) toast(tr(AVISO_PIDE_OTRO), 'info', 12000);
+    /* #518: cerrar la tarea apaga el job programado que cuelga de ella. El motor lo dice en
+       job_warning, en español; aquí va la etiqueta del catálogo y el job como dato. */
+    if (res?.job_warning) {
+      const m = /#(\d+) «(.+?)»/.exec(res.job_warning);
+      toast(`${tr('Este job ya no se dispara porque cuelga de la tarea que has cerrado. Desenlázalo o páusalo en Agentes:')} ${m ? `#${m[1]} «${m[2]}»` : ''}`, 'info', 12000);
+    }
     closePanel();
     setState({ selected: null });
     await refetchBoard();
@@ -190,7 +252,9 @@ async function requestTransition(t, target, action) {
     if (getState().boardMode === 'calendar') await refetchCalendar(); // T2.9: estampar desde el calendario
     if (getState().surface === 'workflow') await refetchWorkflows(); // el kanban de la Oficina también se mueve
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) {
+    /* el motor dice que no: 409 (no se puede ahora) o 400 (#718: el dato está mal y nombra el campo).
+       Ninguno de los dos es la red, y decir «Error de red» manda a mirar el cable */
+    if (err instanceof ApiError && (err.status === 409 || err.status === 400)) {
       toastReject(humanError(err));
       flashCard(t.id); flashDayItem(t.id); // la tarjeta no se movió: que se vea cuál era
     } else {
@@ -359,9 +423,13 @@ function applyTheme(pref) {
   const btn = document.getElementById('btn-theme');
   if (btn) {
     btn.dataset.theme = pref;
-    document.getElementById('theme-label').textContent = THEME_LABEL[pref];
-    btn.title = pref === 'auto' ? `Tema: sigue al sistema (ahora ${resolved === 'dark' ? 'oscuro' : 'claro'}). Clic para cambiar` : `Tema: ${THEME_LABEL[pref]}. Clic para cambiar`;
-    btn.setAttribute('aria-label', `Tema: ${THEME_LABEL[pref]}`);
+    /* #497: esto se escribe DESPUES del recorrido de traduccion (cada clic, cada cambio del
+       sistema), asi que pasa por tr() aqui mismo. Y como lo traducido aqui no queda en el
+       WeakMap de i18n, la vuelta al espaniol no lo restaura: por eso el boton de idioma
+       vuelve a llamar a applyTheme. */
+    document.getElementById('theme-label').textContent = tr(THEME_LABEL[pref]);
+    btn.title = tr(pref === 'auto' ? `Tema: sigue al sistema (ahora ${resolved === 'dark' ? 'oscuro' : 'claro'}). Clic para cambiar` : `Tema: ${THEME_LABEL[pref]}. Clic para cambiar`);
+    btn.setAttribute('aria-label', tr(`Tema: ${THEME_LABEL[pref]}`));
   }
 }
 function initTheme() {
@@ -376,23 +444,48 @@ function initTheme() {
   });
 }
 
+/* ---------------- Preguntas (#645) ---------------- */
+
+function renderDecBadge(state) {
+  const n = (state.allDecisions ?? []).filter(d => d.status !== 'decided').length;
+  const b = document.getElementById('dec-badge');
+  b.textContent = n || '';
+  b.hidden = !n;
+  b.setAttribute('aria-label', tr(`${n} sin contestar`));
+}
+
+function renderDecRoot(state) {
+  const root = document.getElementById('dec-root');
+  root.innerHTML = '';
+  /* las pendientes todas; de las decididas, las 10 últimas: aquí importa lo que falta */
+  const all = state.allDecisions;
+  const list = all == null ? null : [
+    ...all.filter(d => d.status !== 'decided'),
+    ...all.filter(d => d.status === 'decided').sort((a, b) => (b.decided_at ?? '').localeCompare(a.decided_at ?? '')).slice(0, 10),
+  ];
+  renderDecisionsPane(root, { wfDecisions: list, workflow: { name: tr('la casa') }, paneTitle: tr('Preguntas') }, decisionHandlers);
+}
+
 /* ---------------- render raíz ---------------- */
 
 function applySurface(state) {
   const isWf = state.surface === 'workflow';
   const isAg = state.surface === 'agents';
-  const isCal = !isWf && !isAg && state.boardMode === 'calendar'; // T2.4: mismo Tablero, otro modo de verlo
-  const offBoard = isWf || isAg;
+  const isDec = state.surface === 'decisions';                   // #645
+  const isLib = state.surface === 'library';                     // #851
+  const isCal = !isWf && !isAg && !isDec && !isLib && state.boardMode === 'calendar'; // T2.4: mismo Tablero, otro modo de verlo
+  const offBoard = isWf || isAg || isDec || isLib;
   document.getElementById('board-bar').hidden = offBoard;                       // T3.1: la línea de controles es del Tablero
   document.getElementById('view-tabs').style.display = '';                       // FIX #150: Hoy/Semana/Futuras/Todas mandan en los dos modos
   document.getElementById('mode-tabs').hidden = false;
-  document.getElementById('cal-tabs').hidden = true;                             // la vista del calendario la elige la pestaña temporal
   document.getElementById('project-bar').hidden = offBoard;
   document.getElementById('board').hidden = offBoard || isCal;
   if (offBoard || isCal) document.getElementById('laterals').hidden = true; // en kanban lo decide renderLaterals
   document.getElementById('cal-root').hidden = !isCal;
   document.getElementById('wf-root').hidden = !isWf;
   document.getElementById('ag-root').hidden = !isAg;
+  document.getElementById('dec-root').hidden = !isDec;
+  document.getElementById('lib-root').hidden = !isLib;
   /* Nueva tarea / Verificar cola son del Tablero; en Agentes manda «Nuevo job» */
   document.getElementById('btn-create').hidden = isAg;
   document.getElementById('btn-verify').hidden = isAg;
@@ -408,9 +501,6 @@ function applySurface(state) {
   document.querySelectorAll('#mode-tabs .views__tab').forEach(b => {
     b.classList.toggle('is-active', b.dataset.mode === state.boardMode);
   });
-  document.querySelectorAll('#cal-tabs .views__tab').forEach(b => {
-    b.classList.toggle('is-active', b.dataset.cal === state.calView);
-  });
 }
 
 /* #262: el catalogo se aplica DESPUES de pintar, en un solo sitio. render() tiene
@@ -425,6 +515,12 @@ function renderEs(state) {
   applySurface(state);
   renderSurfaceBadge(state);
   renderAgentsSurfaceBadge(state);
+  renderDecBadge(state);
+  if (state.surface === 'library') { refrescarIdioma(); return; }   // #851: se pinta sola; un aviso del daemon no recarga lo que Pepe lee
+  if (state.surface === 'decisions') {
+    renderDecRoot(state);
+    return;
+  }
   if (state.surface === 'agents') {
     renderAgentsBar(state);
     renderAgentsBody(state);
@@ -497,11 +593,31 @@ async function main() {
   initPanel({
     onTransition: requestTransition,
     onOpenJob: jumpToJob,
+    /* #481: quién actúa y quién es el dueño de la casa (el dueño puede soltar la de cualquiera) */
+    me: () => ({ agent: getState().agent, owner: getState().meta?.owner }),
+    onClaim: async (t, action) => {
+      try {
+        await api().transition(t.id, { agent: getState().agent, action });
+        toast(action === 'claim'
+          ? `${tr('Te quedas la verificación de')} «${t.title}»`
+          : `${tr('Verificación soltada:')} «${t.title}»`, 'ok');
+        await refetchBoard();
+        if (getState().surface === 'workflow') await refetchWorkflows();
+        reopenSelected();
+      } catch (err) {
+        /* el 409 del motor («ya la tiene X») es el caso normal de dos a la vez: se dice tal cual */
+        if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
+        else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
+        await refetchBoard();
+        reopenSelected();
+      }
+    },
     /* T2.10: el tiempo se edita desde el panel; el motor valida (400 con motivo) */
     /* T2.3: el panel edita título, descripción, prioridad, responsable, criterio y vencimiento (PATCH) */
     onPatchFields: async (t, patch) => {
       try {
-        await api().patchTicket(t.id, { agent: getState().agent, ...patch });
+        const res = await api().patchTicket(t.id, { agent: getState().agent, ...patch });
+        recordarAvisosCriterio(t.id, res);   // #1136: el panel repintado enseña la nota junto al criterio
         toast(`«${patch.title ?? t.title}» guardada.`, 'ok');
         await refetchBoard();
         if (getState().surface === 'workflow') await refetchWorkflows();
@@ -566,6 +682,9 @@ async function main() {
     onSchedule: async (d, patch) => {
       const agent = getState().agent;
       try {
+        /* #924: soltada en el carril de otro → pasa a ese agente (PATCH owner) y después, la hora */
+        const handedTo = patch.owner && patch.owner !== d.owner ? patch.owner : null;
+        if (handedTo) await api().patchTicket(d.ticket_id, { agent, owner: handedTo });
         const movedDay = patch.date && d.date && patch.date !== d.date;
         if (d.cadence) {
           /* a otro día → mueve SOLO la próxima ocurrencia (la cadencia no cambia) */
@@ -582,22 +701,57 @@ async function main() {
           await api().schedule(d.ticket_id, { agent, ...body });
         }
         const dayTxt = movedDay ? ` el ${fmtDayShort(patch.date)}` : '';
-        toast((patch.preferredOnly || (d.cadence && 'start' in patch && !patch.start && !movedDay)) ? (patch.start ? `Hora preferida: ${patch.start}.` : 'Hora preferida borrada: vuelve a «sin hora», el ciclo no cambia.') : patch.start ? (movedDay ? `${tr('Programada el')} ${fmtDayShort(patch.date)} ${tr('a las')} ${patch.start}.` : `Programada a las ${patch.start}.`) : patch.duration_min != null ? `Duración: ${patch.duration_min} min.` : movedDay ? (d.cadence ? `${tr('Próxima ocurrencia movida al')} ${fmtDayShort(patch.date)}; ${tr('la cadencia no cambia.')}` : `${tr('Movida al')} ${fmtDayShort(patch.date)}, ${tr('todo el día.')}`) : 'Sin hora: queda para todo el día.', 'ok');
+        if (handedTo) toast(`${tr('Pasada a')} ${handedTo}${patch.start ? ` ${tr('a las')} ${patch.start}` : ''}.${d.cadence ? ' ' + tr('Toda la serie cambia de dueño.') : ''}`, 'ok');
+        else toast((patch.preferredOnly || (d.cadence && 'start' in patch && !patch.start && !movedDay)) ? (patch.start ? `Hora preferida: ${patch.start}.` : 'Hora preferida borrada: vuelve a «sin hora», el ciclo no cambia.') : patch.start ? (movedDay ? `${tr('Programada el')} ${fmtDayShort(patch.date)} ${tr('a las')} ${patch.start}.` : `Programada a las ${patch.start}.`) : patch.duration_min != null ? `Duración: ${patch.duration_min} min.` : movedDay ? (d.cadence ? `${tr('Próxima ocurrencia movida al')} ${fmtDayShort(patch.date)}; ${tr('la cadencia no cambia.')}` : `${tr('Movida al')} ${fmtDayShort(patch.date)}, ${tr('todo el día.')}`) : 'Sin hora: queda para todo el día.', 'ok');
         await refetchCalendar();
         refetchBoard();
       } catch (err) {
         if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
         else toast(`${tr('No se pudo programar:')} ${humanError(err)}`, 'reject');
+        /* #924: si el cambio de dueño entró y lo que falló fue la hora, la pantalla ya no dice la
+           verdad: se vuelve a leer, y la tarjeta queda donde el motor la tiene */
+        await refetchCalendar();
         flashDayItem(d.ticket_id);
       }
     },
   });
 
-  /* superficie: Tablero ↔ Workflows ↔ Agentes */
+  /* #645: decidir y aplazar desde Preguntas, con el mismo motor que la bisagra de un workflow */
+  decisionHandlers = {
+    buscarVigentes: (tema, superadas) => api().decisionsVigentes(tema, superadas),   // #919
+    onDecide: async (d, { option, decision, rationale, ...extra }) => {   // extra: #919 (sustituye a, vale hasta)
+      try {
+        await api().decide(d.id, { agent: getState().agent, option, decision, rationale, surface: 'desktop', ...extra });   // #698
+        toast(tr(`Decidida: «${option ?? decision}». Registrada con su porqué.`), 'ok');
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
+        else toast(`${tr('No se pudo decidir:')} ${humanError(err)}`, 'reject');
+      }
+      await refetchAllDecisions();
+      if (getState().workflows) await refetchWorkflows();
+    },
+    onDefer: async (d, until) => {
+      const rs = await reasonDialog(`Aplazar «${d.title}»${until ? ' hasta ' + until : ''}`, 'Aplazar');
+      if (!rs) return;
+      try {
+        await api().deferDecision(d.id, { agent: getState().agent, until, note: rs.note });
+        toast(until ? `${tr('Aplazada hasta')} ${until}.` : tr('Aplazada.'), 'ok');
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 409 || err.status === 400)) toastReject(humanError(err));
+        else toast(`${tr('No se pudo aplazar:')} ${humanError(err)}`, 'reject');
+      }
+      await refetchAllDecisions();
+    },
+  };
+
+  /* superficie: Tablero ↔ Workflows ↔ Agentes ↔ Preguntas */
   document.querySelectorAll('#surface-tabs .views__tab').forEach(b => {
     b.addEventListener('click', async () => {
       const surface = b.dataset.surface;
       setState({ surface });
+      if (surface === 'library') { abrirBiblioteca(); return; }
+      salirDeBiblioteca();
+      if (surface === 'decisions') { await refetchAllDecisions(); return; }
       if (surface === 'agents') {
         if (!getState().agJobs) await refetchAgents();
         if (!getState().harnesses) {
@@ -685,9 +839,9 @@ async function main() {
     onSelectPhase: (wfPhase) => setState({ wfPhase }),
     onSelectTab: (wfTab) => setState({ wfTab }),
     /* T3.4: el dueño decide una bisagra desde la app; el motor es append-only (409 si ya está) */
-    onDecide: async (d, { option, decision, rationale }) => {
+    onDecide: async (d, { option, decision, rationale, ...extra }) => {   // extra: #919
       try {
-        await api().decide(d.id, { agent: getState().agent, option, decision, rationale });
+        await api().decide(d.id, { agent: getState().agent, option, decision, rationale, surface: 'desktop', ...extra });   // #698
         toast(`Bisagra #${d.id} decidida: «${option ?? decision}». Registrada con su motivo.`, 'ok');
         await refetchWorkflows();
       } catch (err) {
@@ -874,6 +1028,202 @@ async function main() {
     },
   });
 
+  /* #252: Ajustes › Agentes. Tras cada escritura se piden de nuevo el roster Y meta:
+     los selectores de dueño leen meta.agents, y un agente recién creado tiene que
+     poder recibir una tarea sin recargar (criterio del ticket). El error de nombre se
+     pinta bajo su campo, no en un toast que te saca de lo que estabas escribiendo. */
+  async function afterRosterWrite() {
+    const [roster, meta] = await Promise.all([api().roster().catch(() => null), api().meta()]);
+    setState({ roster, meta, rosterEditing: null, rosterError: null });
+    await refetchBoard();
+  }
+  const rosterFail = (where, err) => {
+    if (err instanceof ApiError && (err.field === 'name' || err.status === 409 || err.status === 422)) {
+      setState({ rosterError: { where, msg: humanError(err) } });
+    } else toast(`${tr('No se pudo cambiar la lista de agentes:')} ${humanError(err)}`, 'reject');
+  };
+  initRoster({
+    onAdd: async (name) => {
+      if (!name) { setState({ rosterError: { where: '__add', msg: tr('Escribe un nombre.') } }); return false; }
+      try {
+        await api().rosterAdd(name);
+        toast(`Agente «${name}» añadido.`, 'ok');
+        await afterRosterWrite();
+        return true;
+      } catch (err) { rosterFail('__add', err); return false; }
+    },
+    onRenameStart: (name) => setState({ rosterEditing: name, rosterError: null }),
+    onRenameCancel: () => setState({ rosterEditing: null, rosterError: null }),
+    onRename: async (a, to) => {
+      if (!to || to === a.name) { clearRenameDraft(); setState({ rosterEditing: null, rosterError: null }); return; }
+      try {
+        await api().rosterRename(a.name, to);
+        clearRenameDraft();
+        toast(`«${a.name}» ahora se llama «${to}».`, 'ok');
+        await afterRosterWrite();
+      } catch (err) { rosterFail(a.name, err); }
+    },
+    /* Pepe, 30-sep: «prefiero suspenderlo». Los destinatarios son los ACTIVOS: a un
+       suspendido no se le pueden pasar tareas. */
+    onSuspend: async (a) => {
+      const { roster } = getState();
+      const others = (roster?.agents ?? []).filter(x => !x.suspended && x.name !== a.name).map(x => x.name);
+      const r = await suspendAgentDialog(a, others);
+      if (!r) return;
+      try {
+        const res = await api().rosterSuspend(a.name, true, r.reassignTo);
+        toast(res?.reassigned
+          ? `Agente «${a.name}» suspendido. Sus tareas abiertas pasan a «${r.reassignTo}».`
+          : `Agente «${a.name}» suspendido.`, 'ok');
+        await afterRosterWrite();
+      } catch (err) { rosterFail(a.name, err); }
+    },
+    onReactivate: async (a) => {
+      try {
+        await api().rosterSuspend(a.name, false);
+        toast(`Agente «${a.name}» reactivado.`, 'ok');
+        await afterRosterWrite();
+      } catch (err) { rosterFail(a.name, err); }
+    },
+    onDelete: async (a) => {
+      if (!await deleteAgentDialog(a)) return;
+      try {
+        await api().rosterRemove(a.name);
+        toast(`Agente «${a.name}» borrado.`, 'ok');
+        await afterRosterWrite();
+      } catch (err) { rosterFail(a.name, err); }
+    },
+  });
+
+  /* #460: Ajustes › Claves. Tras cada escritura se relee la lista entera (el motor mueve
+     la marca «en uso» de las demás). El error va bajo su formulario: guardar una clave que
+     el servicio rechaza no te saca de lo que estabas haciendo. Probar tarda (hasta 10 s):
+     mientras, el botón dice «Probando…». */
+  async function afterCredWrite(extra = {}) {
+    const [credentials, credDeliveries] = await Promise.all([
+      api().credentials().catch(() => null), api().credentialDeliveries().catch(() => null)]);
+    setState({ credentials, credDeliveries, credError: null, credBusy: null, ...extra });
+  }
+  const credFail = (where, err) => setState({ credBusy: null, credError: { where, msg: humanError(err) } });
+  /* #601: los repos donde el verificador puede correr una «proof» */
+  initProofSettings({
+    onSave: async (lista) => {
+      try {
+        await api().patchSettings({ agent: getState().agent, proof_repos: lista });
+        clearProofDraft();
+        toast(tr('Repos admitidos guardados.'), 'ok');
+        await refetchAgents();
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
+        else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
+      }
+    },
+  });
+  /* #695: «máquina quieta» se aplica al tocarla; las carpetas de lectura, con Guardar. Si el motor
+     rechaza el cambio, se vuelve a leer lo guardado y el interruptor regresa a su sitio. */
+  const settingsFail = async (err) => {
+    if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
+    else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
+    await refetchAgents();
+  };
+  initVerifierSettings({
+    onQuiet: async (on) => {
+      try {
+        await api().patchSettings({ agent: getState().agent, maquina_quieta: on });
+        toast(on ? tr('Máquina quieta activada: el verificador no corre.') : tr('Máquina quieta desactivada: el verificador vuelve a correr.'), 'ok');
+        await refetchAgents();
+      } catch (err) { await settingsFail(err); }
+    },
+    onSaveRoots: async (lista) => {
+      try {
+        await api().patchSettings({ agent: getState().agent, verifier_read_roots: lista });
+        clearRootsDraft();
+        toast(tr('Carpetas guardadas.'), 'ok');
+        await refetchAgents();
+      } catch (err) { await settingsFail(err); }
+    },
+  });
+  /* #1217: el timbre se aplica al tocarlo, como «máquina quieta»; el día elegido se queda en el estado
+     para que los repintados de Agentes no lo devuelvan a hoy. */
+  initTimbreSettings({
+    onTimbre: async (on) => {
+      try {
+        await api().patchSettings({ agent: getState().agent, timbre_activo: on });
+        toast(on ? tr('Timbre encendido: suena en la próxima franja.') : tr('Timbre apagado: no suena hasta que lo enciendas.'), 'ok');
+        await refetchAgents();
+      } catch (err) { await settingsFail(err); }
+    },
+    onQuitarSilencio: async (agente) => {
+      try {
+        await api().timbreSilencio({ agent: getState().agent, agente, hasta: '' });
+        toast(tr('Silencio quitado: vuelve a sonarle.'), 'ok');
+        await refetchAgents();
+      } catch (err) { await settingsFail(err); }
+    },
+    onFecha: async (fecha) => {
+      setState({ timbreFecha: fecha });
+      try { setState({ timbre: await api().timbre(fecha) }); }
+      catch (err) { toast(`${tr('No se pudo cargar el timbre:')} ${humanError(err)}`, 'reject'); }
+    },
+  });
+  initCredentials({
+    onAdd: async (b) => {
+      if (!b.name) { setState({ credError: { where: '__add', msg: tr('Ponle un nombre a la clave.') } }); return false; }
+      if (!b.value.trim()) { setState({ credError: { where: '__add', msg: tr('Pega la clave.') } }); return false; }
+      setState({ credBusy: '__add', credError: null });
+      try {
+        const c = await api().credentialCreate(getState().agent, b);
+        clearCredentialDrafts();   // ANTES de repintar: si no, el campo vuelve a salir con la clave dentro
+        toast(c.in_use ? `Clave «${c.name}» guardada. FarOS ya la usa.` : `Clave «${c.name}» guardada.`, 'ok');
+        await afterCredWrite();
+        return true;
+      } catch (err) { credFail('__add', err); return false; }
+    },
+    onUse: async (c, on) => {
+      try {
+        await api().credentialPatch(c.id, getState().agent, { in_use: on });
+        toast(on ? `FarOS usa ahora «${c.name}».` : `FarOS ya no usa «${c.name}».`, 'ok');
+        await afterCredWrite();
+      } catch (err) { credFail(c.id, err); }
+    },
+    /* #499: entregable bajo demanda; solo lo acepta el dueño de la casa (403 si no) */
+    onDeliverable: async (c, on) => {
+      try {
+        await api().credentialPatch(c.id, getState().agent, { deliverable: on });
+        toast(on ? `«${c.name}» ${tr('se entrega bajo demanda.')}` : `«${c.name}» ${tr('ya no se entrega.')}`, 'ok');
+        await afterCredWrite();
+      } catch (err) { credFail(c.id, err); }
+    },
+    onTest: async (c) => {
+      setState({ credBusy: c.id, credError: null });
+      try {
+        const r = await api().credentialTest(c.id, getState().agent);
+        toast(r.test_ok ? `«${c.name}» vale.` : `«${c.name}» no ha pasado la prueba.`, r.test_ok ? 'ok' : 'reject');
+        await afterCredWrite();
+      } catch (err) { credFail(c.id, err); }
+    },
+    onStartValue: (id) => setState({ credEditing: id, credError: null }),
+    onCancelValue: () => setState({ credEditing: null, credError: null }),
+    onValue: async (c, v) => {
+      if (!v.trim()) { setState({ credError: { where: c.id, msg: tr('Pega la clave.') } }); return false; }
+      setState({ credBusy: c.id, credError: null });
+      try {
+        await api().credentialPatch(c.id, getState().agent, { value: v });
+        toast(`Clave «${c.name}» cambiada.`, 'ok');
+        await afterCredWrite({ credEditing: null });
+        return true;
+      } catch (err) { credFail(c.id, err); return false; }
+    },
+    onDelete: async (c) => {
+      if (!await deleteCredentialDialog(c, USO_CLAVE[c.kind] ?? '')) return;
+      try {
+        await api().credentialDelete(c.id, getState().agent);
+        toast(`Clave «${c.name}» borrada.`, 'ok');
+        await afterCredWrite();
+      } catch (err) { credFail(c.id, err); }
+    },
+  });
+
   initAgents({
     onSelectTab: (agTab) => setState({ agTab }),
     /* T5.2 */
@@ -965,15 +1315,19 @@ async function main() {
        modal hace ahora la llamada él mismo: solo se cierra con un 2xx, para que un
        error del motor se pinte bajo su campo en vez de tirar el formulario. */
     const created = await createTaskModal(meta, board?.projects ?? [], meta.agents,
-      (ticket) => api().createTicket({ agent: getState().agent, ...ticket }));
+      (ticket) => api().createTicket({ agent: getState().agent, ...ticket }),
+      (id, patch) => api().patchTicket(id, { agent: getState().agent, ...patch }));   // #1136: corregir el criterio allí mismo
     if (!created) return;
-    toast(`Tarea «${created.title ?? ''}» creada.`, 'ok');
+    /* el motor devuelve {ticket, possible_duplicates, warning?}: el título está en ticket (salía «») */
+    const tk = created.ticket ?? created;
+    toast(`Tarea «${tk.title ?? ''}» creada.`, 'ok');
+    if (created.warning) toast(tr(AVISO_PIDE_OTRO), 'info', 12000);  // #414
     await refetchBoard();
   });
 
   /* T2.5: «Ajustes» es la palabra que el dueño buscó y no existía. Vive en la zona de acciones
      —configurar no es trabajar, y la columna central de superficies no se toca (queja 1ª de
-     la v3.1)— y lleva de un clic al registro MCP, que es hoy el único ajuste. */
+     la v3.1)— y lleva de un clic a los ajustes: agentes (#252) y registro MCP. */
   document.getElementById('btn-settings').addEventListener('click', async () => {
     closePanel();
     setState({ selected: null, surface: 'agents', agTab: 'mcp' });
@@ -1004,6 +1358,7 @@ async function main() {
   document.getElementById('btn-lang').addEventListener('click', async () => {
     await setLang(getLang() === 'es' ? 'en' : 'es');
     pintaLang();
+    applyTheme(getState().theme);   // #497
   });
 
   /* conexión */
@@ -1037,11 +1392,13 @@ async function main() {
 
   subscribe(render);
   await refetchBoard();
+  refetchAllDecisions();   // #645: el contador de Preguntas, desde el primer pintado
   /* T3.1: los badges de Workflows/Agentes (bugs, bisagras, runs vivos) nacen con la barra,
      no en la primera visita — así las pestañas de sección no cambian de ancho al cambiar */
   refetchWorkflows(); refetchAgents();
   /* arranca en Calendario si así se dejó (con su pestaña): DESPUÉS de conectar la API, o el primer fetch cae al vacío */
   if (getState().boardMode === 'calendar') goCalendar(getState().calView);
+  seguirRutas();   // #851: un enlace a la Biblioteca abre en frío
 
   /* SSE / eventos del mock: refetch agrupado + panel al día */
   onBoardChanged(() => {

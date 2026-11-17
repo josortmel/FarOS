@@ -122,21 +122,18 @@ def _done_ticket(conn, **kw):
     return t["id"]
 
 
-def test_rework_anchors_dateless_ticket_today(conn):
+def test_rework_dateless_ticket_goes_to_its_owner_to_place(conn):
+    """#364 (Pepe, 30-sep): una devuelta sin fecha NO se ancla sola a hoy; tampoco
+    desaparece (T1.3): sale en «por ubicar» de su dueño, que es quien la recoloca."""
     tid = _done_ticket(conn)
-    # la ancla automática de creación le puso scheduled_at: la quitamos para reproducir
-    # el caso de owner (tickets de workflow / migrados sin fecha)
     conn.execute("UPDATE tickets SET scheduled_at=NULL, due_at=NULL WHERE id=?", (tid,)); conn.commit()
     res = s.rework_ticket(conn, "owner", tid, "accepted", "falta la captura de la vista Día")
-    assert res["status"] == "accepted" and res["anchored"] is True
-    assert res["due_at"] == date.today().isoformat()
+    assert res["status"] == "accepted" and res["anchored"] is False and res["due_at"] is None
     h = s.ticket_history(conn, tid)["history"]
-    assert any("[ancla] devuelta sin fecha" in (r["note"] or "") for r in h)
     assert any("[rechazo]" in (r["note"] or "") for r in h)
-    board = s.board(conn, view="today")
-    assert tid in [t["id"] for t in board["columns"]["accepted"]]
-    board = s.board(conn, view="week")
-    assert tid in [t["id"] for t in board["columns"]["accepted"]]
+    for view in ("today", "week"):
+        assert tid in [t["id"] for t in s.board(conn, view=view)["laterals"]["por_ubicar"]]
+    assert tid in [t["id"] for t in s.my_board(conn, res["owner"])["por_ubicar"]]
 
 
 def test_rework_keeps_existing_dates(conn):
@@ -192,8 +189,9 @@ def test_create_ticket_error_field(tmp_path, monkeypatch):
     assert r.status_code == 400 and r.json()["field"] == "owner"
     r = client.post("/api/tickets", json={"agent": "owner", "title": "ok", "due_at": "ayer"}, headers=h)
     assert r.status_code == 400 and r.json()["field"] == "due_at"
+    # #364: sin fecha se crea igual (no se le exige a quien crea) y NO se agenda sola
     r = client.post("/api/tickets", json={"agent": "owner", "title": "ok", "owner": "owner"}, headers=h)
-    assert r.status_code == 200 and r.json()["ticket"]["scheduled_at"]
+    assert r.status_code == 200 and r.json()["ticket"]["scheduled_at"] is None
     # finding #27 (dave): la carga de la UI con opcionales a null no puede dar 500
     r = client.post("/api/tickets", json={"agent": "owner", "title": "nulos", "description": None,
                                           "owner": None, "verify_criteria": None, "due_at": None}, headers=h)

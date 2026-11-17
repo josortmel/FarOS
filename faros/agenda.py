@@ -114,6 +114,11 @@ def _recurrence_items(base: dict, t: dict, d_from: date, d_to: date) -> list[dic
     start = t.get("preferred_time")
     end = _end_time(start, t.get("duration_min")) if start else None
     out = []
+
+    def siguiente(d: date) -> date:
+        d += timedelta(days=cadence)
+        return service.laborable(d) if cadence == 1 else d
+
     # Vencida: la próxima real puede ser anterior al rango → se muestra el día
     # de inicio del rango como vencida (no se pierde), sin duplicar.
     day, n = next_due, 0
@@ -128,7 +133,7 @@ def _recurrence_items(base: dict, t: dict, d_from: date, d_to: date) -> list[dic
                         "overdue_since": next_due.isoformat()})
         # las siguientes proyectadas parten de la próxima real, no del rango
         while day < d_from and n < MAX_OCCURRENCES_PER_TICKET:
-            day += timedelta(days=cadence); n += 1
+            day = siguiente(day); n += 1
         if overdue and anchored:
             # La vencida se ve en la PRIMERA ocurrencia de su día de la semana dentro del
             # rango (paso 7, no el de cadencia): una quincenal vencida cuyo paso de 14 cae
@@ -140,10 +145,22 @@ def _recurrence_items(base: dict, t: dict, d_from: date, d_to: date) -> list[dic
                             "overdue_since": next_due.isoformat()})
                 if day == show:
                     day += timedelta(days=cadence); n += 1
+    # #376 (Pepe, 25-sep): una semanal no cambia de día. Si ESTA ocurrencia se movió
+    # (next_due_override), las previstas siguientes salen del ANCLA, no del día movido.
+    anclada = (t.get("weekday") is not None and cadence % 7 == 0 and t.get("next_due_override"))
+    natural = (date.fromisoformat(service.next_due_date({**t, "next_due_override": None}))
+               if anclada else None)
     while day <= d_to and n < MAX_OCCURRENCES_PER_TICKET:
         out.append({**base, "kind": "recurrence", "date": day.isoformat(),
                     "start": start, "end": end, "ghost": n > 0, "occurrence_n": n})
-        day += timedelta(days=cadence); n += 1
+        if anclada and n == 0:
+            # la movida sustituye a la del ancla; la siguiente es la del ancla + cadencia
+            day = natural + timedelta(days=cadence)
+            while day <= date.fromisoformat(out[-1]["date"]):
+                day += timedelta(days=cadence)
+            n += 1
+            continue
+        day = siguiente(day); n += 1
     return out
 
 

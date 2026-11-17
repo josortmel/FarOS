@@ -1,6 +1,6 @@
 {
-  "from": "2026-09-09",
-  "to": "2026-10-07",
+  "from": "2026-09-23",
+  "to": "2026-10-21",
   "lanes": [
     "owner",
     "alice",
@@ -20,7 +20,7 @@
       "priority": "alta",
       "due_state": "due",
       "last_change": {
-        "at": "2026-09-16T07:12:40",
+        "at": "2026-09-30T07:12:40",
         "by": "alice",
         "from": null,
         "to": "proposed"
@@ -30,7 +30,7 @@
       "all_day": 0,
       "duration_min": 60,
       "kind": "ticket",
-      "date": "2026-09-16",
+      "date": "2026-09-30",
       "start": "08:30",
       "end": null,
       "ghost": false,
@@ -46,7 +46,7 @@
       "priority": "alta",
       "due_state": "due",
       "last_change": {
-        "at": "2026-09-15T18:25:00",
+        "at": "2026-09-29T18:25:00",
         "by": "bob",
         "from": "proposed",
         "to": "accepted"
@@ -56,7 +56,7 @@
       "all_day": 0,
       "duration_min": 90,
       "kind": "ticket",
-      "date": "2026-09-16",
+      "date": "2026-09-30",
       "start": "09:00",
       "end": null,
       "ghost": false,
@@ -72,7 +72,7 @@
       "priority": "media",
       "due_state": "due",
       "last_change": {
-        "at": "2026-09-15T11:02:00",
+        "at": "2026-09-29T11:02:00",
         "by": "carol",
         "from": "proposed",
         "to": "accepted"
@@ -82,7 +82,7 @@
       "all_day": 0,
       "duration_min": 60,
       "kind": "ticket",
-      "date": "2026-09-16",
+      "date": "2026-09-30",
       "start": "12:00",
       "end": null,
       "ghost": false,
@@ -98,7 +98,7 @@
       "priority": "media",
       "due_state": "due",
       "last_change": {
-        "at": "2026-09-09T03:31:00",
+        "at": "2026-09-23T03:31:00",
         "by": "dave",
         "from": "in_progress",
         "to": "accepted"
@@ -108,7 +108,7 @@
       "all_day": 0,
       "duration_min": 60,
       "kind": "ticket",
-      "date": "2026-09-16",
+      "date": "2026-09-30",
       "start": "10:30",
       "end": null,
       "ghost": false,
@@ -124,7 +124,7 @@
       "priority": "baja",
       "due_state": "ok",
       "last_change": {
-        "at": "2026-09-14T16:40:00",
+        "at": "2026-09-28T16:40:00",
         "by": "alice",
         "from": "proposed",
         "to": "accepted"
@@ -134,7 +134,7 @@
       "all_day": 0,
       "duration_min": 60,
       "kind": "ticket",
-      "date": "2026-09-19",
+      "date": "2026-10-03",
       "start": "11:30",
       "end": null,
       "ghost": false,
@@ -150,7 +150,7 @@
       "priority": "alta",
       "due_state": "due",
       "last_change": {
-        "at": "2026-09-16T08:05:00",
+        "at": "2026-09-30T08:05:00",
         "by": "dave",
         "from": "accepted",
         "to": "in_progress"
@@ -160,7 +160,7 @@
       "all_day": 0,
       "duration_min": 60,
       "kind": "ticket",
-      "date": "2026-09-16",
+      "date": "2026-09-30",
       "start": "13:00",
       "end": null,
       "ghost": false,
@@ -176,7 +176,7 @@
       "priority": "alta",
       "due_state": "due",
       "last_change": {
-        "at": "2026-09-16T10:10:00",
+        "at": "2026-09-30T10:10:00",
         "by": "alice",
         "from": "done",
         "to": "verified"
@@ -186,7 +186,7 @@
       "all_day": 0,
       "duration_min": 60,
       "kind": "ticket",
-      "date": "2026-09-16",
+      "date": "2026-09-30",
       "start": "14:30",
       "end": null,
       "ghost": false,
@@ -202,7 +202,7 @@
       "priority": "media",
       "due_state": "overdue",
       "last_change": {
-        "at": "2026-09-13T10:15:00",
+        "at": "2026-09-27T10:15:00",
         "by": "alice",
         "from": "accepted",
         "to": "blocked"
@@ -212,7 +212,7 @@
       "all_day": 0,
       "duration_min": 60,
       "kind": "ticket",
-      "date": "2026-09-13",
+      "date": "2026-09-27",
       "start": "16:00",
       "end": null,
       "ghost": false,
@@ -233,7 +233,7 @@
       "all_day": 0,
       "duration_min": 30,
       "kind": "ticket",
-      "date": "2026-09-23",
+      "date": "2026-10-07",
       "start": "03:30",
       "end": null,
       "ghost": true,
@@ -254,7 +254,7 @@
       "all_day": 0,
       "duration_min": 30,
       "kind": "ticket",
-      "date": "2026-09-30",
+      "date": "2026-10-14",
       "start": "03:30",
       "end": null,
       "ghost": true,
@@ -275,7 +275,7 @@
       "all_day": 0,
       "duration_min": 30,
       "kind": "ticket",
-      "date": "2026-10-07",
+      "date": "2026-10-21",
       "start": "03:30",
       "end": null,
       "ghost": true,
@@ -296,11 +296,63 @@
       "all_day": 0,
       "duration_min": 30,
       "kind": "ticket",
-      "date": "2026-10-14",
+      "date": "2026-10-28",
       "start": "03:30",
       "end": null,
       "ghost": true,
       "occurrence_n": 4
+    },
+    {
+      "ticket_id": 110,
+      "plan_key": null,
+      "title": "Prune the stale branches",
+      "owner": "alice",
+      "project_id": 1,
+      "status": "accepted",
+      "priority": "baja",
+      "due_state": "due",
+      "last_change": {
+        "at": "2026-09-28T10:00:00",
+        "by": "owner",
+        "from": "proposed",
+        "to": "accepted"
+      },
+      "cadence_days": 7,
+      "preferred_time": null,
+      "all_day": 0,
+      "duration_min": 60,
+      "kind": "ticket",
+      "date": "2026-09-30",
+      "start": null,
+      "end": null,
+      "ghost": false,
+      "occurrence_n": 0
+    },
+    {
+      "ticket_id": 111,
+      "plan_key": null,
+      "title": "Review the dependency alerts",
+      "owner": "bob",
+      "project_id": 2,
+      "status": "accepted",
+      "priority": "media",
+      "due_state": "due",
+      "last_change": {
+        "at": "2026-09-27T12:00:00",
+        "by": "owner",
+        "from": "proposed",
+        "to": "accepted"
+      },
+      "cadence_days": 7,
+      "preferred_time": null,
+      "all_day": 0,
+      "duration_min": 60,
+      "kind": "ticket",
+      "date": "2026-09-30",
+      "start": null,
+      "end": null,
+      "ghost": false,
+      "occurrence_n": 0
     }
   ]
 }

@@ -8,7 +8,8 @@
    «no hay tareas».
    ============================================================ */
 
-import { esc } from '../util.js';
+import { esc, fmtWhenScheduled } from '../util.js';
+import { t as tr } from '../i18n.js';
 import { initDay, renderDay, flashDayItem, fitNarrow } from './calendar_day.js';
 import { initWeek, renderWeek } from './calendar_week.js';
 import { initMonth, renderMonth } from './calendar_month.js';
@@ -169,6 +170,31 @@ export function renderCalendar(state, root = document.getElementById('cal-root')
   bar.appendChild(pick);
 
   root.appendChild(bar);
+
+  /* #604 (Pepe, 16-oct): «las que propongáis deberían de salir siempre». Una propuesta espera una
+     decisión, no una fecha: en la rejilla solo salía el día en que cae, y las de otra semana no se
+     veían hasta navegar hasta ellas. Aquí salen todas, en cualquier rango; se abren y se deciden en
+     su ficha. Solo en el calendario del tablero: el de Agentes enseña jobs. */
+  const props = root.id === 'cal-root' ? (state.board?.columns?.proposed ?? []) : [];
+  if (props.length) {
+    const strip = document.createElement('div');
+    strip.className = 'cal__props';
+    const lab = document.createElement('span');
+    lab.className = 'cal__props-label';
+    lab.textContent = `${tr('Propuestas por decidir')} · ${props.length}`;
+    strip.appendChild(lab);
+    for (const t of props) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cal__prop';
+      b.dataset.id = t.id;
+      const when = fmtWhenScheduled(t) || tr('sin fecha');
+      b.innerHTML = `<b>${esc(t.title)}</b><span>${esc(when)}${t.owner ? ' · ' + esc(t.owner) : ''}</span>`;
+      b.addEventListener('click', () => handlers.onOpen(t.id));
+      strip.appendChild(b);
+    }
+    root.appendChild(strip);
+  }
 
   /* cuerpo: las vistas se cuelgan aquí (T2.5–T2.8) */
   const body = document.createElement('div');

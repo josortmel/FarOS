@@ -12,6 +12,11 @@ const PERSIST = {
   calView:   { key: 'agenticos.calView',   ok: ['day', 'week', 'month', 'year'], def: 'week' },
   theme:     { key: 'agenticos.theme',     ok: ['auto', 'light', 'dark'], def: 'auto' }, // T3.2
 };
+/* #773: en la tableta (el iPad de Pepe, ojos sensibles) el tema de partida es el oscuro, no el
+   del sistema. Lo que se elija con el botón se guarda y manda. Misma consulta que mobile.css. */
+try {
+  if (matchMedia('(hover: none) and (pointer: coarse) and (min-width: 541px) and (max-width: 1366px) and (min-height: 501px)').matches) PERSIST.theme.def = 'dark';
+} catch { /* sin matchMedia: se queda en auto */ }
 function readPersisted(name) {
   const p = PERSIST[name];
   try {

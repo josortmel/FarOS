@@ -9,6 +9,8 @@
    para poder mandar X-FarOS-Token sin tocar el API de Hilo.
    ============================================================ */
 
+import { revisarDemo } from './criterio_reglas.js';   // #1136
+
 const runtime = (typeof window !== 'undefined' && window.agenticos) || null;
 // fallback de desarrollo: ?base=…&token=… en la URL (el preload de Electron manda)
 const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
@@ -103,6 +105,12 @@ const live = {
   mode: 'live',
   health:   ()            => http('/api/health'),
   meta:     ()            => http('/api/meta'),
+  /* #601: los ajustes del motor (los secretos llegan enmascarados); proof_repos, de momento */
+  settings: ()            => http('/api/settings'),
+  patchSettings: (b)      => http('/api/settings', { method: 'PATCH', body: JSON.stringify(b) }),
+  /* #1217: el timbre de las franjas — encendido o no y qué ha sonado ese día y a quién */
+  timbre:   (fecha)       => http(`/api/timbre${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`),
+  timbreSilencio: (b)     => http('/api/timbre/silencio', { method: 'POST', body: JSON.stringify(b) }),
   board:    (view, project) => http(`/api/board?view=${view || 'all'}${project ? `&project=${project}` : ''}`),
   projects: ()            => http('/api/projects'),
   createProject: (p)      => http('/api/projects', { method: 'POST', body: JSON.stringify(p) }),
@@ -142,10 +150,19 @@ const live = {
   schedule:       (id, b)   => http(`/api/tickets/${id}/schedule`, { method: 'POST', body: JSON.stringify(b) }),
   shiftNext:      (id, b)   => http(`/api/tickets/${id}/shift_next`, { method: 'POST', body: JSON.stringify(b) }),
 
+  /* ---- #851: Biblioteca. /content devuelve HTML (texto) o {abrir} si es interactivo ---- */
+  libraryItems:   (p = {})  => http(`/api/library/items?${new URLSearchParams(p)}`),
+  libraryItem:    (id)      => http(`/api/library/items/${id}`),
+  libraryContent: (id)      => http(`/api/library/items/${id}/content`),
+  libraryRevista: (dia)     => http(`/api/library/revista/${encodeURIComponent(dia)}`),
+
   /* ---- v3 T3.3/T3.4: bisagras (decisiones del dueño) ---- */
   decisions:      (workflowId, status) => http(`/api/decisions?${workflowId != null ? `workflow_id=${workflowId}` : ''}${status ? `&status=${status}` : ''}`),
   decide:         (id, b)   => http(`/api/decisions/${id}/decide`, { method: 'POST', body: JSON.stringify(b) }),
   deferDecision:  (id, b)   => http(`/api/decisions/${id}/defer`, { method: 'POST', body: JSON.stringify(b) }),
+  /* #919: lo que vale hoy sobre un tema, de FarOS y de EcoDB (12-25 s: la pantalla enseña que está buscando) */
+  decisionsVigentes: (tema, incluirSuperadas = false) =>
+    http(`/api/decisions/vigentes?${new URLSearchParams({ tema, ...(incluirSuperadas ? { incluir_superadas: 'true' } : {}) })}`),
 
   /* ---- v3 T3.6: documentos del workflow (se abren con el preload) ---- */
   documents:      (id)      => http(`/api/workflows/${id}/documents`),
@@ -177,6 +194,25 @@ const live = {
   mcpImportLocal: (agent)   => http('/api/mcp/import_local', { method: 'POST', body: JSON.stringify({ agent }) }),
   mcpPatch:       (id, b)   => http(`/api/mcp/${id}`, { method: 'PATCH', body: JSON.stringify(b) }),
   mcpDelete:      (id, agent) => http(`/api/mcp/${id}?agent=${encodeURIComponent(agent)}`, { method: 'DELETE' }),
+
+  /* #252/#245: el roster editable desde la app (contrato de Hilo, 30-sep) */
+  roster:         ()        => http('/api/roster'),
+  rosterAdd:      (name)    => http('/api/roster/agents', { method: 'POST', body: JSON.stringify({ name }) }),
+  rosterRename:   (name, to) => http(`/api/roster/agents/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify({ name: to }) }),
+  /* suspender (Pepe, 30-sep): PATCH {suspended, reassign_to}; borrar solo sin tareas */
+  rosterSuspend:  (name, suspended, reassignTo) => http(`/api/roster/agents/${encodeURIComponent(name)}`, { method: 'PATCH', body: JSON.stringify(reassignTo ? { suspended, reassign_to: reassignTo } : { suspended }) }),
+  rosterRemove:   (name)    => http(`/api/roster/agents/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
+  /* #460: Ajustes › Claves. El valor nunca vuelve («••••»); el motor prueba la clave antes de guardarla */
+  credentials:      ()             => http('/api/credentials'),
+  credentialCreate: (agent, b)     => http('/api/credentials', { method: 'POST', body: JSON.stringify({ agent, ...b }) }),
+  credentialPatch:  (id, agent, b) => http(`/api/credentials/${id}`, { method: 'PATCH', body: JSON.stringify({ agent, ...b }) }),
+  credentialTest:   (id, agent)    => http(`/api/credentials/${id}/test`, { method: 'POST', body: JSON.stringify({ agent }) }),
+  credentialDelete: (id, agent)    => http(`/api/credentials/${id}?agent=${encodeURIComponent(agent)}`, { method: 'DELETE' }),
+  credentialDeliveries: (limit = 50) => http(`/api/credentials/deliveries?limit=${limit}`),   // #499: quién pidió qué; nunca el valor
+  // #1302: el «Copiar» del navegador del móvil (sin Electron no hay copiarClave). La ÚNICA llamada de la página que
+  // trae un valor; Pepe aceptó (17-nov) que en el móvil pase por la página. Queda en Entregas como cualquier otra.
+  credentialDeliver: (b)             => http('/api/credentials/deliver', { method: 'POST', body: JSON.stringify(b) }),
 };
 
 /* ================================================================
@@ -188,10 +224,10 @@ const ACTIVE = ['proposed', 'accepted', 'in_progress', 'done', 'verified'];
 const LEGAL = {
   proposed:    { accepted: 'accept', rejected: 'reject' },
   accepted:    { in_progress: 'start', done: 'complete', blocked: 'block', rejected: 'reject' },
-  in_progress: { done: 'complete', blocked: 'block', accepted: 'backlog' },
+  in_progress: { done: 'complete', blocked: 'block', accepted: 'pause' },   // #482: pausar, con nota
   done:        { verified: 'verify', in_progress: 'rework', accepted: 'rework' },
   verified:    { in_progress: 'rework', accepted: 'rework' },
-  blocked:     { in_progress: 'unblock', rejected: 'reject' },
+  blocked:     { blocked: 'block', in_progress: 'unblock', rejected: 'reject' },   // #482: block sobre bloqueada = cambiar el motivo
   rejected:    {},
   expired:     { accepted: 'accept' },
 };
@@ -240,6 +276,8 @@ function makeMock() {
   }
 
   function inView(t, view) {
+    // #604, espejo del motor: una propuesta espera una decisión, no una fecha: sale en todas las vistas
+    if (t.status === 'proposed') return true;
     const ds = dueState(t);
     // today = pantalla de la mañana (GAP-1 de Eco): recurrentes due/overdue
     // + en curso + cola done (por verificar) + vencimientos de hoy
@@ -265,6 +303,8 @@ function makeMock() {
     for (const status of ACTIVE) columns[status] = all.filter(t => t.status === status);
     return {
       view, project_id: project,
+      // #388: el mismo contrato que el daemon — ¿hubo alguna vez una tarea del tablero?
+      started: [...db.tickets.values()].some(t => t.kind !== 'agentic'),
       projects: db.projects,
       columns,
       laterals: {
@@ -284,6 +324,10 @@ function makeMock() {
   // Y es el modo en el que se capturan TODAS las pantallas del README.
   function reject409(reason, code) {
     return Promise.reject(new ApiError(409, { error: 'transition_rejected', reason, code }));
+  }
+  /* #722: un error de ENTRADA en una transición (nombra el campo) es 400 con su field, como en el motor */
+  function reject400(reason, code, field) {
+    return Promise.reject(new ApiError(400, { error: 'invalid_request', reason, code, field }));
   }
 
   function wfTicket(id) {
@@ -316,7 +360,31 @@ function makeMock() {
   return {
     mode: 'fixtures',
     async health() { if (!db) await load(); return { ok: true, mode: 'fixtures' }; },
-    async meta()   { if (!db) await load(); return db.meta; },
+    /* #252: COPIA, como el daemon. Devolvía el mismo objeto que el mock muta, así que un
+       agente nuevo aparecía en la app aunque nadie volviera a pedir meta — el mock
+       escondía justo el fallo que en vivo sí pasa (canario del e2e del #252). */
+    async meta()   { if (!db) await load(); return structuredClone(db.meta); },
+    /* #601, espejo: un ajuste suelto, proof_repos (los repos donde el verificador puede correr una prueba) */
+    async settings() { if (!db) await load(); return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...(db.settings ?? {}) }; },
+    async patchSettings({ agent, ...cambios }) {
+      if (!db) await load();
+      db.settings = { ...(db.settings ?? {}), ...cambios };
+      return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...db.settings };
+    },
+    /* #1217, espejo: el timbre lee su interruptor de los ajustes del mock; sin avisos apuntados */
+    async timbre(fecha) {
+      if (!db) await load();
+      const d = new Date(), hoy = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { activo: db.settings?.timbre_activo ?? true, apagado_por_entorno: false, ultima_vuelta: null,
+               fecha: fecha || hoy, silencios: { ...(db.settings?.timbre_silencio ?? {}) }, avisos: [] };
+    },
+    async timbreSilencio({ agente, hasta }) {
+      if (!db) await load();
+      const sil = { ...(db.settings?.timbre_silencio ?? {}) };
+      if (hasta) sil[agente] = hasta; else delete sil[agente];
+      db.settings = { ...(db.settings ?? {}), timbre_silencio: sil };
+      return { agente, silenciado_hasta: hasta || null, silencios: sil };
+    },
     async board(view, project) { if (!db) await load(); return boardPayload(view, project); },
     async projects() { return db.projects; },
 
@@ -362,7 +430,8 @@ function makeMock() {
       db.tickets.set(id, ticket);
       db.history.set(id, [{ at: ticket.created_at, agent: ticket.owner, action: 'create', note: null }]);
       emitChange('ticket.created', { ticket_id: id });
-      return ticket;
+      /* #1136, espejo del motor (#1081): la respuesta trae los avisos del criterio; la tarea guardada no */
+      return { ...ticket, criterion_warnings: revisarDemo(ticket.verify_criteria, ticket.verification_level) };
     },
 
     async patchTicket(id, patch) {
@@ -379,6 +448,15 @@ function makeMock() {
       if (fields.duration_min !== '' && fields.duration_min != null && !(Number(fields.duration_min) > 0)) {
         return Promise.reject(new ApiError(400, { error: 'invalid_request', reason: 'duration_min debe ser un entero > 0' }));
       }
+      /* #414, espejo del motor: subir el nivel, cualquiera; bajarlo a «self», solo el dueño de la casa */
+      if (fields.verification_level && fields.verification_level !== t.verification_level) {
+        if (t.cadence_days || t.kind === 'agentic') {
+          return Promise.reject(new ApiError(400, { error: 'invalid_request', reason: 'las recurrentes y las agénticas no cambian de nivel', code: 'ticket.level_fixed' }));
+        }
+        if (fields.verification_level === 'self' && agent !== db.meta?.owner) {
+          return Promise.reject(new ApiError(400, { error: 'invalid_request', reason: 'bajar el nivel a «self» solo lo hace el dueño de la casa', code: 'ticket.level_to_self_owner_only' }));
+        }
+      }
       for (const k of Object.keys(fields)) if (fields[k] === '') fields[k] = null;
       Object.assign(t, fields, { updated_at: new Date().toISOString() });
       if (t.cadence_days) {
@@ -388,6 +466,10 @@ function makeMock() {
       /* T3.3: la hora preferida / duración de una recurrente también mueven su proyección en el calendario */
       if ('preferred_time' in fields || 'duration_min' in fields) await this._calPatch(id, fields).catch(() => null);
       emitChange('ticket.transition', { ticket_id: t.id });
+      /* #1136, espejo del motor (#1081): solo si cambió el criterio o el nivel, y en una copia */
+      if ('verify_criteria' in fields || 'verification_level' in fields) {
+        return { ...t, criterion_warnings: revisarDemo(t.verify_criteria, t.verification_level) };
+      }
       return t;
     },
 
@@ -437,21 +519,41 @@ function makeMock() {
       const t = db.tickets.get(Number(id)) ?? wfTicket(Number(id));
       if (!t) return reject409('El ticket no existe.', 'ticket.not_found');
       if (!db.history.has(t.id)) db.history.set(t.id, [{ at: t.created_at, agent: t.created_by ?? t.owner, action: 'create', note: null }]);
+      /* #481, espejo del motor: quedarse/soltar la verificación no cambia el estado */
+      if (action === 'claim' || action === 'unclaim') {
+        if (t.closed_at) return reject409(`El ticket #${t.id} está cerrado.`, 'transition.illegal');
+        if (action === 'claim') {
+          if (t.verification_level === 'self') return reject409('Es de nivel «self»: no hay verificación que coger.', 'verify.not_needed');
+          if (agent === t.owner) return reject409(`El verificador no puede ser el owner (${agent}).`, 'verify.owner_cannot_verify');
+          if (t.verify_claimed_by && t.verify_claimed_by !== agent) return reject409(`ya la tiene ${t.verify_claimed_by}`, 'verify.already_claimed');
+          Object.assign(t, { verify_claimed_by: agent, verify_claimed_at: localNow() });
+        } else if (t.verify_claimed_by) {
+          if (agent !== t.verify_claimed_by && agent !== db.meta?.owner) return reject409(`la tiene ${t.verify_claimed_by}`, 'verify.not_claimer');
+          Object.assign(t, { verify_claimed_by: null, verify_claimed_at: null });
+        }
+        emitChange('ticket.transition', { ticket_id: t.id });
+        return { ...t };
+      }
       const legal = LEGAL[t.status] ?? {};
       const target = to ?? Object.keys(legal).find(k => legal[k] === action);
       if (!target || !legal[target]) {
         return reject409(`Transición no válida: de «${t.status}» no se puede pasar a «${to ?? action}».`, 'transition.illegal');
       }
       if (target === 'done' && !evidence_type) {
-        return reject409('Completar exige evidencia tipada. Sin evidencia no hay «hecha».', 'complete.evidence_required');
+        return reject400('Completar exige evidencia tipada. Sin evidencia no hay «hecha».', 'complete.evidence_required', 'evidence_type');
+      }
+      if (target === 'done' && !(evidence ?? '').trim()) {
+        return reject400('complete requiere evidencia — «done» sin evidencia no existe', 'complete.evidence_required', 'evidence');
       }
       /* T2.1 (motor de Hilo, espejado): rework = devolver con motivo; recurrentes no se devuelven */
       if (action === 'rework') {
-        if (!reason || reason.trim().length < 10) return Promise.reject(new ApiError(400, { error: 'invalid_request', reason: 'rework requiere un motivo de al menos 10 caracteres' }));
-        if (t.cadence_days) return Promise.reject(new ApiError(400, { error: 'invalid_request', reason: 'las recurrentes no se devuelven' }));
+        /* #722: como el motor — motivo corto = error de ENTRADA (400 con field); recurrente = conflicto (409) */
+        const motivoRework = (reason || note || '').trim();
+        if (motivoRework.length < 10) return reject400('rework requiere un motivo de al menos 10 caracteres', 'rework.reason_required', 'reason');
+        if (t.cadence_days) return reject409('las recurrentes no se devuelven: estampan y siguen', 'rework.recurring');
         const prev = t.status;
         Object.assign(t, { status: target, closed_at: null, verified_by: null, last_change: { at: localNow(), by: agent, from: prev, to: target } });
-        db.history.get(t.id).push({ at: localNow(), agent, action: 'rework', note: `[rechazo] ${reason.trim()}`, from: prev, to: target });
+        db.history.get(t.id).push({ at: localNow(), agent, action: 'rework', note: `[rechazo] ${motivoRework}`, from: prev, to: target });
         /* T2.4/T1.3 espejado: una devuelta SIN ancla temporal recibe due_at = hoy, o se
            queda fuera de Hoy/Semana y parece que ha desaparecido (el dueño §3). */
         let anchored = false;
@@ -466,10 +568,31 @@ function makeMock() {
       if (target === 'verified' && t.verification_level === 'peer' && agent === t.owner) {
         return reject409(`Verificador y dueño no pueden ser el mismo (${agent}). Lo verifica otro, o el bot.`);
       }
-      if (target === 'blocked' && !note) {
-        return reject409('Bloquear exige motivo en la nota.');
+      /* #722: el motor toma el motivo de `reason` y, si no viene, de `note` (faros/api.py) */
+      const motivo = (reason || note || '').trim();
+      if (target === 'blocked' && !motivo) {
+        return reject400('block requiere reason', 'block.reason_required', 'reason');
       }
       const prev = t.status;
+      /* #482 espejado: bloquear una bloqueada reescribe el motivo y sigue bloqueada; el mismo
+         motivo otra vez no hace nada (como el daemon, 023585e) */
+      /* #482 espejado: pausar exige nota de ≥ 10 caracteres y queda como «[pausa] …» */
+      if (prev === 'in_progress' && target === 'accepted') {
+        if (motivo.length < 10) return reject400('pause requiere una nota de al menos 10 caracteres (por qué no está en curso de verdad)', 'pause.note_required', 'note');
+        Object.assign(t, { status: 'accepted', updated_at: new Date().toISOString() });
+        db.history.get(t.id).push({ at: t.updated_at, agent, action: 'pause', note: `[pausa] ${motivo}`, from: prev, to: 'accepted' });
+        emitChange('ticket.transition', { ticket_id: t.id });
+        return { ok: true, status: 'accepted' };
+      }
+      if (prev === 'blocked' && target === 'blocked') {
+        const viejo = t.blocked_reason ?? '';
+        if (motivo === viejo.trim()) return { ...t };
+        t.blocked_reason = motivo;
+        t.updated_at = new Date().toISOString();
+        db.history.get(t.id).push({ at: t.updated_at, agent, action: 'block', note: `motivo cambiado: «${viejo}» → «${motivo}»`, from: prev, to: prev });
+        emitChange('ticket.transition', { ticket_id: t.id });
+        return { ok: true, status: prev };
+      }
       // recurrentes (§4): completar estampa last_done_at, NO cierra el ticket
       if (target === 'done' && t.cadence_days) {
         t.last_done_at = new Date().toISOString();
@@ -481,14 +604,21 @@ function makeMock() {
       t.updated_at = new Date().toISOString();
       if (evidence_type) { t.evidence_type = evidence_type; t.evidence = evidence; }
       if (target === 'verified') { t.verified_by = agent; t.closed_at = t.updated_at; }
-      if (target === 'blocked') t.blocked_reason = note;
+      if (target === 'blocked') t.blocked_reason = motivo;
       if (prev === 'blocked' && target !== 'blocked') t.blocked_reason = null;
       db.history.get(t.id).push({
         at: t.updated_at, agent, action: legal[target],
         note: note ?? null, from: prev, to: target,
       });
       emitChange('ticket.transition', { ticket_id: t.id });
-      return { ok: true, status: target };
+      /* #518, espejo del motor: cerrar la tarea apaga el job programado que cuelga de ella */
+      const colgado = t.closed_at && t.kind !== 'agentic'
+        ? [...(db.jobs?.values() ?? [])].find(j => Number(j.ticket_id) === t.id && j.status === 'active'
+            && j.enabled !== 0 && j.enabled !== false && j.schedule?.type !== 'manual')
+        : null;
+      return colgado
+        ? { ok: true, status: target, job_warning: `el job #${colgado.id} «${colgado.name}» cuelga de esta tarea cerrada y no se dispara: desenlázalo o páusalo` }
+        : { ok: true, status: target };
     },
 
     async patchJob(jobId, patch) {
@@ -741,6 +871,37 @@ function makeMock() {
       return { id: Number(id), ...fields };
     },
 
+    /* #851: Biblioteca, con las mismas respuestas que Spec §4 (403 si no se puede abrir) */
+    async _lib() {
+      if (!db.library) db.library = await fetch('fixtures/library.json').then(r => r.json());
+      return db.library;
+    },
+    async libraryItems({ q, clase, limite = 500, offset = 0 } = {}) {
+      const all = (await this._lib()).filter(i => i.estado === 'presente');
+      const needle = (q ?? '').toLowerCase();
+      return all.filter(i => (!clase || i.clase === clase) && (!needle || i.titulo.toLowerCase().includes(needle)))
+        .sort((a, b) => (b.fecha ?? '').localeCompare(a.fecha ?? '')).slice(Number(offset), Number(offset) + Number(limite))
+        .map(({ contenido, ...i }) => i);
+    },
+    async libraryItem(id) {
+      const it = (await this._lib()).find(i => i.id === Number(id));
+      if (!it) return Promise.reject(new ApiError(404, { reason: `entrada #${id} no existe` }));
+      const { contenido, ...fila } = it;
+      return fila;
+    },
+    async libraryContent(id) {
+      const it = (await this._lib()).find(i => i.id === Number(id));
+      if (!it || it.estado !== 'presente') return Promise.reject(new ApiError(403, { reason: 'no se puede abrir' }));
+      return it.interactivo ? { abrir: it.abrir ?? null } : it.contenido;
+    },
+    async libraryRevista(dia) {
+      if (!/^(\d{4}-\d{2}-\d{2}|semana-\d{4}-\d{2})$/.test(dia)) return Promise.reject(new ApiError(400, { reason: 'día no válido' }));
+      const it = (await this._lib()).find(i => i.clase === 'revista' && i.dia === dia);
+      if (!it) return Promise.reject(new ApiError(404, { reason: `no hay revista de ${dia}` }));
+      const { contenido, ...fila } = it;
+      return fila;
+    },
+
     /* T3.4: bisagras — mismas reglas que decisions.py: no se decide dos veces */
     async _dec() {
       if (!db.decisions) db.decisions = await fetch('fixtures/decisions.json').then(r => r.json());
@@ -750,17 +911,45 @@ function makeMock() {
       const all = await this._dec();
       return all.filter(d => (workflowId == null || d.workflow_id === Number(workflowId)) && (!status || d.status === status));
     },
-    async decide(id, { agent, option, decision, rationale }) {
+    async decide(id, { agent, option, decision, rationale, surface, supersedes, supersede_kind, supersede_reason, valid_until }) {
       const d = (await this._dec()).find(x => x.id === Number(id));
       if (!d) return Promise.reject(new ApiError(404, { reason: `decisión #${id} no existe` }));
       if (d.status === 'decided') return reject409(`decisión #${id} ya está decidida por ${d.decided_by} (${d.decision})`);
       if (option && !d.options.some(o => o.label === option)) return Promise.reject(new ApiError(400, { reason: `opción desconocida: ${option}` }));
       if (!option && !(decision ?? '').trim()) return Promise.reject(new ApiError(400, { reason: 'decide requiere option (label) o decision (texto libre)' }));
       if (!(rationale ?? '').trim()) return Promise.reject(new ApiError(400, { reason: 'decide requiere rationale (por qué)' }));
-      Object.assign(d, { status: 'decided', decided_by: agent, decision: option ?? decision, rationale, decided_at: localNow(), deferred_until: null });
-      d.history.push({ event: 'decided', actor: agent, changed_at: d.decided_at, note: `${d.decision} — ${rationale}` });
+      if (surface != null && !['desktop', 'mobile', 'mcp'].includes(surface)) return Promise.reject(new ApiError(400, { reason: `surface desconocida: ${surface}`, field: 'surface' }));
+      /* #919: las mismas reglas que decisions.py para sustituir: decididas, vivas, y no ella misma */
+      const all = await this._dec();
+      for (const sid of supersedes ?? []) {
+        const v = all.find(x => x.id === Number(sid));
+        if (!v || v.status !== 'decided' || v.superseded_by != null || v.id === d.id)
+          return Promise.reject(new ApiError(400, { reason: `supersedes: la decisión #${sid} no se puede sustituir`, field: 'supersedes' }));
+      }
+      Object.assign(d, { status: 'decided', decided_by: agent, decision: option ?? decision, rationale, decided_at: localNow(), deferred_until: null,
+        valid_until: valid_until ?? null });
+      d.history.push({ event: 'decided', actor: agent, changed_at: d.decided_at, note: `${d.decision} — ${rationale}`, surface: surface ?? null });
+      for (const sid of supersedes ?? []) {
+        const v = all.find(x => x.id === Number(sid));
+        Object.assign(v, { superseded_by: d.id, supersede_kind: supersede_kind ?? 'total', supersede_reason: supersede_reason ?? null });
+        v.history.push({ event: 'superseded', actor: agent, changed_at: d.decided_at, note: `superada por #${d.id} (${supersede_kind ?? 'total'})` });
+      }
       emitChange('decision.changed', { decision_id: d.id });
       return d;
+    },
+    /* #919: en el modo demo no hay EcoDB: responde la mitad de FarOS, por palabras del tema, y lo dice en avisos */
+    async decisionsVigentes(tema, incluirSuperadas = false) {
+      const palabras = String(tema ?? '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      const fila = d => ({ id: `faros:decision:${d.id}`, fecha: (d.decided_at ?? '').slice(0, 10), tipo: 'decision', agente: d.asked_by,
+        decidido_por: d.decidido_por ? JSON.parse(d.decidido_por) : null, linea: `${d.title}: ${d.decision}`.slice(0, 200), fuente: 'FarOS',
+        ...(d.valid_until ? { valid_until: d.valid_until } : {}) });
+      const toca = d => palabras.some(w => `${d.title} ${d.decision ?? ''}`.toLowerCase().includes(w));
+      const all = (await this._dec()).filter(d => d.status === 'decided' && toca(d));
+      const vigentes = all.filter(d => d.superseded_by == null).map((d, i) => ({ ...fila(d), rango: i + 1,
+        ...(all.some(x => x.superseded_by === d.id) ? { sustituye_a: all.filter(x => x.superseded_by === d.id).map(x => `faros:decision:${x.id}`) } : {}) }));
+      const superadas = incluirSuperadas ? all.filter(d => d.superseded_by != null).map(d => ({ ...fila(d), superada_por: `faros:decision:${d.superseded_by}`,
+        supersede_kind: d.supersede_kind, motivo: d.supersede_reason })) : undefined;
+      return { vigentes, errores: [], ...(superadas ? { superadas } : {}), avisos: ['modo demo: sin EcoDB, solo responde FarOS'] };
     },
     async deferDecision(id, { agent, until, note }) {
       const d = (await this._dec()).find(x => x.id === Number(id));
@@ -813,7 +1002,14 @@ function makeMock() {
     _jobView(j) {
       const runs = db.runs.get(j.id) ?? [];
       const last = runs[0] ?? null;
-      return { ...j, last_run: last ? { ...last } : null };
+      const v = { ...j, last_run: last ? { ...last } : null };
+      /* #518, espejo del motor: colgado de una tarea manual cerrada, no se dispara ni lo anuncia */
+      const t = j.ticket_id ? db.tickets.get(Number(j.ticket_id)) : null;
+      if (t?.closed_at && t.kind !== 'agentic' && j.status === 'active' && j.enabled !== 0 && j.enabled !== false) {
+        v.next_fire = null;
+        v.not_firing = `no se dispara: la tarea #${t.id} está cerrada (${t.status})`;
+      }
+      return v;
     },
     async jobs(status) {
       await this._ag();
@@ -988,6 +1184,152 @@ function makeMock() {
       reg.splice(i, 1);
       emitChange('mcp.changed', { id: Number(id), deleted: true });
       return { ok: true };
+    },
+
+    /* #252 mock del roster: las MISMAS reglas que el contrato de Hilo (30-sep), para
+       poder usar la pantalla sin daemon. Los cerrados conservan el nombre: son historia.
+       SUSPENDER (Pepe, 30-sep: «prefiero suspenderlo»): el suspendido sigue en la lista
+       pero sale de meta.agents, así que ningún selector lo ofrece para trabajo nuevo.
+       Borrar solo vale para un nombre sin ninguna tarea (creado por error). */
+    _suspendidos() { return (db.suspended ??= []); },
+    _todos() { return [...(db.meta.agents ?? []), ...this._suspendidos()]; },
+    async roster() {
+      if (!db) await load();
+      const CERRADOS = new Set(['verified', 'rejected', 'expired']);
+      const ts = [...db.tickets.values()];
+      const sus = new Set(this._suspendidos());
+      return {
+        owner: db.meta.owner, source: db.rosterSource ?? 'file', editable: (db.rosterSource ?? 'file') !== 'env',
+        agents: this._todos().sort().map(name => ({
+          name, suspended: sus.has(name),
+          open_tickets: ts.filter(t => t.owner === name && !CERRADOS.has(t.status)).length,
+          total_tickets: ts.filter(t => t.owner === name).length,
+        })),
+      };
+    },
+    _rosterGuard(name) {
+      if ((db.rosterSource ?? 'file') === 'env') throw new ApiError(409, { error: 'conflict', reason: 'roster fixed by FAROS_AGENTS env' });
+      const n = String(name ?? '').trim();
+      const RESERVADOS = ['code', 'verificador', 'adv-code', 'adv-seg', 'system', 'runner-bot', 'verifier-bot'];
+      if (!n) throw new ApiError(422, { error: 'invalid_request', reason: 'el nombre no puede estar vacío', field: 'name' });
+      if (n.length > 40) throw new ApiError(422, { error: 'invalid_request', reason: 'el nombre no puede pasar de 40 caracteres', field: 'name' });
+      if (RESERVADOS.includes(n.toLowerCase())) throw new ApiError(422, { error: 'invalid_request', reason: `«${n}» es un nombre reservado del sistema`, field: 'name' });
+      return n;
+    },
+    _existe(name) {
+      if (!this._todos().includes(name)) throw new ApiError(404, { error: 'not_found', reason: `no existe el agente «${name}»` });
+    },
+    async rosterAdd(name) {
+      if (!db) await load();
+      const n = this._rosterGuard(name);
+      if (this._todos().some(a => a.toLowerCase() === n.toLowerCase())) throw new ApiError(409, { error: 'conflict', reason: `ya existe un agente «${n}»`, field: 'name' });
+      db.meta.agents.push(n);
+      emitChange('roster.changed', { agent: n });
+      return { agent: n };
+    },
+    async rosterRename(name, to) {
+      if (!db) await load();
+      const n = this._rosterGuard(to);
+      if (name === db.meta.owner) throw new ApiError(403, { error: 'forbidden', reason: 'el dueño no se puede renombrar' });
+      this._existe(name);
+      if (this._todos().some(a => a !== name && a.toLowerCase() === n.toLowerCase())) throw new ApiError(409, { error: 'conflict', reason: `ya existe un agente «${n}»`, field: 'name' });
+      const lista = this._suspendidos().includes(name) ? this._suspendidos() : db.meta.agents;
+      lista.splice(lista.indexOf(name), 1, n);
+      for (const t of db.tickets.values()) if (t.owner === name) t.owner = n;
+      emitChange('roster.changed', { agent: n, renamed_from: name });
+      return { agent: n };
+    },
+    _abiertos(name) {
+      const CERRADOS = new Set(['verified', 'rejected', 'expired']);
+      return [...db.tickets.values()].filter(t => t.owner === name && !CERRADOS.has(t.status));
+    },
+    async rosterSuspend(name, suspended, reassignTo) {
+      if (!db) await load();
+      this._rosterGuard(name);
+      if (name === db.meta.owner) throw new ApiError(403, { error: 'forbidden', reason: 'el dueño no se puede suspender' });
+      this._existe(name);
+      const sus = this._suspendidos();
+      if (!suspended) {
+        if (sus.includes(name)) { sus.splice(sus.indexOf(name), 1); db.meta.agents.push(name); }
+        emitChange('roster.changed', { agent: name, suspended: false });
+        return { agent: name, reassigned: 0 };
+      }
+      const abiertos = this._abiertos(name);
+      if (abiertos.length && !reassignTo) throw new ApiError(409, { error: 'conflict', reason: `«${name}» tiene ${abiertos.length} tareas abiertas`, open_tickets: abiertos.length });
+      if (reassignTo && (reassignTo === name || !db.meta.agents.includes(reassignTo))) throw new ApiError(422, { error: 'invalid_request', reason: 'reassign_to tiene que ser otro agente activo', field: 'reassign_to' });
+      for (const t of abiertos) t.owner = reassignTo;
+      if (!sus.includes(name)) { db.meta.agents.splice(db.meta.agents.indexOf(name), 1); sus.push(name); }
+      emitChange('roster.changed', { agent: name, suspended: true });
+      return { agent: name, reassigned: abiertos.length };
+    },
+    async rosterRemove(name) {
+      if (!db) await load();
+      this._rosterGuard(name);
+      if (name === db.meta.owner) throw new ApiError(403, { error: 'forbidden', reason: 'el dueño no se puede quitar' });
+      this._existe(name);
+      const total = [...db.tickets.values()].filter(t => t.owner === name).length;
+      if (total) throw new ApiError(409, { error: 'conflict', reason: `«${name}» tiene tareas: suspéndelo en vez de borrarlo` });
+      for (const l of [db.meta.agents, this._suspendidos()]) if (l.includes(name)) l.splice(l.indexOf(name), 1);
+      emitChange('roster.changed', { agent: name, removed: true });
+      return { reassigned: 0 };
+    },
+
+    /* #460 mock de Claves: las mismas reglas que el motor. Sin red: un valor que empieza
+       por «mala» hace de clave que el servicio rechaza. */
+    _creds() { return (db.creds ??= []); },
+    _credUso: { deepseek: 'deepseek_api_key', anthropic: 'anthropic_api_key', telegram: 'telegram_token', otra: null },
+    _credOut(c) { return { ...c, value: c.value ? '••••' : '', empty: !c.value, use: this._credUso[c.kind], deliverable: Boolean(c.deliverable) }; },
+    _credProbar(kind, value) {
+      if (!this._credUso[kind]) return { ok: null, detail: '' };
+      if (String(value).startsWith('mala')) throw new ApiError(422, { error: 'invalid_request', field: 'value', code: 'credential.test_failed', detail: 'el servicio la rechaza (HTTP 401)', reason: 'la clave no vale: el servicio la rechaza (HTTP 401). No se ha guardado.' });
+      return { ok: true, detail: kind === 'telegram' ? '@bot_de_prueba' : '12 modelos' };
+    },
+    _credMarcar(c) { for (const o of this._creds()) if (o.kind === c.kind) o.in_use = false; c.in_use = true; },
+    async credentials() { if (!db) await load(); return this._creds().map(c => this._credOut(c)); },
+    async credentialCreate(agent, { name, kind, value, origin = '', in_use = null }) {
+      if (!db) await load();
+      const n = String(name ?? '').trim(), v = String(value ?? '').trim();
+      if (!n) throw new ApiError(400, { error: 'invalid_request', field: 'name', code: 'credential.name_required', reason: 'falta el nombre de la clave' });
+      if (!v) throw new ApiError(400, { error: 'invalid_request', field: 'value', code: 'credential.value_required', reason: 'falta el valor de la clave' });
+      if (this._creds().some(c => c.name.toLowerCase() === n.toLowerCase())) throw new ApiError(409, { error: 'conflict', field: 'name', code: 'credential.name_taken', reason: `ya hay una clave que se llama «${n}»` });
+      const t = this._credProbar(kind, v), d = new Date(), now = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 19);   // hora LOCAL, como el motor
+      const c = { id: (db.credSeq = (db.credSeq ?? 0) + 1), name: n, kind, value: v, origin: String(origin ?? '').trim(), in_use: false,
+                  tested_at: t.ok === null ? null : now, test_ok: t.ok, test_detail: t.detail, created_by: agent, created_at: now, updated_at: now };
+      this._creds().push(c);
+      if (in_use ?? (this._credUso[kind] && !this._creds().some(o => o.kind === kind && o.in_use))) this._credMarcar(c);
+      emitChange('credentials.changed', { id: c.id });
+      return this._credOut(c);
+    },
+    async credentialPatch(id, agent, b) {
+      if (!db) await load();
+      const c = this._creds().find(x => x.id === Number(id));
+      if (!c) throw new ApiError(404, { error: 'not_found', code: 'credential.not_found', reason: `no existe la clave ${id}` });
+      if ('value' in b && b.value !== '••••') { const t = this._credProbar(c.kind, b.value); Object.assign(c, { value: String(b.value).trim(), test_ok: t.ok, test_detail: t.detail }); }
+      if ('name' in b) c.name = String(b.name).trim();
+      if ('origin' in b) c.origin = String(b.origin).trim();
+      if ('in_use' in b) { if (b.in_use) this._credMarcar(c); else c.in_use = false; }
+      /* #499 espejado: entregable bajo demanda, solo el dueño de la casa */
+      if ('deliverable' in b) {
+        if (agent !== db.meta.owner) throw new ApiError(403, { error: 'forbidden', field: 'deliverable', code: 'credential.deliverable_owner_only', reason: `solo ${db.meta.owner} decide qué claves se entregan bajo demanda` });
+        c.deliverable = Boolean(b.deliverable);
+      }
+      emitChange('credentials.changed', { id: c.id });
+      return this._credOut(c);
+    },
+    /* #499 espejado: el registro de entregas, el más nuevo primero, sin el valor */
+    async credentialDeliveries(limit = 50) { if (!db) await load(); return (db.credDeliveries ??= []).slice(0, limit); },
+    async credentialTest(id) {
+      const c = this._creds().find(x => x.id === Number(id));
+      try { const t = this._credProbar(c.kind, c.value); Object.assign(c, { test_ok: t.ok, test_detail: t.detail }); }
+      catch (e) { Object.assign(c, { test_ok: false, test_detail: 'el servicio la rechaza (HTTP 401)' }); }
+      return this._credOut(c);
+    },
+    async credentialDelete(id) {
+      const l = this._creds(), i = l.findIndex(x => x.id === Number(id));
+      if (i < 0) throw new ApiError(404, { error: 'not_found', code: 'credential.not_found', reason: `no existe la clave ${id}` });
+      const [c] = l.splice(i, 1);
+      emitChange('credentials.changed', { id: c.id, deleted: true });
+      return { id: c.id, deleted: true, was_in_use: c.in_use };
     },
 
     async verifySweep() {

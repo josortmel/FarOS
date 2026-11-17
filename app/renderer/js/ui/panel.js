@@ -6,10 +6,11 @@
    teclado para las transiciones (mismo /transition que el drag&drop).
    ============================================================ */
 
-import { TRANSITIONS, ACTION_LABEL, STATUS_LABEL } from '../transitions.js';
+import { TRANSITIONS, ACTION_LABEL, STATUS_LABEL, VLEVEL } from '../transitions.js';
 import { fmtWhen, fmtDate, fmtWhenScheduled, esc, projectColor } from '../util.js';
 import { t as tr, applyI18n } from '../i18n.js';  // #314
 import { api } from '../api.js';
+import { notaHTML, avisosDe } from './criterio_avisos.js';   // #1136
 
 let handlers = null; // { onTransition(t, target, action), onOpenJob(jobId), onPatchTime(t, patch), onPatchFields(t, patch), onClose }
 
@@ -50,12 +51,22 @@ function renderEditSection(t, board) {
       <div class="field">
         <label for="ed-crit">Criterio de verificación</label>
         <textarea id="ed-crit" rows="2">${esc(t.verify_criteria ?? '')}</textarea>
+        ${notaHTML(avisosDe(t.id), t.verify_criteria)}
       </div>
+      ${!t.cadence_days && t.kind !== 'agentic' ? `
+      <div class="field">
+        <label for="ed-vlevel">Nivel de verificación</label>
+        <select id="ed-vlevel">${Object.keys(VLEVEL).map(v => `<option value="${v}"${t.verification_level === v ? ' selected' : ''}>${esc(VLEVEL[v][0])}</option>`).join('')}</select>
+        <span class="hint" id="ed-vlevel-txt">${esc(VLEVEL[t.verification_level]?.[1] ?? '')}</span>
+      </div>` : ''}
       <div class="time-form__actions">
         <button type="submit" class="btn btn--ghost btn--sm"${closed ? ' disabled' : ''}>Guardar cambios</button>
         <span class="hint">el motor valida; si no deja, lo dice</span>
       </div>
     </form>`;
+  s.querySelector('#ed-vlevel')?.addEventListener('change', (e) => {
+    s.querySelector('#ed-vlevel-txt').textContent = VLEVEL[e.target.value]?.[1] ?? '';
+  });
   s.querySelector('#edit-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const q = (id) => s.querySelector(id);
@@ -67,6 +78,8 @@ function renderEditSection(t, board) {
     put('owner', q('#ed-owner').value, t.owner);
     put('verify_criteria', q('#ed-crit').value.trim(), t.verify_criteria);
     put('due_at', q('#ed-due').value, (t.due_at ?? '').slice(0, 10));
+    /* #414: subir el nivel lo hace cualquiera; bajarlo a «propia», solo el dueño (el motor lo dice) */
+    if (q('#ed-vlevel')) put('verification_level', q('#ed-vlevel').value, t.verification_level);
     if (!Object.keys(patch).length) return;
     handlers.onPatchFields(t, patch);
   });
@@ -187,10 +200,10 @@ function renderPlanSections(t, plan) {
   const s = document.createElement('section');
   s.className = 'panel__section plan';
   const facts = [
-    plan.phase ? `fase <b>${esc(plan.phase)}</b>` : '',
-    plan.estimacion ? `tamaño <b>${esc(plan.estimacion)}</b>` : '',
-    plan.agente_sugerido ? `sugerido <b>${esc(plan.agente_sugerido)}</b>` : '',
-    plan.verification_level ? `verificación <b>${esc(plan.verification_level)}</b>` : '',
+    plan.phase ? `${tr('fase')} <b>${esc(plan.phase)}</b>` : '',
+    plan.estimacion ? `${tr('tamaño')} <b>${esc(plan.estimacion)}</b>` : '',
+    plan.agente_sugerido ? `${tr('sugerido')} <b>${esc(plan.agente_sugerido)}</b>` : '',
+    plan.verification_level ? `${tr('verificación')} <b>${esc(tr(VLEVEL[plan.verification_level]?.[0] ?? plan.verification_level))}</b>` : '',
   ].filter(Boolean).join(' · ');
   s.innerHTML = `<div class="panel__section-title">${tr('Ficha del Plan')}${plan.key ? ` · ${esc(plan.key)}` : ''}</div>
     ${facts ? `<div class="plan__facts">${facts}</div>` : ''}`;
@@ -253,6 +266,7 @@ export async function openPanel(t, board) {
     <div class="panel__facts">
       <span>estado <b>${STATUS_LABEL[t.status] ?? t.status}</b></span>
       <span>responsable <b>${esc(t.owner ?? '—')}</b></span>
+      ${t.verification_level ? `<span title="${esc(VLEVEL[t.verification_level]?.[1] ?? '')}">verificación <b>${esc(VLEVEL[t.verification_level]?.[0] ?? t.verification_level)}</b></span>` : ''}
       <span>creada por <b>${esc(t.created_by ?? '—')}</b> · ${fmtWhen(t.created_at)}</span>
       ${t.cadence_days ? `<span>recurrente <b>${tr(`cada ${t.cadence_days} d`)}</b> · ${tr('última')} ${t.last_done_at ? fmtWhen(t.last_done_at) : tr('nunca')}</span>` : ''}
       ${t.verified_by ? `<span>verificada por <b>${esc(t.verified_by)}</b></span>` : ''}
@@ -289,13 +303,45 @@ export async function openPanel(t, board) {
     row.className = 'panel__actions';
     for (const target of targets) {
       const action = legal[target];
+      const recambio = action === 'block' && t.status === 'blocked';   // #482: cambiar el motivo, no bloquear otra vez
       const btn = document.createElement('button');
-      btn.className = action === 'reject' || action === 'block' || action === 'rework' ? 'btn btn--danger' : 'btn btn--ghost';
-      btn.textContent = action === 'rework' ? `${tr('Devolver a')} ${STATUS_LABEL[target] ?? target}…` : (ACTION_LABEL[action] ?? action);
+      btn.className = !recambio && (action === 'reject' || action === 'block' || action === 'rework') ? 'btn btn--danger' : 'btn btn--ghost';
+      btn.textContent = recambio ? 'Cambiar motivo…'
+        : action === 'rework' ? `${tr('Devolver a')} ${STATUS_LABEL[target] ?? target}…` : (ACTION_LABEL[action] ?? action);
       btn.addEventListener('click', () => handlers.onTransition(t, target, action));
       row.appendChild(btn);
     }
     s.appendChild(row);
+    body.appendChild(s);
+  }
+
+  /* ---------- #481 (decisión 47 de Pepe): quedarse la verificación EN la tarea ----------
+     Lo que antes se repartía en la sala («me la quedo yo») queda en la tarea: quién la tiene, y
+     «Me la quedo» / «Soltar». El motor manda: si otro la coge a la vez, el segundo ve «ya la tiene X».
+     No en las «self» (se sellan solas), ni en las recurrentes o agénticas, ni para el dueño de la tarea. */
+  if (!t.closed_at && t.verification_level && t.verification_level !== 'self' && !t.cadence_days && t.kind !== 'agentic') {
+    const { agent: me, owner: casa } = handlers.me?.() ?? {};
+    const quien = t.verify_claimed_by;
+    const s = document.createElement('section');
+    s.className = 'panel__section panel__claim';
+    s.innerHTML = `
+      <div class="panel__section-title">${esc(tr('Verificación'))}</div>
+      <p class="claim__who">${quien
+        ? `${esc(tr('La verificación la tiene'))} <b>${esc(quien)}</b>${t.verify_claimed_at ? ' · ' + fmtWhen(t.verify_claimed_at) : ''}`
+        : esc(tr('Nadie se ha quedado todavía esta verificación.'))}</p>`;
+    const row = document.createElement('div');
+    row.className = 'claim__actions';  // NO .panel__actions: la capa de móvil se lleva esa a su barra (mobile.js)
+    const mk = (label, accion) => {
+      const b = document.createElement('button');
+      b.className = 'btn btn--ghost';
+      b.dataset.claim = accion;
+      b.textContent = tr(label);
+      b.addEventListener('click', () => handlers.onClaim?.(t, accion));
+      row.appendChild(b);
+    };
+    if (!quien && me && me !== t.owner) mk('Me la quedo', 'claim');
+    if (quien && (quien === me || me === casa)) mk('Soltar', 'unclaim');
+    if (row.children.length) s.appendChild(row);
     body.appendChild(s);
   }
 
@@ -309,7 +355,7 @@ export async function openPanel(t, board) {
       <div class="arm">
         <div class="arm__name">${esc(lj.name)} <span class="jobstate jobstate--${esc(lj.status ?? 'active')}">${lj.status === 'paused' ? 'pausado' : lj.status === 'archived' ? 'archivado' : 'activo'}</span></div>
         <div class="arm__run">${lr
-          ? `run ${lr.id} · ${esc(lr.status)}${lr.finished_at ? ' · ' + fmtWhen(lr.finished_at) : ''}${lr.verdict ? ` · <b class="arm__verdict--${lr.verdict}">${lr.verdict === 'pass' ? 'pasa' : 'falla'}</b>` : ''}`
+          ? `run ${lr.id} · ${esc(lr.status)}${lr.finished_at ? ' · ' + fmtWhen(lr.finished_at) : ''}${lr.verdict ? ` · <b class="arm__verdict--${lr.verdict}">${esc(tr({ pass: 'pasa', fail: 'falla', uncertain: 'incierto' }[lr.verdict] ?? lr.verdict))}</b>` : ''}`
           : 'sin runs todavía'}</div>
         <div class="hint">run ok + veredicto «pasa» → esta tarea se completa sola con evidencia run_output (T1.10)</div>
       </div>`;
@@ -356,10 +402,42 @@ export async function openPanel(t, board) {
         const move = to
           ? `${from ? esc(STATUS_LABEL[from] ?? from) + ' → ' : ''}${esc(STATUS_LABEL[to] ?? to)}`
           : esc(h.action ?? h.event ?? '');
-        li.innerHTML = `<time>${fmtWhen(when)}</time><span><b>${esc(agent)}</b> ${move}${h.note ? ' — ' + esc(h.note) : ''}</span>`;
+        /* #644: el daemon pega «[en nombre de <dueño>]» a la nota (#640). Se saca de la nota y se
+           enseña como etiqueta propia, traducida, para que no salga en español con la app en inglés */
+        const dueno = /\s*\[en nombre de ([^\]]+)\]\s*/.exec(h.note ?? '');
+        const note = dueno ? h.note.replace(dueno[0], ' ').trim() : h.note;
+        const marca = dueno ? ` <span class="prov prov--dueno">${esc(tr('en nombre de'))} ${esc(dueno[1])}</span>` : '';
+        li.innerHTML = `<time>${fmtWhen(when)}</time><span><b>${esc(agent)}</b> ${move}${provChip(h.provenance)}${marca}${note ? ' — ' + esc(note) : ''}</span>`;
         list.appendChild(li);
       }
     })
     .catch(() => { list.innerHTML = '<li>(historial no disponible)</li>'; })
     .finally(() => applyI18n(list));
+}
+
+/* #377 (decisión 21): la procedencia de cada verificación, que el daemon guarda en la fila del
+   historial. Las clases se distinguen por la FORMA y no solo por el color: una persona (el dueño
+   de la casa, `external`), rellena; un modelo de otra familia (`external:<modelo>`, #465),
+   rellena en cálido con el modelo como dato; misma familia (un Claude), con contorno;
+   autoverificada (el responsable sellándose lo suyo), contorno discontinuo; una herramienta,
+   monoespaciada. Los nombres van entre comillas angulares, que i18n deja intactas.
+   «externa» no se usa como etiqueta: desde #465 es también un NIVEL (DeepSeek), y llamar igual a
+   Pepe y a un modelo es justo lo que esta etiqueta tiene que separar. Una clase que aún no
+   conozco se enseña tal cual. */
+const PROV = {
+  'external':         ['prov--ext',  'persona',        'Verificada por una persona: fuera de la familia de modelos'],
+  'same-family':      ['prov--fam',  'misma familia',  'Verificada por otro Claude de la casa'],
+  'same-family:self': ['prov--self', 'autoverificada', 'Sellada por su propio responsable, en una tarea de nivel self'],
+};
+function provChip(p) {
+  if (!p) return '';
+  if (p.startsWith('deterministic:')) {
+    return ` <span class="prov prov--det" title="Comprobada por una herramienta, sin modelo">herramienta «${esc(p.slice(14))}»</span>`;
+  }
+  if (p.startsWith('external:')) {
+    return ` <span class="prov prov--mod" title="Verificada por un modelo de otra familia">otro modelo «${esc(p.slice(9))}»</span>`;
+  }
+  const d = PROV[p];
+  if (!d) return ` <span class="prov">${esc(p)}</span>`;
+  return ` <span class="prov ${d[0]}" title="${d[2]}">${d[1]}</span>`;
 }

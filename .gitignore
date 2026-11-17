@@ -8,6 +8,7 @@ app/dist/
 # PyInstaller
 build/dist/
 build/work/
+build/venv-daemon/
 build/*.log
 # Datos y artefactos locales
 *.db
@@ -16,3 +17,8 @@ build/*.log
 archive/*.tgz
 e2e/test-results/
 e2e/playwright-report/
+# Capturas de la e2e (#435): fuera de git; las de docs/screenshots se refrescan a propósito
+e2e/capturas/
+
+# Claude Code guarda ahí el comando entero, con claves, al pulsar «Yes, and don't ask again» (#1101)
+.claude/settings.local.json

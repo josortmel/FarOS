@@ -78,7 +78,8 @@ def test_claude_build_command_v3_flags():
            "fallback_model": "sonnet", "system_prompt": "eres un job",
            "json_schema": {"type": "object"}, "max_budget_usd": 5}
     cmd = a.build_command(job)
-    assert cmd[1:5] == ["-p", "--output-format", "json", "--no-session-persistence"]
+    # #1281: stream-json (+ --verbose) en vez de json, para que un run cortado deje lo que llevaba
+    assert cmd[1:6] == ["-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence"]
     assert "--allowedTools" in cmd and "Read,mcp__agenticos__*" in cmd
     assert "--strict-mcp-config" not in cmd  # strict solo si strict_mcp=1
     assert "--add-dir" in cmd and "C:/data" in cmd
@@ -90,8 +91,8 @@ def test_claude_build_command_v3_flags():
 def test_claude_build_command_minimal_is_unchanged_from_v1():
     a = harness.get("claude-cli")
     cmd = a.build_command({"model": "haiku", "permission_mode": "dontAsk"})
-    assert cmd[1:] == ["-p", "--output-format", "json", "--no-session-persistence",
-                       "--model", "haiku", "--permission-mode", "dontAsk"]
+    assert cmd[1:] == ["-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
+                       "--model", "haiku", "--permission-mode", "dontAsk"]   # #1281: stream-json
 
 
 def test_claude_validate_model_accepts_full_names():
@@ -107,3 +108,19 @@ def test_claude_parse_output_list_format():
                                             "session_id": "s1", "structured_output": {"k": 1}}])
     r = a.parse_output(out, 0)
     assert r.status == "ok" and r.output_text == "hola" and r.structured == {"k": 1}
+
+
+def test_claude_parse_output_stream_json():
+    # #1281: la forma que da `claude -p --output-format stream-json --verbose` (medida el 17-nov con haiku):
+    # un objeto por línea, el veredicto en la última de type «result».
+    a = harness.get("claude-cli")
+    lineas = [{"type": "system", "subtype": "init", "model": "haiku"},
+              {"type": "assistant", "message": {"content": [{"type": "text", "text": "Hola"}]}},
+              {"type": "rate_limit_event"},
+              {"type": "result", "subtype": "success", "is_error": False, "result": "Hola",
+               "total_cost_usd": 0.0080799, "session_id": "d20bbdf8", "structured_output": None}]
+    r = a.parse_output("\n".join(json.dumps(l) for l in lineas) + "\n", 0)
+    assert (r.status, r.output_text, r.cost_usd, r.session_id) == ("ok", "Hola", 0.0080799, "d20bbdf8")
+    error = lineas[:-1] + [{"type": "result", "subtype": "error_max_turns", "is_error": True, "result": ""}]
+    assert a.parse_output("\n".join(json.dumps(l) for l in error), 1).status == "error"
+    assert a.parse_output("texto suelto\nque no es json", 0).output_text == "texto suelto\nque no es json"

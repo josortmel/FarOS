@@ -85,6 +85,8 @@ TEXTOS = {
     "en": {
         "projects": ["Platform", "Website", "Research"],
         "t_recurring": "Weekly database backup",
+        "t_unplaced": "Prune the stale branches",
+        "t_unplaced2": "Review the dependency alerts",
         "t_recurring_crit": "backup file present in the archive and restore test passing",
         "t_proposed": "Rotate the API credentials",
         "t_proposed_desc": "Found while reviewing the deploy log: the key has not been rotated in 90 days.",
@@ -117,11 +119,19 @@ TEXTOS = {
         "ms": "Core phase verified end to end",
         "ac_verified": "moved the task to verified",
         "ac_done": "completed the task with evidence",
-        "mcp_note": "Local calendar MCP (stdio). Enable after finishing OAuth. Tools: list_events, create_event.",
+        "mcp_note": "Local Gmail MCP (stdio). Enable after finishing OAuth; the setup guide hangs from this row. Tools: search_threads, create_draft.",
+        "m_alias": "alias: follows the latest Anthropic version",
+        "dec_opt1": "Run both on claude-cli: one harness, one set of logs.",
+        "dec_opt2": "Digest on claude-cli, report on opencode: the report needs the bigger model.",
+        "wf_archived": "docs-migration",
+        "wf_closed": "billing-v2-debt",
+        "wf_cancelled": "mobile-spike",
     },
     "es": {
         "projects": ["Plataforma", "Web", "Investigación"],
         "t_recurring": "Copia semanal de la base de datos",
+        "t_unplaced": "Podar las ramas viejas",
+        "t_unplaced2": "Revisar los avisos de dependencias",
         "t_recurring_crit": "fichero de copia en el archivo y prueba de restauración en verde",
         "t_proposed": "Rotar las credenciales de la API",
         "t_proposed_desc": "Encontrado revisando el registro de despliegue: la clave lleva 90 días sin rotar.",
@@ -154,7 +164,13 @@ TEXTOS = {
         "ms": "Fase núcleo verificada de punta a punta",
         "ac_verified": "movió la tarea a verificada",
         "ac_done": "completó la tarea con evidencia",
-        "mcp_note": "MCP local de calendario (stdio). Activar tras completar OAuth. Tools: list_events, create_event.",
+        "mcp_note": "MCP local de Gmail (stdio). Activar tras completar OAuth; la guía de alta cuelga de esta fila. Tools: search_threads, create_draft.",
+        "m_alias": "alias: cambia cuando Anthropic sube versión",
+        "dec_opt1": "Los dos en claude-cli: un solo harness, un solo registro.",
+        "dec_opt2": "El resumen en claude-cli y el informe en opencode: el informe necesita el modelo grande.",
+        "wf_archived": "migracion-docs",
+        "wf_closed": "facturacion-v2-deuda",
+        "wf_cancelled": "prototipo-movil",
     },
 }
 
@@ -267,6 +283,20 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
     }
 
     todos = [propuesta, *aceptadas, en_curso, hecha, verificada, bloqueada]
+    sin_ubicar = ticket(id=110, project_id=1, title=T["t_unplaced"], owner=a1, status="accepted",
+                        priority="baja", cadence_days=7, preferred_time=None, last_done_at=d(-7), due_at=d(0),
+                        due_state="due", created_by=owner,
+                        last_change={"at": dt(-2, "10:00:00"), "by": owner, "from": "proposed", "to": "accepted"})
+    # dos y no una: un dia real tiene varias cosas por ubicar, y la banda «sin hora» con
+    # una sola tarjeta se vacia en cuanto la arrastras (y un e2e ya no puede devolverla)
+    sin_ubicar2 = ticket(id=111, project_id=2, title=T["t_unplaced2"], owner=a2, status="accepted",
+                         priority="media", cadence_days=7, preferred_time=None, last_done_at=d(-7), due_at=d(0),
+                         due_state="due", created_by=owner,
+                         last_change={"at": dt(-3, "12:00:00"), "by": owner, "from": "proposed", "to": "accepted"})
+    board["columns"]["accepted"] += [sin_ubicar, sin_ubicar2]
+    board["laterals"]["por_ubicar"] = [sin_ubicar, sin_ubicar2]
+    board["counts"]["accepted"] += 2
+    board["counts"]["por_ubicar"] = 2
 
     # --- calendario: los mismos tickets colocados en el tiempo ----------
     cal_items = []
@@ -306,6 +336,20 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
             "duration_min": 30, "kind": "ticket", "date": d(7 * n), "start": "03:30",
             "end": None, "ghost": True, "occurrence_n": n,
         })
+    cal_items.append({
+        "ticket_id": 110, "plan_key": None, "title": T["t_unplaced"], "owner": a1,
+        "project_id": 1, "status": "accepted", "priority": "baja", "due_state": "due",
+        "last_change": sin_ubicar["last_change"], "cadence_days": 7, "preferred_time": None,
+        "all_day": 0, "duration_min": 60, "kind": "ticket", "date": d(0), "start": None,
+        "end": None, "ghost": False, "occurrence_n": 0,
+    })
+    cal_items.append({
+        "ticket_id": 111, "plan_key": None, "title": T["t_unplaced2"], "owner": a2,
+        "project_id": 2, "status": "accepted", "priority": "media", "due_state": "due",
+        "last_change": sin_ubicar2["last_change"], "cadence_days": 7, "preferred_time": None,
+        "all_day": 0, "duration_min": 60, "kind": "ticket", "date": d(0), "start": None,
+        "end": None, "ghost": False, "occurrence_n": 0,
+    })
     calendar = {"from": d(-7), "to": d(21), "lanes": [owner, *agents], "slots": [], "items": cal_items}
 
     # --- agentes: jobs y runs -------------------------------------------
@@ -338,7 +382,11 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
         "1": [{"id": 51, "status": "ok", "started_at": dt(0, "08:00:04"), "finished_at": dt(0, "08:01:22"),
                "cost_usd": 0.004, "cost_kind": "equivalent", "verdict": "pass",
                "verdict_reason": None, "result_summary": T["r_ok"], "job_id": 1,
-               "exit_code": 0, "session_id": "s-51", "output_path": None, "verified_at": dt(0, "08:05:00")}],
+               "exit_code": 0, "session_id": "s-51", "output_path": None, "verified_at": dt(0, "08:05:00")},
+              {"id": 45, "status": "ok", "started_at": dt(-7, "08:00:03"), "finished_at": dt(-7, "08:01:10"),
+               "cost_usd": 0.004, "cost_kind": "equivalent", "verdict": "pass",
+               "verdict_reason": None, "result_summary": T["r_ok"], "job_id": 1,
+               "exit_code": 0, "session_id": "s-45", "output_path": None, "verified_at": dt(-7, "08:05:00")}],
         "2": [{"id": 47, "status": "error", "started_at": dt(-7, "07:30:00"), "finished_at": dt(-7, "07:31:10"),
                "cost_usd": 0.0, "cost_kind": "equivalent", "verdict": "fail",
                "verdict_reason": T["r_fail"], "result_summary": T["r_fail"], "job_id": 2,
@@ -373,28 +421,61 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
          "date": d(2), "start": "03:30", "end": None, "run_id": None, "verdict": None,
          "verdict_reason": None, "cost_usd": None, "started_at": None,
          "finished_at": None, "occurrence_n": 1},
+        {"job_id": 1, "title": T["j_digest"], "name": T["j_digest"], "harness": "claude-cli",
+         "model": "haiku", "status": "active", "schedule_human": "daily · 08:00",
+         "schedule_type": "recurring", "all_day": 0, "ghost": False, "kind": "run",
+         "date": d(-7), "start": "08:00", "end": "08:01", "run_id": 45, "verdict": "pass",
+         "verdict_reason": None, "cost_usd": 0.004, "started_at": dt(-7, "08:00:03"),
+         "finished_at": dt(-7, "08:01:10"), "occurrence_n": None},
+        {"job_id": 2, "title": T["j_market"], "name": T["j_market"], "harness": "opencode",
+         "model": "deepseek-v4-pro", "status": "paused", "schedule_human": "weekly · 07:30",
+         "schedule_type": "weekly", "all_day": 0, "ghost": False, "kind": "run",
+         "date": d(-7), "start": "07:30", "end": "07:31", "run_id": 47, "verdict": "fail",
+         "verdict_reason": T["r_fail"], "cost_usd": 0.0, "started_at": dt(-7, "07:30:00"),
+         "finished_at": dt(-7, "07:31:10"), "occurrence_n": None},
+        {"job_id": 3, "title": T["j_backup"], "name": T["j_backup"], "harness": "claude-cli",
+         "model": "haiku", "status": "active", "schedule_human": "weekly · 03:30",
+         "schedule_type": "weekly", "all_day": 0, "ghost": False, "kind": "run",
+         "date": d(-7), "start": "03:30", "end": "03:34", "run_id": 38, "verdict": "pass",
+         "verdict_reason": None, "cost_usd": 0.012, "started_at": dt(-7, "03:30:02"),
+         "finished_at": dt(-7, "03:34:12"), "occurrence_n": None},
     ]}
+
+    def _alias(fam, target, tier):
+        return {"id": fam, "label": f"{fam.capitalize()} (alias → {target})", "family": fam,
+                "alias_of": target, "tier": tier, "source": "help", "validated": True,
+                "validated_at": d(-10), "note": T["m_alias"]}
+
+    def _fijo(mid, label, fam, tier):
+        return {"id": mid, "label": label, "family": fam, "alias_of": None, "tier": tier,
+                "source": "measured", "validated": True, "validated_at": d(-10), "note": ""}
 
     harnesses = [
         {"name": "claude-cli", "installed": True, "version": "2.1.0", "billing": "subscription",
          "capabilities": ["mcp", "json_schema", "effort"],
-         "models": [{"alias": "haiku", "label": "Haiku 4.5", "tier": "cheap"},
-                    {"alias": "sonnet", "label": "Sonnet 5", "tier": "mid"},
-                    {"alias": "opus", "label": "Opus 4.8", "tier": "high"}],
+         # #309: la FORMA REAL de /api/harnesses desde v3.1 (T5.5). La vieja
+         # {alias,label,tier} dejaba vacio el selector de familia del job en modo fixtures.
+         "models": [_alias("fable", "claude-fable-5-1", "max"), _alias("opus", "claude-opus-5", "high"),
+                    _alias("sonnet", "claude-sonnet-5", "mid"), _alias("haiku", "claude-haiku-4-5-20251001", "cheap"),
+                    _fijo("claude-fable-5-1", "Fable 5.1", "fable", "max"),
+                    _fijo("claude-opus-5", "Opus 5", "opus", "high"),
+                    _fijo("claude-sonnet-5", "Sonnet 5", "sonnet", "mid"),
+                    _fijo("claude-haiku-4-5-20251001", "Haiku 4.5", "haiku", "cheap")],
          "models_source": "probe", "models_refreshed_at": dt(-1, "22:10:00"),
          "families": ["claude"]},
         {"name": "opencode", "installed": True, "version": "0.9.4", "billing": "api",
          "capabilities": ["mcp"],
-         "models": [{"alias": "deepseek-v4-pro", "label": "DeepSeek v4 Pro", "tier": "high"}],
+         "models": [{"id": "deepseek/deepseek-v4-pro", "label": "deepseek/deepseek-v4-pro", "family": None,
+                     "alias_of": None, "tier": "high", "source": "cli", "validated": None, "note": ""}],
          "models_source": "static", "models_refreshed_at": None, "families": ["deepseek"]},
         {"name": "codex", "installed": False, "version": None, "billing": "api",
          "capabilities": [], "models": [], "models_source": "static",
          "models_refreshed_at": None, "families": []},
     ]
     mcp_servers = [{
-        "id": 1, "name": "calendar", "transport": "stdio",
-        "command": "node", "args": [f"{CWD_EJEMPLO}/mcp/calendar/index.js"], "url": None,
-        "env": {"CALENDAR_TOKEN": "••••"}, "headers": {}, "enabled": 0,
+        "id": 1, "name": "gmail", "transport": "stdio",
+        "command": "node", "args": [f"{CWD_EJEMPLO}/mcp/gmail/index.js"], "url": None,
+        "env": {"GMAIL_OAUTH_TOKEN": "••••"}, "headers": {}, "enabled": False,
         "note": T["mcp_note"], "source": "manual",
         "created_at": dt(-20, "12:00:00"), "updated_at": dt(-20, "12:00:00"),
     }]
@@ -404,7 +485,10 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
     ]
     decisions = [{
         "id": 1, "workflow_id": 1, "project_id": 1, "title": T["dec_title"],
-        "context": T["dec_ctx"], "options": ["claude-cli", "opencode"], "asked_by": a4,
+        "context": T["dec_ctx"],
+        # #309: el contrato es [{label, text}] (opciones LITERALES enteras); con strings la UI pintaba botones vacios
+        "options": [{"label": "claude-cli", "text": T["dec_opt1"]}, {"label": "opencode", "text": T["dec_opt2"]}],
+        "asked_by": a4,
         "status": "open", "decided_by": None, "decision": None, "rationale": None,
         "deferred_until": None, "created_at": dt(-1, "17:00:00"), "decided_at": None,
         "history": [], "workflow_name": T["wf_name"],
@@ -417,6 +501,18 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
         {"id": 2, "name": T["wf_name2"], "status": "active", "coordinator": a2, "kind": "build",
          "pct_global": 18, "open_findings": 0,
          "phases_summary": [{"phase": "1-design", "pct": 18}], "created_at": dt(-6, "09:00:00")},
+        # #291: el archivado (antes retocado a mano en el JSON; ahora sale del generador)
+        {"id": 3, "name": T["wf_archived"], "status": "archived", "coordinator": a3, "kind": "build",
+         "pct_global": 100, "open_findings": 0,
+         "phases_summary": [{"phase": "1-export", "pct": 100}, {"phase": "2-review", "pct": 100}],
+         "created_at": dt(-76, "09:00:00")},
+        # #309: los estados que el producto tiene y la demo no traia (se archiva un cerrado; se cancela un activo)
+        {"id": 4, "name": T["wf_closed"], "status": "closed", "coordinator": a2, "kind": "build",
+         "pct_global": 100, "open_findings": 0,
+         "phases_summary": [{"phase": "1-fix", "pct": 100}], "created_at": dt(-21, "09:00:00")},
+        {"id": 5, "name": T["wf_cancelled"], "status": "cancelled", "coordinator": a1, "kind": "build",
+         "pct_global": 30, "open_findings": 0,
+         "phases_summary": [{"phase": "1-spike", "pct": 30}], "created_at": dt(-40, "09:00:00")},
     ]
     # CONTRATO REAL DE workflow.json, leido de js/api.js y no deducido del board:
     # phases (lista de nombres) · tickets_by_phase (dict fase -> tickets) · findings ·
@@ -479,6 +575,10 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
                      "schedule": {"type": "manual"}, "verification_level": "auto"},
         "agents": [owner, *agents],
         "docs_dir": f"{HOME_EJEMPLO}/docs",
+        "owner": owner,
+        # #309: el dia con el que se generaron. Los e2e en modo fixtures ponen el reloj del
+        # navegador aqui; asi los fixtures siguen siendo la demo y los tests no caducan.
+        "fixtures_hoy": HOY.isoformat(),
     }
 
     return {
@@ -572,7 +672,16 @@ def main() -> int:
     ap.add_argument("--lang", choices=["en", "es"], default="en")
     ap.add_argument("--roster", choices=["neutral", "live"], default="neutral")
     ap.add_argument("--check", action="store_true", help="no escribe: audita lo que ya hay en disco")
+    # #309: el ancla sigue siendo HOY por defecto (ver arriba), pero se puede FIJAR para
+    # reproducir unos fixtures ya commiteados y comprobar que el generador da lo mismo.
+    ap.add_argument("--hoy", help="ancla temporal AAAA-MM-DD (por defecto, hoy)")
+    ap.add_argument("--out", help="carpeta de salida (por defecto, los fixtures de la app)")
     args = ap.parse_args()
+    global HOY, OUT
+    if args.hoy:
+        HOY = date.fromisoformat(args.hoy)
+    if args.out:
+        OUT = Path(args.out)
 
     if args.check:
         textos = {p.name: p.read_text(encoding="utf-8") for p in sorted(OUT.glob("*.json"))}
@@ -627,7 +736,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     for nombre, texto in textos.items():
         (OUT / nombre).write_text(texto, encoding="utf-8")
-    print(f"{len(textos)} ficheros escritos en {OUT.relative_to(REPO)}")
+    print(f"{len(textos)} ficheros escritos en {OUT}")
     # Un check que no comprueba y no lo dice es peor que no tenerlo: el cero se hereda.
     if not NOMBRES:
         print("AVISO: roster neutro en esta maquina — no se comprueban nombres propios")

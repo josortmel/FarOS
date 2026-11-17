@@ -85,6 +85,52 @@ class TestPruneOld:
         rando.unlink()
 
 
+class TestPruneRollbackCopies:
+    """#988: las copias para volver atrás llevan las claves en claro, así que no se acumulan."""
+
+    @pytest.fixture
+    def bdir(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(backup, "backup_dir", lambda: tmp_path)
+        return tmp_path
+
+    def _copias(self, bdir, nombres):
+        for i, n in enumerate(nombres):
+            f = bdir / n
+            f.write_bytes(b"x")
+            os.utime(f, (1000 + i, 1000 + i))
+
+    def test_keeps_the_last_three_of_each_family(self, bdir):
+        pre = [f"pre_33{v}_20261104_100000.db" for v in range(14, 20)]
+        mig = [f"faros_pre_migration_2026110{d}_100000.db" for d in range(1, 6)]
+        self._copias(bdir, pre + mig)
+        podadas = backup.prune_rollback_copies()
+        assert sorted(p.name for p in bdir.iterdir()) == sorted(pre[-3:] + mig[-3:])
+        assert set(podadas) == set(pre[:-3] + mig[:-3])
+
+    def test_order_is_by_date_not_by_version_text(self, bdir):
+        # «pre_339» ordena después de «pre_3320» como texto: tiene que mandar la fecha del fichero.
+        self._copias(bdir, ["pre_339_20261022_100000.db", "pre_3318_20261102_100000.db",
+                            "pre_3319_20261103_100000.db", "pre_3320_20261104_100000.db"])
+        assert backup.prune_rollback_copies() == ["pre_339_20261022_100000.db"]
+
+    def test_leaves_daily_backups_and_unknown_files(self, bdir):
+        otros = ["faros_2026-11-04.db", "agenticos_2026-11-03.db", "notas.db", "pre_algo.db"]
+        self._copias(bdir, otros)
+        assert backup.prune_rollback_copies() == []
+        assert sorted(p.name for p in bdir.iterdir()) == sorted(otros)
+
+    def test_removes_orphan_wal_and_shm_only(self, bdir):
+        self._copias(bdir, ["faros_2026-09-28.db-shm", "faros_2026-09-28.db-wal",
+                            "faros_2026-11-04.db", "faros_2026-11-04.db-wal"])
+        backup.prune_rollback_copies()
+        assert sorted(p.name for p in bdir.iterdir()) == ["faros_2026-11-04.db", "faros_2026-11-04.db-wal"]
+
+    def test_daily_tick_prunes_them(self, conn, bdir):
+        self._copias(bdir, [f"pre_33{v}_20261104_100000.db" for v in range(14, 19)])
+        result = backup.daily_tick(conn, datetime(2026, 9, 2, 9, 0))
+        assert "pre_3314_20261104_100000.db" in result["pruned"]
+
+
 class TestDailyTick:
     def test_returns_summary(self, conn):
         now = datetime(2026, 9, 2, 9, 0)

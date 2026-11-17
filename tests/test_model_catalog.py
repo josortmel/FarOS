@@ -16,9 +16,15 @@ def conn():
 def test_seed_has_families_and_measured_flags():
     entries = mc.seed_entries(["opus", "sonnet", "haiku", "fable"])
     by = {e.id: e for e in entries}
-    assert by["opus"].alias_of == "claude-opus-5" and by["opus"].family == "opus"
+    assert by["opus"].alias_of == "claude-opus-5-5" and by["opus"].family == "opus"
+    # #491: medido el 16-oct con claude -p --model <alias> (modelUsage, CLI 2.1.296)
+    assert {a: by[a].alias_of for a in ("haiku", "sonnet", "fable")} == {
+        "haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "fable": "claude-fable-5-1"}
+    assert all(by[i].validated is True for i in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"))
     assert by["claude-opus-4-6"].validated is True and by["claude-opus-4-6"].source == "measured"
     assert by["claude-sonnet-4-6"].validated is None and by["claude-sonnet-4-6"].source == "seed"
+    # #1101: el Fable actual (docs de Anthropic, 10-nov) se ofrece por su nombre, sin medir todavía
+    assert by["claude-fable-5-2"].family == "fable" and by["claude-fable-5-2"].validated is None
     g = mc.grouped(entries)
     assert [x["family"] for x in g] == ["fable", "opus", "sonnet", "haiku"]
     assert any(m["id"] == "claude-opus-4-6[1m]" for m in g[1]["models"])

@@ -7,8 +7,10 @@ chat_id are empty — never raises.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
+import threading
 
 import httpx
 
@@ -31,6 +33,18 @@ def telegram(conn: sqlite3.Connection, text: str) -> bool:
         log.info("telegram skip: token=%s chat_id=%s", bool(token), bool(chat_id))
         return False
 
+    # #1266: lo llaman desde el bucle del daemon (un run que falla, un veredicto, un job saltado, una clave
+    # entregada) y httpx espera hasta 10 s: el daemon entero parado. Dentro de un bucle se manda en un hilo
+    # aparte y no se espera (True = encargado); fuera de un bucle (scripts, tests), como siempre.
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _mandar(token, chat_id, text)
+    threading.Thread(target=_mandar, args=(token, chat_id, text), name="faros-telegram", daemon=True).start()
+    return True
+
+
+def _mandar(token: str, chat_id: str, text: str) -> bool:
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         r = httpx.post(url, json={"chat_id": chat_id, "text": text}, timeout=10)
@@ -39,8 +53,8 @@ def telegram(conn: sqlite3.Connection, text: str) -> bool:
             return True
         log.warning("telegram HTTP %d: %s", r.status_code, r.text[:200])
         return False
-    except Exception:
-        log.exception("telegram send failed (non-fatal)")
+    except Exception as e:   # solo el tipo: el texto de una excepción de httpx puede llevar la URL, y la URL el token
+        log.warning("telegram send failed (non-fatal): %s", type(e).__name__)
         return False
 
 
