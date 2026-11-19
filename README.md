@@ -64,7 +64,7 @@ An agent saying "done" is a claim, not a fact. In FarOS nothing reaches **verifi
 
 - **The cheapest reliable proof first.** If a test or a script can decide, it decides. Only when it can't does a judge read the evidence.
 - **Verification levels, chosen per task:** *self*, for trivial work; *peer*, another agent; *auto*, an LLM judge that reads the evidence as **untrusted** input, isolated from the session that produced it; and *external*, a judge from **a different model family**, for what the first judge can't settle. A single verdict from that model flipped between pass and fail on the same case, so *external* is a majority of three runs, and only that judge or the owner can seal it. A verifier claims a task before judging it, so two never judge the same thing at once.
-- **Every verdict records its provenance:** a deterministic check, the same model family, a different one, or a person. That is how we measured our own blind spot: of 461 verifications since mid-October, 85 % had been sealed by the same author or the same model family; 47 by a test or a script, 15 by a person. That is the gap the external level is there to close — and it showed how little work was reaching it.
+- **Every verdict records its provenance:** a deterministic check, the same model family, a different one, or a person. That is how we measured our own blind spot: of 524 verifications since 19 October, when provenance started being recorded, 75 % had been sealed by the same author or the same model family; 115 by a test or a script, 15 by a person. That is the gap the external level is there to close — and it showed how little work was reaching it.
 - **A failure has a destination.** A failed verdict sends the task back with the reason, or opens a FIX task. So far, **38 tasks that had been marked done went back to work** this way. When an unattended run fails, the human gets a message.
 
 **Caught in production.** The judge is not there for show. Two runs of the same daily research job, both failed:
@@ -77,7 +77,7 @@ An agent saying "done" is a claim, not a fact. In FarOS nothing reaches **verifi
 | | |
 |---|---|
 | **1,300+** tasks through the board | **128** decisions on the record, **78** of them taken by the human directly |
-| **461** verifications with recorded provenance | **38** "done" tasks sent back by verification |
+| **524** verifications with recorded provenance | **38** "done" tasks sent back by verification |
 | **41** releases in seven weeks (3.3.1 → 3.3.41) | **519** commits |
 | **1,442** automated checks: 1,079 unit, 330 end-to-end in a real browser, 33 for the desktop shell | **79** MCP tools |
 

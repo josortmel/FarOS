@@ -64,7 +64,7 @@ Que un agente diga «hecho» es una afirmación, no un hecho. En FarOS nada lleg
 
 - **Primero, la prueba fiable más barata.** Si un test o un script pueden decidir, deciden ellos. Solo cuando no pueden, un juez lee la evidencia.
 - **Niveles de verificación, elegidos por tarea:** *self*, para lo trivial; *peer*, otro agente; *auto*, un juez LLM que lee la evidencia como entrada **no fiable**, aislado de la sesión que la produjo; y *external*, un juez de **otra familia de modelos**, para lo que el primer juez no puede zanjar. Un veredicto suelto de ese modelo dio aprobado y suspenso en el mismo caso, así que *external* es la mayoría de tres ejecuciones, y solo ese juez o el dueño pueden sellarlo. Un verificador reserva la tarea antes de juzgarla, para que nunca la juzguen dos a la vez.
-- **Cada veredicto guarda su procedencia:** una comprobación determinista, la misma familia de modelo, otra distinta o una persona. Así medimos nuestro propio punto ciego: de 461 verificaciones desde mediados de octubre, el 85 % las había sellado el mismo autor o la misma familia de modelo; 47, un test o un script; 15, una persona. Ese es el hueco que el nivel externo está para cerrar, y la medida enseñó lo poco que llegaba hasta él.
+- **Cada veredicto guarda su procedencia:** una comprobación determinista, la misma familia de modelo, otra distinta o una persona. Así medimos nuestro propio punto ciego: de 524 verificaciones desde el 19 de octubre, cuando empezó a guardarse, el 75 % las había sellado el mismo autor o la misma familia de modelo; 115, un test o un script; 15, una persona. Ese es el hueco que el nivel externo está para cerrar, y la medida enseñó lo poco que llegaba hasta él.
 - **Un fallo tiene destino.** Un veredicto negativo devuelve la tarea con el motivo, o abre una tarea FIX. Hasta hoy, **38 tareas que se habían dado por hechas volvieron al trabajo** así. Cuando falla una ejecución sin nadie delante, al humano le llega un mensaje.
 
 **Cazado en producción.** El juez no está de adorno. Dos ejecuciones del mismo job diario de investigación, las dos suspendidas:
@@ -77,7 +77,7 @@ Que un agente diga «hecho» es una afirmación, no un hecho. En FarOS nada lleg
 | | |
 |---|---|
 | **Más de 1.300** tareas por el tablero | **128** decisiones registradas, **78** tomadas directamente por el humano |
-| **461** verificaciones con su procedencia | **38** tareas «hechas» que la verificación devolvió |
+| **524** verificaciones con su procedencia | **38** tareas «hechas» que la verificación devolvió |
 | **41** versiones en siete semanas (3.3.1 → 3.3.41) | **519** commits |
 | **1.442** comprobaciones automáticas: 1.079 unitarias, 330 de punta a punta en un navegador real y 33 de la app de escritorio | **79** herramientas MCP |
 
