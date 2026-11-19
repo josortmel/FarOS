@@ -241,7 +241,27 @@ def test_mezcla_de_cambiados_y_sin_cambios_no_lee_con_el_candado_cogido(mundo, m
     lento = ficheros[60]
     os.utime(lento, (lento.stat().st_atime + 50, lento.stat().st_mtime + 50))
     real = L._leer
-    monkeypatch.setattr(L, "_leer", lambda p, t=None: (time.sleep(0.5 if str(p).endswith("f060.md") else 0), real(p, t))[1])
+    # #1354: the property itself, not its symptom. Measuring how long a second writer
+    # waits (< 0.3 s) failed on the slow CI machine (0.63 s, then 0.33 s with Python 3.11)
+    # and could not tell a slow runner from the bug. At the moment of the slow read, can
+    # another connection take the write lock at once? A yes or a no. (An open deferred
+    # transaction is fine: registrar reads inside a SAVEPOINT and only writes afterwards.)
+    candado_libre_al_leer = []
+
+    def leer(p, t=None):
+        if str(p).endswith("f060.md"):
+            otra = sqlite3.connect(mundo.t / "faros.db", timeout=0)
+            try:
+                otra.execute("BEGIN IMMEDIATE")
+                otra.rollback()
+                candado_libre_al_leer.append(True)
+            except sqlite3.OperationalError:
+                candado_libre_al_leer.append(False)
+            finally:
+                otra.close()
+            time.sleep(0.5)
+        return real(p, t)
+    monkeypatch.setattr(L, "_leer", leer)
     real_stat = os.stat
     monkeypatch.setattr(L.os, "stat", lambda p, *a, **k: (time.sleep(0.002), real_stat(p, *a, **k))[1])
     parar, esperas, errores = threading.Event(), [], []
@@ -251,7 +271,8 @@ def test_mezcla_de_cambiados_y_sin_cambios_no_lee_con_el_candado_cogido(mundo, m
     L.recorrer(mundo.conn, mundo.env)
     parar.set(); hilo.join()
     print(f"mezcla: espera máxima {max(esperas) * 1000:.0f} ms, errores {len(errores)}")
-    assert errores == [] and max(esperas) < 0.3, max(esperas)
+    assert candado_libre_al_leer == [True], candado_libre_al_leer  # read once, write lock free
+    assert errores == []
 
 
 def test_un_barrido_de_ficheros_sin_cambios_no_retiene_el_candado_todo_el_barrido(mundo, monkeypatch):
