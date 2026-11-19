@@ -73,6 +73,7 @@
   .boardbar::-webkit-scrollbar, .projectbar::-webkit-scrollbar, .mob-states::-webkit-scrollbar { display: none; }
   #mode-tabs { display: none; }                /* Kanban / Calendario están abajo */
   .boardbar .views__tab { min-height: 40px; font-size: var(--text-small); white-space: nowrap; }
+  .boardbar .views__opt { min-height: 40px; width: 40px; flex: none; }   /* #1319 */
   .cal__bar .btn, .cal__today { font-size: var(--text-small) !important; min-height: 44px; }
   .boardpulse { display: none; }
   .projectbar {

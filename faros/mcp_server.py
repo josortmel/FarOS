@@ -487,8 +487,8 @@ def shift_next_occurrence(agent: str, ticket_id: int, date: str, note: str = "")
 
 @mcp.tool()
 def search(q: str) -> dict:
-    """Global search: tickets (board/office), jobs (agents) and decisions
-    (office), max 10 per group, with `section` to navigate."""
+    """Global search: tickets (board/office), jobs (agents), decisions
+    and workflows (office), max 10 per group, with `section` to navigate."""
     return _call("GET", "/api/search", params={"q": q})
 
 

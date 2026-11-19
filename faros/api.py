@@ -719,8 +719,14 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
                        valid_until=body.get("valid_until"))
         bus.emit("decision.changed", {"decision_id": decision_id, "status": d["status"]})
         # Pepe, 17-nov: decidida en la app (o por MCP), quien la pidió se entera igual que cuando pulsa en Telegram.
-        await _avisar_decision(d)
+        # #1325 (lo vio Lienzo, 19-nov): el aviso va aparte. Con el hub caído, el POST esperaba 2-5 s y Pepe se
+        # quedaba con el dedo en «Confirmar» en el móvil. Se guarda la tarea hasta que acabe (si no, puede perderse).
+        tarea = asyncio.create_task(_avisar_decision(d))
+        _avisos_en_vuelo.add(tarea)
+        tarea.add_done_callback(_avisos_en_vuelo.discard)
         return d
+
+    _avisos_en_vuelo: set = set()
 
     async def _avisar_decision(d: dict) -> None:
         """Al que pidió la decisión, por el relay: la pregunta y lo decidido. No a quien la decide ni al dueño."""

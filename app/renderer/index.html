@@ -81,6 +81,10 @@
          Se quitó el 1-oct-2026. No volver a declarar otra barra para lo mismo. -->
     <nav class="views views--after-mode" id="view-tabs" aria-label="Vista temporal">
       <button class="views__tab" data-view="today">Hoy</button>
+      <!-- #1319: qué sale en Hoy (ajuste today_window). Solo en Hoy + Kanban; ui/hoy_window.js -->
+      <button class="views__opt" id="hoy-filter" type="button" hidden aria-haspopup="dialog" aria-expanded="false" aria-controls="hoy-pop" title="Qué sale en Hoy" aria-label="Qué sale en Hoy">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="15" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.9"/></svg>
+      </button>
       <button class="views__tab" data-view="week">Semana</button>
       <button class="views__tab" data-view="future">Futuras</button>
       <button class="views__tab" data-view="all">Todas</button>

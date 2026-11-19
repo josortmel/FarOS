@@ -236,6 +236,9 @@ const LEGAL = {
   expired:     { accepted: 'accept' },
 };
 
+/* #1319: el ajuste today_window por defecto (los tres encendidos), como settings.py */
+const TODAY_DEFAULT = { today_window: { overdue: true, due_today: true, in_progress: true } };
+
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 /* el motor guarda horas LOCALES sin zona (YYYY-MM-DDTHH:MM:SS); el mock igual,
    o fmtWhen las enseña dos horas atrás */
@@ -286,8 +289,22 @@ function makeMock() {
     // today = pantalla de la mañana (GAP-1 de Eco): recurrentes due/overdue
     // + en curso + cola done (por verificar) + vencimientos de hoy
     if (view === 'today') {
-      return ds !== 'ok' || t.status === 'in_progress' || t.status === 'done'
-        || (t.due_at && t.due_at <= todayISO());
+      /* #1319, espejo de service.board(): la hecha (por verificar) y la propuesta salen siempre; lo demás
+         según today_window. «Cuándo» como _when del motor: recurrente > programada > vencimiento. */
+      if (t.status === 'done') return true;
+      const w = { ...TODAY_DEFAULT.today_window, ...(db?.settings?.today_window ?? {}) };
+      if (t.status === 'in_progress' && w.in_progress) return true;
+      const hoy = todayISO();
+      let cuando = null;
+      if (t.cadence_days && !t.due_at) {
+        cuando = t.last_done_at
+          ? new Date(new Date(t.last_done_at).getTime() + t.cadence_days * 864e5).toISOString().slice(0, 10)
+          : hoy;                                   // nunca hecha: toca ya
+      } else if (t.scheduled_at) cuando = t.scheduled_at.slice(0, 10);
+      else if (t.due_at) cuando = t.due_at.slice(0, 10);
+      if (!cuando) return false;
+      if (cuando < hoy) return !!w.overdue;
+      return cuando === hoy && !!w.due_today;
     }
     if (view === 'week') {
       if (!t.due_at) return t.status === 'in_progress' || t.status === 'done' || ds !== 'ok';
@@ -373,11 +390,18 @@ function makeMock() {
        escondía justo el fallo que en vivo sí pasa (canario del e2e del #252). */
     async meta()   { if (!db) await load(); return structuredClone(db.meta); },
     /* #601, espejo: un ajuste suelto, proof_repos (los repos donde el verificador puede correr una prueba) */
-    async settings() { if (!db) await load(); return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...(db.settings ?? {}) }; },
+    async settings() { if (!db) await load(); return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...TODAY_DEFAULT, ...(db.settings ?? {}) }; },
     async patchSettings({ agent, ...cambios }) {
       if (!db) await load();
+      if (cambios.today_window) {                  // #1319: misma validación que settings.py (objeto, claves conocidas, bool)
+        const w = cambios.today_window, ok = Object.keys(TODAY_DEFAULT.today_window);
+        const malo = typeof w !== 'object' || w === null || Array.isArray(w)
+          || Object.keys(w).some(k => !ok.includes(k)) || Object.values(w).some(v => typeof v !== 'boolean');
+        if (malo) return Promise.reject(new ApiError(400, { error: 'invalid_request', reason: 'today_window: objeto {overdue, due_today, in_progress}', field: 'today_window' }));
+        cambios = { ...cambios, today_window: { ...TODAY_DEFAULT.today_window, ...(db.settings?.today_window ?? {}), ...w } };
+      }
       db.settings = { ...(db.settings ?? {}), ...cambios };
-      return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...db.settings };
+      return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...TODAY_DEFAULT, ...db.settings };
     },
     /* #1217, espejo: el timbre lee su interruptor de los ajustes del mock; sin avisos apuntados */
     async timbre(fecha) {

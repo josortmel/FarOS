@@ -14,6 +14,7 @@ import { initRoster, clearRenameDraft } from './ui/roster_settings.js';
 import { initCredentials, USO as USO_CLAVE, clearCredentialDrafts } from './ui/credentials_settings.js';
 import { initProofSettings, clearProofDraft } from './ui/proof_settings.js';   // #601
 import { initVerifierSettings, clearRootsDraft } from './ui/verifier_settings.js';   // #695
+import { initHoyWindow, renderHoyWindow } from './ui/hoy_window.js';   // #1319
 import { initTimbreSettings } from './ui/timbre_settings.js';   // #1217
 import { initI18n, applyI18n, setLang, getLang, onRepaint, locale, t as tr } from './i18n.js';
 import { jobModal } from './ui/job_modal.js';
@@ -411,6 +412,7 @@ function renderViewTabs(state) {
     b.classList.toggle('is-active', b.dataset.view === state.view);
     b.textContent = labels[b.dataset.view] ?? b.textContent;
   });
+  renderHoyWindow(state);   // #1319: el botón de «Qué sale en Hoy» solo en Hoy + Kanban
 }
 
 /* ---------------- T3.2: tema (el dueño, queja 3ª) ----------------
@@ -1174,6 +1176,18 @@ async function main() {
         toast(tr('Carpetas guardadas.'), 'ok');
         await refetchAgents();
       } catch (err) { await settingsFail(err); }
+    },
+  });
+  /* #1319: «Qué sale en Hoy» se aplica al tocar cada casilla: PATCH con las tres y la misma recarga que el cambio de vista */
+  initHoyWindow({
+    api,
+    apply: async (today_window) => {
+      await api().patchSettings({ agent: getState().agent, today_window });
+      await refetchBoard();
+    },
+    fail: (err) => {
+      if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
+      else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
     },
   });
   /* #1217: el timbre se aplica al tocarlo, como «máquina quieta»; el día elegido se queda en el estado

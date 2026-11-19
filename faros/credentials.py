@@ -135,15 +135,18 @@ def deliver(conn, name, requested_by, purpose) -> dict:
     else:
         err = None
     nombre_reg = r["name"] if r is not None else nombre[:60]
-    # #499, revisión de Prima (16-oct): como no se puede impedir, que se vea. Primera vez que esta pareja
-    # quién + para qué pide ESTA clave (dada o negada) → aviso a Pepe. Lo repetido no avisa.
+    # #499, revisión de Prima (16-oct): como no se puede impedir, que se vea. Aviso a Pepe (dada o negada).
+    # #1321, decisión 134 de Pepe (19-nov): «una vez al día por persona y clave — quiero saber en qué estáis pero no
+    # necesito recibirlo 500 veces». Antes era quién + para qué, y cada purpose nuevo avisaba; el purpose sigue
+    # apuntado en credential_deliveries, pero ya no cuenta para el aviso.
+    ahora = _now()
     nueva = conn.execute("SELECT 1 FROM credential_deliveries WHERE name = ? COLLATE NOCASE AND requested_by = ?"
-                         " AND purpose = ? LIMIT 1", (nombre_reg, requested_by, purpose)).fetchone() is None
+                         " AND substr(at, 1, 10) = ? LIMIT 1", (nombre_reg, requested_by, ahora[:10])).fetchone() is None
     conn.execute(
         "INSERT INTO credential_deliveries (credential_id, name, requested_by, purpose, at, ok, reason)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
         (r["id"] if r is not None else None, nombre_reg, requested_by,
-         purpose, _now(), 0 if err else 1, str(err) if err else ""))
+         purpose, ahora, 0 if err else 1, str(err) if err else ""))
     conn.commit()
     if nueva:
         _avisar_primera_vez(conn, nombre_reg, requested_by, purpose, err)
@@ -170,9 +173,9 @@ def _avisar_primera_vez(conn, nombre, requested_by, purpose, err) -> None:
     estado = f"NEGADA ({err.code})" if err else "entregada"
     try:
         notify.telegram(conn, "\n".join([
-            "FarOS · Claves: primera vez",
+            "FarOS · Claves: primera vez hoy",
             f"«{requested_by}» ha pedido la clave «{nombre}» para «{purpose}» → {estado}.",
-            "Si no te suena, mira Ajustes › Claves › Entregas.",
+            "Hoy no te aviso más de esta persona con esta clave; el resto queda en Ajustes › Claves › Entregas.",
         ]))
     except Exception:  # un aviso que no sale no puede tumbar la entrega
         pass

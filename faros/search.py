@@ -1,4 +1,4 @@
-"""Búsqueda global (T3.9): tickets, jobs y decisiones en un cuadro.
+"""Búsqueda global (T3.9): tickets, jobs, decisiones y workflows (#1320) en un cuadro.
 
 FTS5 para tickets (ya existía), jobs (name + prompt) y decisiones (title +
 context). Cada resultado lleva `section` (tablero|oficina|agentes) y lo justo
@@ -40,8 +40,17 @@ def search(conn, q: str) -> dict:
         " WHERE decisions_fts2 MATCH ? ORDER BY score LIMIT ?", (terms, LIMIT))]
     for d in decisions:
         d["section"] = "oficina"
-    return {"q": q, "tickets": tickets, "jobs": jobs, "decisions": decisions,
-            "total": len(tickets) + len(jobs) + len(decisions)}
+    # #1320 (la lupa, orden de Pepe del 18-nov): también los workflows. Son pocos (6 en la casa el 19-nov), así que
+    # basta un LIKE por palabra sobre el nombre, sin tabla FTS ni subir el esquema. Cualquier palabra, como el resto.
+    palabras = [w.strip('"').lower() for w in (q or "").split() if len(w.strip('"')) > 1][:8]
+    workflows = [dict(r) for r in conn.execute(
+        "SELECT w.id, w.name, w.status, w.kind, w.project_id, w.coordinator FROM workflows w WHERE "
+        + " OR ".join(["lower(w.name) LIKE ?"] * len(palabras)) + " ORDER BY w.id DESC LIMIT ?",
+        (*[f"%{p}%" for p in palabras], LIMIT))]
+    for w in workflows:
+        w["section"] = "oficina"
+    return {"q": q, "tickets": tickets, "jobs": jobs, "decisions": decisions, "workflows": workflows,
+            "total": len(tickets) + len(jobs) + len(decisions) + len(workflows)}
 
 
 def reindex(conn) -> dict:

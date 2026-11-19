@@ -24,7 +24,7 @@ import { esc, fmtDate } from '../util.js';
 import { toast } from './toast.js';
 
 const CLASES = [
-  ['revista', 'Revista'], ['lectura', 'Lecturas'], ['faro', 'Faro'],
+  ['revista', 'Revista'], ['lectura', 'Lecturas'], ['informe', 'Informes'], ['faro', 'Faro'],
   ['resultado', 'Resultados'], ['documentacion', 'Documentación'],
 ];
 const nombreClase = c => tr(CLASES.find(([k]) => k === c)?.[1] ?? c);

@@ -37,3 +37,23 @@ def test_reindex_rebuilds(conn):
     assert search.search(conn, "Uno")["jobs"] == []
     assert search.reindex(conn) == {"jobs": 1, "decisions": 0}
     assert search.search(conn, "Uno")["jobs"]
+
+
+def _workflow(conn, nombre, status="active"):
+    cur = conn.execute("INSERT INTO workflows (name, kind, phases, coordinator, status, created_at)"
+                       " VALUES (?, 'construccion', '[]', 'owner', ?, '2026-11-19T10:00:00')", (nombre, status))
+    conn.commit()
+    return cur.lastrowid
+
+
+def test_1320_la_busqueda_tambien_encuentra_workflows(conn):
+    """#1320 (la lupa de Lienzo, orden de Pepe del 18-nov): «buscar en todo FarOS a la vez: tareas, decisiones
+    y workflows». La búsqueda global no traía workflows."""
+    w = _workflow(conn, "Rediseño de la tele del salón")
+    _workflow(conn, "Otra cosa distinta")
+    res = search.search(conn, "Tele")
+    assert [x["id"] for x in res["workflows"]] == [w]
+    assert res["workflows"][0]["section"] == "oficina" and res["workflows"][0]["name"].startswith("Rediseño")
+    assert res["total"] == 1
+    assert search.search(conn, "salón cosa")["workflows"].__len__() == 2      # cualquier palabra, como el resto
+    assert search.search(conn, "nada")["workflows"] == []
