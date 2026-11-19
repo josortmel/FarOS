@@ -74,9 +74,14 @@ packages = ["faros", "faros.harness"]
 testpaths = ["tests"]
 markers = [
   "judge: invoca un juez LLM real (cuesta dinero y no es determinista). Correr con -m judge",
+  "stress: pone otro escritor a competir y mide esperas; depende de la maquina. Correr con -m stress antes de instalar",
 ]
 # Por defecto la suite NO llama a ningun modelo. Un `pytest` recien clonado
 # tiene que salir verde y gratis; lo que depende de un juez LLM se pide a
 # proposito. Medido: ~6% de falsos negativos en esa suite (L56), o sea que
 # dejarla por defecto es enseniarle un rojo aleatorio a quien acaba de llegar.
-addopts = "-m 'not judge'"
+# Lo mismo con `stress` (#1354, 19-nov): pasan en casa y en la maquina de GitHub
+# fallaban por turnos segun su velocidad. La propiedad que vigilan (no leer con el
+# candado de escritura cogido) la comprueba sin relojes test_850_bloqueo::test_mezcla_…,
+# que si corre en el CI. Los de estres se corren en casa antes de cada instalacion.
+addopts = "-m 'not judge and not stress'"

@@ -39,11 +39,13 @@ jobs:
             # A run cut short can still exit 0 (it happened in EcoRelay for five months):
             # require pytest's summary and at least MIN_TESTS passed tests.
             # Removing tests on purpose? Lower MIN_TESTS in the same PR.
+            # 1093 run by default (judge and stress are out); the calendar tests skip
+            # themselves near midnight (4 of them), and CI runs in UTC: hence the margin.
             - name: Python tests
               if: ${{ !cancelled() && steps.install.outcome == 'success' }}
               shell: bash
               env:
-                  MIN_TESTS: 1090
+                  MIN_TESTS: 1080
               run: |
                   set +e
                   python -m pytest -q -p no:cacheprovider tests 2>&1 | tee pytest-output.txt
