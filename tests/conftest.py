@@ -18,6 +18,29 @@ os.environ.setdefault("FAROS_OWNER", "owner")
 os.environ.setdefault("FAROS_AGENTS", "owner,alice,bob,carol,dave")
 os.environ.setdefault("FAROS_TIMBRE", "0")   # #1184: los tests no tocan el relay de la casa
 
+# #1354: lo mismo con Claude Code. El adaptador busca `claude` en el PATH al
+# crearse, aunque el test simule el lanzamiento: con Claude Code instalado
+# pasaban 31 tests que en una máquina limpia (el CI) fallaban. Un `claude` falso
+# va por delante en el PATH desde aquí, antes de importar nada, porque un
+# fixture llegaría tarde a lo que se crea al importar. Sale con 0 y no imprime
+# nada; los tests que necesitan un modelo de verdad van marcados `judge`.
+import atexit  # noqa: E402
+import shutil  # noqa: E402
+import tempfile  # noqa: E402
+
+_BIN_FALSO = tempfile.mkdtemp(prefix="faros-test-bin-")
+if os.name == "nt":
+    with open(os.path.join(_BIN_FALSO, "claude.cmd"), "w", newline="\r\n") as f:
+        f.write("@echo off\nexit /b 0\n")
+else:
+    _claude = os.path.join(_BIN_FALSO, "claude")
+    with open(_claude, "w") as f:
+        f.write("#!/bin/sh\nexit 0\n")
+    os.chmod(_claude, 0o755)
+os.environ["FAROS_TEST_BIN"] = _BIN_FALSO
+os.environ["PATH"] = _BIN_FALSO + os.pathsep + os.environ.get("PATH", "")
+atexit.register(shutil.rmtree, _BIN_FALSO, ignore_errors=True)
+
 
 import pytest  # noqa: E402
 

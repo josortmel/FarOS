@@ -95,10 +95,16 @@ def test_claude_build_command_minimal_is_unchanged_from_v1():
                        "--model", "haiku", "--permission-mode", "dontAsk"]   # #1281: stream-json
 
 
-def test_claude_validate_model_accepts_full_names():
+def test_claude_validate_model_accepts_full_names(monkeypatch):
+    # #1354: sin sustituir la sonda, este test lanzaba el Claude Code instalado en la
+    # máquina (`claude --model gpt-9`) en cada corrida, y en una limpia no había.
+    from faros.harness import claude_cli
+    sondeados = []
+    monkeypatch.setattr(claude_cli, "_probe_model", lambda exe, m: sondeados.append(m) or False)
     a = harness.get("claude-cli")
     assert a.validate_model("claude-opus-4-6") is True
     assert a.validate_model("gpt-9") is False
+    assert sondeados == ["gpt-9"]  # un nombre completo se decide sin lanzar el CLI
 
 
 def test_claude_parse_output_list_format():

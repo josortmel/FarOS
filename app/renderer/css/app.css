@@ -129,6 +129,29 @@ select:focus-visible, textarea:focus-visible {
   transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
 }
 .views__tab:hover { color: var(--color-text); }
+/* #1319: «Qué sale en Hoy» — botón de icono dentro de la tira, pegado a «Hoy»; el punto avisa de que Hoy está filtrado */
+.views__opt {
+  position: relative; display: inline-grid; place-items: center; width: 30px; border-radius: var(--radius-pill);
+  color: var(--color-text-soft); background: transparent;
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+.views__opt[hidden] { display: none; }
+.views__opt:hover, .views__opt[aria-expanded="true"] { color: var(--color-text); background: var(--color-bg-well); }
+.views__opt.has-dot::after {
+  content: ""; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-orange-deep); box-shadow: 0 0 0 2px var(--color-bg-warm);
+}
+.hoypop {
+  position: fixed; z-index: 70; width: min(18rem, calc(100vw - 16px)); padding: var(--sp-3) var(--sp-4);
+  background: var(--color-card); color: var(--color-text); border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-panel); box-shadow: var(--shadow-panel);
+}
+.hoypop[hidden] { display: none; }
+.hoypop__title { margin: 0 0 var(--sp-1); font-size: var(--text-body); font-weight: 600; }
+.hoypop__row { display: flex; align-items: center; gap: var(--sp-3); min-height: 44px; font-size: var(--text-body); cursor: pointer; }
+.hoypop__row input[type="checkbox"] { width: 18px; height: 18px; flex: none; accent-color: var(--color-orange-deep); }
+.hoypop__note { margin: var(--sp-1) 0 0; padding-top: var(--sp-2); border-top: 1px solid var(--color-rule);
+  font-size: var(--text-body); color: var(--color-text-soft); }
 /* T3.1: las pestañas de sección van centradas y no cambian de ancho al activarse —
    el rótulo apila un fantasma en negrita bajo el texto y reserva ese ancho siempre. */
 .views--surface { justify-self: center; margin-left: 0; }
