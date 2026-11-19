@@ -1,0 +1,8 @@
+# Findings checked by hand and confirmed NOT to be secrets. One exact fingerprint per
+# line (commit:file:rule:line): it does not switch any rule off, every other finding still
+# fails CI. Add one only after checking the value, and say here what it was.
+
+# 19-nov-2026 (#1354): the test value of the "Copy" key button in app/test/copiar_clave.test.js,
+# an invented string (not the shape of any real key), published on 17-nov. Replaced since by an
+# obviously fake value built in pieces; this commit stays in history.
+122907779861cac22196e79ae80001915de61c31:app/test/copiar_clave.test.js:generic-api-key:8

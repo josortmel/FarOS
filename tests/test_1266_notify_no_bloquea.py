@@ -63,7 +63,11 @@ def test_fuera_de_un_bucle_espera_la_respuesta(conn, monkeypatch):
     monkeypatch.setattr(notify.httpx, "post", lento)
     t0 = time.monotonic()
     assert notify.telegram(conn, "hola") is True
-    assert time.monotonic() - t0 >= 0.3 and lento.hecho.is_set()
+    # The proof that it waited: the slow post had finished when telegram() returned.
+    # The time only backs it up, with a margin: Windows' clock resolution (~15 ms) can
+    # measure a 0.3 s sleep as 0.297 s (it did on the first CI run, 19-nov, #1354).
+    assert lento.hecho.is_set()
+    assert time.monotonic() - t0 >= 0.25
 
 
 def test_el_error_de_red_no_escribe_la_url(conn, monkeypatch, caplog):

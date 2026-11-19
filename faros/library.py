@@ -305,7 +305,17 @@ def _slug(titulo: str) -> str:
 
 def _es_enlace(p: str) -> bool:
     try:
-        return os.path.islink(p) or (hasattr(os.path, "isjunction") and os.path.isjunction(p))
+        if os.path.islink(p):
+            return True
+        if hasattr(os.path, "isjunction"):  # Python 3.12+
+            return os.path.isjunction(p)
+        # #1354: before 3.12 there is no isjunction, and this check returned False in
+        # silence, so the Library followed junctions out of its roots on Python 3.11
+        # (pyproject promises >=3.11; the first CI caught it). A junction is a reparse
+        # point; other reparse points (OneDrive placeholders) are not followed either:
+        # when in doubt, don't go in.
+        attrs = getattr(os.lstat(p), "st_file_attributes", 0)
+        return bool(attrs & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
     except OSError:
         return True
 
