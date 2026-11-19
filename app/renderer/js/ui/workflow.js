@@ -17,7 +17,7 @@ import { renderDecisionsPane, pendingCount } from './decisions.js';
 let handlers = null;
 // { onSelectWorkflow, onSelectPhase, onSelectTab, onMarkSeen, onOpenTicket, onDropTicket,
 //   onOpenDispatch, onDispatchFinding, onDismissFinding, onToggleDrawer, onToggleHandoff,
-//   onEditHandoff, onCopyDraft, onMarkSaved }
+//   onEditHandoff, onCopyDraft, onMarkSaved, onOpenImportPlan }
 
 export function initWorkflow(h) { handlers = h; }
 
@@ -138,6 +138,12 @@ export function renderWorkflowSidebar(state) {
     ul.appendChild(row);
   }
   side.appendChild(ul);
+  /* #1318: importar un Plan JSON como workflow nuevo */
+  const imp = document.createElement('button');
+  imp.type = 'button'; imp.id = 'wf-import'; imp.className = 'btn btn--ghost wfside__import';
+  imp.textContent = 'Importar plan…';
+  imp.addEventListener('click', () => handlers.onOpenImportPlan());
+  side.appendChild(imp);
   if (document.activeElement === document.body && state.wfQuery) {
     search.focus();
     const pos = Math.min(cursorWf ?? search.value.length, search.value.length);
@@ -338,6 +344,24 @@ export function renderPhaseStrip(state) {
   if (wf.stray_tickets?.length) {
     el.appendChild(chip(STRAY, STRAY, sum(all.filter(x => x.phase === STRAY))));
   }
+
+  /* #1317: despachar de golpe las listas de TODO el workflow (no solo las de la fase filtrada).
+     Misma cuenta que las tarjetas con «Despachar…»; con 0 no se pinta. */
+  const listas = readyTickets(wf);
+  if (listas.length) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn--ghost phbatch';
+    b.id = 'wf-dispatch-batch';
+    b.textContent = `Despachar las listas (${listas.length})`;   /* frase entera: el catálogo la casa con «({n})» */
+    b.addEventListener('click', () => handlers.onOpenDispatchBatch(listas));
+    el.appendChild(b);
+  }
+}
+
+/* «Lista» = lista de verdad: sin dependencias por verificar, aceptada y sin despachar */
+export function readyTickets(wf) {
+  return workflowTickets(wf).map(x => x.t).filter(t => t.ready && t.status === 'accepted' && !t.dispatched_to);
 }
 
 /* ---------------- tarjetas ---------------- */

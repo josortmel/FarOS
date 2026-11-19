@@ -44,7 +44,7 @@ def _fichero_db(d: Path) -> Path:
 DATA_DIR = _env.data_dir()
 DEFAULT_DB = _fichero_db(DATA_DIR)
 
-SCHEMA_VERSION = 14  # v14 (#1279, 17-nov): library_items.clase admite 'informe' (tabla reconstruida); v13 (#1078, 11-nov): credential_changes (quién cambió qué de una clave, nunca el valor); v12 (#919, 9-nov): decisions.superseded_by/supersede_kind/supersede_reason/marked_by/decidido_por/valid_until; v11 (#866, 4-nov): Biblioteca (library_items, library_links, library_fts), copia previa forzada; v10 (#666, 29-oct): las rechazadas no guardan fecha; v9 (#657, 22-oct): decision_history.surface; v8 (#377, 16-oct): ticket_history.provenance; v7 (#451, 8-oct): runs.verdict admite 'uncertain'; v6 (#460, 7-oct): credentials (Claves); v5 (T1.1, 7-sep): tickets.weekday
+SCHEMA_VERSION = 17  # v17 (#1098, 18-nov): fuera la decisions_fts vieja y sus triggers (temporales de la v16), la vigentes usa los tramos sobre decisions_fts2 tras pasar el set ciego de Prima (70f0dc57); v16 (#1098, 18-nov, Prima): vuelve decisions_fts (title, context) al lado de la nueva, para que la vigentes de FarOS sea la de la 3.3.41 mientras el arreglo se mide a ciegas; v15 (#1098, 18-nov): decisions_fts2 indexa también la respuesta y su motivo; v14 (#1279, 17-nov): library_items.clase admite 'informe' (tabla reconstruida); v13 (#1078, 11-nov): credential_changes (quién cambió qué de una clave, nunca el valor); v12 (#919, 9-nov): decisions.superseded_by/supersede_kind/supersede_reason/marked_by/decidido_por/valid_until; v11 (#866, 4-nov): Biblioteca (library_items, library_links, library_fts), copia previa forzada; v10 (#666, 29-oct): las rechazadas no guardan fecha; v9 (#657, 22-oct): decision_history.surface; v8 (#377, 16-oct): ticket_history.provenance; v7 (#451, 8-oct): runs.verdict admite 'uncertain'; v6 (#460, 7-oct): credentials (Claves); v5 (T1.1, 7-sep): tickets.weekday
 
 # Definición v3 de las dos tablas que se RECONSTRUYEN al migrar desde v2
 # (SQLite no permite quitar NOT NULL con ALTER). Se usan tanto en SCHEMA
@@ -379,7 +379,10 @@ CREATE VIRTUAL TABLE IF NOT EXISTS tickets_fts USING fts5(title, description);
 -- T3.9: búsqueda global. Se mantienen sincronizadas por triggers (jobs y decisiones
 -- se escriben solo desde jobs.py/decisions.py, pero los triggers no dependen de eso).
 CREATE VIRTUAL TABLE IF NOT EXISTS jobs_fts USING fts5(name, prompt);
-CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts USING fts5(title, context);
+-- v15 (#1098): la FTS de decisiones mira también la respuesta y su motivo (la 53 dice «nano» solo en la
+-- respuesta). Una FTS5 no admite columnas nuevas: tabla nueva.
+CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts2 USING fts5(title, context, decision, rationale);
+-- (La decisions_fts vieja de la v16 era temporal: la quita _v17_sin_fts_vieja.)
 CREATE TRIGGER IF NOT EXISTS jobs_fts_ai AFTER INSERT ON agent_jobs BEGIN
   INSERT INTO jobs_fts (rowid, name, prompt) VALUES (new.id, new.name, new.prompt);
 END;
@@ -390,12 +393,14 @@ END;
 CREATE TRIGGER IF NOT EXISTS jobs_fts_ad AFTER DELETE ON agent_jobs BEGIN
   DELETE FROM jobs_fts WHERE rowid = old.id;
 END;
-CREATE TRIGGER IF NOT EXISTS decisions_fts_ai AFTER INSERT ON decisions BEGIN
-  INSERT INTO decisions_fts (rowid, title, context) VALUES (new.id, new.title, new.context);
+CREATE TRIGGER IF NOT EXISTS decisions_fts2_ai AFTER INSERT ON decisions BEGIN
+  INSERT INTO decisions_fts2 (rowid, title, context, decision, rationale)
+  VALUES (new.id, new.title, new.context, coalesce(new.decision, ''), coalesce(new.rationale, ''));
 END;
-CREATE TRIGGER IF NOT EXISTS decisions_fts_au AFTER UPDATE OF title, context ON decisions BEGIN
-  DELETE FROM decisions_fts WHERE rowid = old.id;
-  INSERT INTO decisions_fts (rowid, title, context) VALUES (new.id, new.title, new.context);
+CREATE TRIGGER IF NOT EXISTS decisions_fts2_au AFTER UPDATE OF title, context, decision, rationale ON decisions BEGIN
+  DELETE FROM decisions_fts2 WHERE rowid = old.id;
+  INSERT INTO decisions_fts2 (rowid, title, context, decision, rationale)
+  VALUES (new.id, new.title, new.context, coalesce(new.decision, ''), coalesce(new.rationale, ''));
 END;
 
 -- v11 (#850, Biblioteca): Spec v2 §1. v14 (#1279): la clase «informe».
@@ -669,6 +674,25 @@ def _v10_rechazadas_sin_fecha(conn) -> None:
                      " WHERE id=?", (t["id"],))
 
 
+def _v15_decisions_fts2(conn) -> None:
+    """v15 (#1098): la FTS nueva se llena desde decisions. Idempotente: si ya tiene tantas filas como decisions,
+    no se toca."""
+    n_fts = conn.execute("SELECT COUNT(*) FROM decisions_fts2").fetchone()[0]
+    n = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+    if n_fts != n:
+        conn.execute("DELETE FROM decisions_fts2")
+        conn.execute("INSERT INTO decisions_fts2 (rowid, title, context, decision, rationale) SELECT id, title,"
+                     " context, coalesce(decision, ''), coalesce(rationale, '') FROM decisions")
+
+
+def _v17_sin_fts_vieja(conn) -> None:
+    """v17 (#1098): la decisions_fts vieja y sus triggers volvieron en la v16 solo mientras el arreglo se medía a
+    ciegas; pasó el set de Prima (70f0dc57) y se quitan. Idempotente."""
+    for t in ("decisions_fts_ai", "decisions_fts_au", "decisions_fts_ad"):
+        conn.execute(f"DROP TRIGGER IF EXISTS {t}")
+    conn.execute("DROP TABLE IF EXISTS decisions_fts")
+
+
 def _v6_claves(conn) -> None:
     """v6 (#460): las claves que ya están en los ajustes entran en la lista de Claves,
     marcadas en uso. Solo AÑADE filas (no toca los ajustes: un daemon anterior sigue
@@ -695,6 +719,8 @@ def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = Fa
         if schema_version(conn) < SCHEMA_VERSION:
             _v6_claves(conn)
             _v10_rechazadas_sin_fecha(conn)
+            _v15_decisions_fts2(conn)
+            _v17_sin_fts_vieja(conn)
             conn.execute("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
                          (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")))
             conn.commit()
@@ -729,6 +755,8 @@ def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = Fa
             _rebuild(conn, "library_items", LIBRARY_ITEMS_V14)
         _v6_claves(conn)
         _v10_rechazadas_sin_fecha(conn)
+        _v15_decisions_fts2(conn)
+        _v17_sin_fts_vieja(conn)
         conn.execute("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
                      (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")))
         # Integridad referencial ANTES del COMMIT (#471, paso 10): si falla, ROLLBACK.

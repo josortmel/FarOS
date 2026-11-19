@@ -134,6 +134,10 @@ const live = {
   workflow:       (id)      => http(`/api/workflows/${id}`),
   findings:       (id, st)  => http(`/api/workflows/${id}/findings${st ? `?status=${st}` : ''}`),
   dispatchTicket: (id, b)   => http(`/api/tickets/${id}/dispatch`, { method: 'POST', body: JSON.stringify(b) }),
+  /* #1317: el lote es ATÓMICO — todas o ninguna; el 400 nombra la culpable («items[i] (ticket #N) — …») */
+  dispatchBatch:  (id, b)   => http(`/api/workflows/${id}/dispatch_batch`, { method: 'POST', body: JSON.stringify(b) }),
+  /* #1318: importar un Plan JSON. El motor valida TODO antes de escribir (400 en castellano, no importa nada) */
+  importPlan:     (b)       => http('/api/workflows/import', { method: 'POST', body: JSON.stringify(b) }),
   dispatchFinding:(id, b)   => http(`/api/findings/${id}/dispatch`, { method: 'POST', body: JSON.stringify(b) }),
   dismissFinding: (id, b)   => http(`/api/findings/${id}/dismiss`, { method: 'POST', body: JSON.stringify(b) }),
   milestones:     (id)      => http(`/api/workflows/${id}/milestones`),
@@ -330,8 +334,8 @@ function makeMock() {
     return Promise.reject(new ApiError(400, { error: 'invalid_request', reason, code, field }));
   }
 
-  function wfTicket(id) {
-    const wf = db.wfDetail;
+  function wfTicket(id, wfIn) {
+    const wf = wfIn ?? db.wfDetail;
     if (!wf) return null;
     for (const arr of Object.values(wf.tickets_by_phase ?? {})) {
       const t = arr.find(x => x.id === id);
@@ -339,6 +343,10 @@ function makeMock() {
     }
     return (wf.stray_tickets ?? []).find(x => x.id === id) ?? null;
   }
+
+  /* #1318: los workflows importados en la demo llevan su propio detalle; el resto, el de fixtures */
+  const importedWf = new Map();
+  const detailOf = (id) => importedWf.get(Number(id)) ?? db.wfDetail;
 
   /* el resumen por fase se recalcula de las tarjetas: la tira de fases no puede mentir */
   function refreshPhaseSummary(wf) {
@@ -706,18 +714,20 @@ function makeMock() {
       // el mock recalcula open_findings y pct — el badge y el chip no pueden mentir
       refreshPhaseSummary(wfDetail);
       const k = (p.q ?? '').toLowerCase();
+      for (const d of importedWf.values()) refreshPhaseSummary(d);
       return wfList.filter(x => (p.status === 'archived' ? x.status === 'archived' : x.status !== 'archived') && (!k || x.name.toLowerCase().includes(k))).map(x => ({
         ...x,
         open_findings: x.id === wfDetail.id
           ? wfDetail.findings.filter(f => f.status === 'open').length
           : x.open_findings,
-        pct_global: x.id === wfDetail.id ? wfDetail.pct_global : x.pct_global,
+        pct_global: x.id === wfDetail.id ? wfDetail.pct_global : (importedWf.get(x.id)?.pct_global ?? x.pct_global),
       }));
     },
     async workflow(id) {
       const { wfDetail, wfList } = await this._wf(); refreshPhaseSummary(wfDetail);
       /* T4.3: el detalle de fixtures es uno; para otro id se viste con su fila de la lista (nombre, estado) */
       const w = wfList.find(x => x.id === Number(id));
+      if (importedWf.has(Number(id))) { const d = importedWf.get(Number(id)); refreshPhaseSummary(d); return d; }
       return w && w.id !== wfDetail.id ? { ...wfDetail, id: w.id, name: w.name, status: w.status, pct_global: w.pct_global } : wfDetail;
     },
     async patchWorkflow(id, { agent, status, reason, close }) {
@@ -734,7 +744,7 @@ function makeMock() {
       return w;
     },
     async findings(id, st) {
-      const { wfDetail } = await this._wf();
+      await this._wf(); const wfDetail = detailOf(id);
       return st ? wfDetail.findings.filter(f => f.status === st) : wfDetail.findings;
     },
     async dispatchTicket(id, { agent, to, note }) {
@@ -749,6 +759,104 @@ function makeMock() {
         }
       }
       return reject409('El ticket no existe en el workflow.');
+    },
+    /* #1317: el lote, atómico como el del motor: se valida TODO y, si una falla, error 400 con el mismo
+       formato («dispatch_batch: items[i] (ticket #N) — …») y no se toca nada. */
+    async dispatchBatch(id, { agent, items }) {
+      await this._wf(); const wfDetail = detailOf(id);
+      const bad = (label, why) => reject400(`dispatch_batch: ${label} — ${why}`, 'dispatch_batch.item', 'items');
+      if (!items?.length) return reject400('dispatch_batch: items vacío', 'dispatch_batch.empty', 'items');
+      if (agent !== wfDetail.coordinator && !(db.meta.agents ?? []).includes(agent)) {
+        return reject409(`Solo el coordinador (${wfDetail.coordinator}) o la familia despachan.`);
+      }
+      const seen = new Set(), ok = [];
+      for (let i = 0; i < items.length; i++) {
+        const { ticket_id: tid, to } = items[i];
+        const label = `items[${i}] (ticket #${tid})`;
+        if (tid == null || !to) return bad(label, 'ticket_id y to son obligatorios');
+        if (seen.has(tid)) return bad(label, 'ticket_id duplicado en el batch');
+        seen.add(tid);
+        const t = wfTicket(Number(tid), wfDetail);
+        if (!t) return bad(label, `ticket no pertenece al workflow #${id}`);
+        if (!['accepted', 'blocked'].includes(t.status)) return bad(label, `dispatch ilegal desde '${t.status}' (requiere accepted|blocked)`);
+        if (!t.ready) return bad(label, 'dependencias sin verificar');
+        ok.push([t, to]);
+      }
+      const now = new Date().toISOString();
+      for (const [t, to] of ok) { t.dispatched_to = to; t.dispatched_at = now; t.owner = to; emitChange('ticket.dispatched', { ticket_id: t.id }); }
+      return { dispatched: ok.map(([t, to]) => ({ ticket_id: t.id, plan_key: t.plan_key, to })), count: ok.length };
+    },
+    /* #1318: importar un Plan, con las MISMAS comprobaciones y textos que faros/workflows.py (_validate_plan +
+       import_plan): se valida TODO y, si algo falla, 400 «plan inválido: …» y no se crea nada. Las tareas nacen
+       aceptadas (auto_accept). La demo guarda cada workflow importado con su propio detalle. */
+    async importPlan({ agent, plan, repo_root }) {
+      const { wfList } = await this._wf();
+      const bad = (m) => reject400(`plan inválido: ${m}`, 'plan.invalid', 'plan');
+      if (!agent) return reject400('falta agent', 'request.agent_required', 'agent');
+      if (!plan || typeof plan !== 'object' || Array.isArray(plan) || !('workflow' in plan) || !('tasks' in plan)) {
+        return bad("faltan claves 'workflow' y/o 'tasks' (CONTRATO_PLAN.md)");
+      }
+      const wf = plan.workflow ?? {};
+      if (!String(wf.name ?? '').trim()) return bad('workflow.name vacío');
+      const phases = plan.phases;
+      if (!Array.isArray(phases) || !phases.length || !phases.every(p => typeof p === 'string' && p)) return bad('phases debe ser lista no vacía de strings');
+      if (new Set(phases).size !== phases.length) return bad('fases duplicadas');
+      const tasks = plan.tasks;
+      if (!Array.isArray(tasks) || !tasks.length) return bad('sin tareas');
+      const keys = tasks.map(t => t?.key);
+      const dup = [...new Set(keys.filter(k => keys.filter(x => x === k).length > 1))].sort();
+      if (dup.length) return bad(`keys duplicadas [${dup.map(k => `'${k}'`).join(', ')}]`);
+      const known = new Set(keys);
+      for (const t of tasks) {
+        const missing = ['criterio', 'key', 'phase', 'title'].filter(f => !t?.[f]);
+        if (missing.length) return bad(`tarea '${t?.key}' sin campos [${missing.map(f => `'${f}'`).join(', ')}]`);
+        if (!phases.includes(t.phase)) return bad(`tarea ${t.key} usa fase '${t.phase}' no declarada`);
+        for (const dep of t.depende_de ?? []) if (!known.has(dep)) return bad(`${t.key} depende de '${dep}' que no existe`);
+        if (!['self', 'peer', 'auto'].includes(t.verification_level ?? 'peer')) return bad(`${t.key} verification_level desconocido`);
+      }
+      const color = {}; const ciclo = [];
+      const dfs = (n, path) => {
+        color[n] = 1;
+        for (const nx of tasks.find(t => t.key === n).depende_de ?? []) {
+          if (color[nx] === 1) { ciclo.push([...path, nx].join(' -> ')); return; }
+          if (!color[nx]) { dfs(nx, [...path, nx]); if (ciclo.length) return; }
+        }
+        color[n] = 2;
+      };
+      for (const t of tasks) { if (!color[t.key]) dfs(t.key, [t.key]); if (ciclo.length) return bad(`ciclo de dependencias ${ciclo[0]}`); }
+      if (wfList.some(w => w.name === wf.name)) return reject400(`workflow '${wf.name}' ya existe — no hay re-import/merge en v2`, 'workflow.exists', 'plan');
+      if (repo_root != null && repo_root !== '' && !/^([A-Za-z]:[\\/]|\/)/.test(repo_root)) return reject400(`repo_root debe ser una ruta absoluta (${repo_root})`, 'workflow.repo_root', 'repo_root');
+
+      const id = Math.max(0, ...wfList.map(w => w.id)) + 1;
+      const now = localNow();
+      const byKey = {};
+      const make = (t) => ({
+        id: ++nextId, project_id: null, kind: 'manual', title: `[${t.key}] ${t.title}`, description: t.objetivo ?? '',
+        owner: null, source: 'manual', status: 'accepted', priority: t.priority ?? 'media', due_at: null,
+        verify_criteria: t.criterio, blocked_reason: null, verification_level: t.verification_level ?? 'peer',
+        evidence_type: null, evidence: null, verified_by: null, expires_at: null, cadence_days: null, last_done_at: null,
+        created_by: agent, created_at: now, closed_at: null, due_state: 'ok', scheduled_at: null, duration_min: null, all_day: 0,
+        last_change: null, preferred_time: null, next_due_override: null, phase: t.phase, plan_key: t.key,
+        suggested_agent: t.agente_sugerido ?? null, ready: true, unmet_deps: [], dispatched_to: null,
+      });
+      const by_phase = Object.fromEntries(phases.map(p => [p, []]));
+      for (const t of tasks) { byKey[t.key] = make(t); by_phase[t.phase].push(byKey[t.key]); }
+      for (const t of tasks) {
+        const unmet = (t.depende_de ?? []).map(k => ({ id: byKey[k].id, plan_key: k, status: 'accepted' }));
+        byKey[t.key].unmet_deps = unmet; byKey[t.key].ready = !unmet.length;
+      }
+      const detail = {
+        id, name: wf.name, status: 'active', coordinator: wf.coordinator ?? agent, kind: wf.kind ?? 'construccion',
+        spec_path: wf.spec_path ?? null, plan_path: wf.plan_path ?? null, repo_root: repo_root || null,
+        phases: [...phases], phases_summary: [], findings: [], handoffs: [], latest_handoff: null, milestones: [],
+        milestones_pending_ecodb: [], recent_activity: [], projects: [], decisions: [], decisions_pending: [], decisions_pending_count: 0,
+        stray_tickets: [], tickets_by_phase: by_phase, created_at: now,
+      };
+      refreshPhaseSummary(detail);
+      importedWf.set(id, detail);
+      wfList.push({ id, name: detail.name, status: 'active', coordinator: detail.coordinator, kind: detail.kind, pct_global: 0, open_findings: 0, phases_summary: detail.phases_summary, created_at: now });
+      emitChange('workflow.imported', { workflow_id: id });
+      return detail;
     },
     async dispatchFinding(id, { agent, note }) {
       const { wfDetail } = await this._wf();
@@ -968,16 +1076,16 @@ function makeMock() {
         { kind: 'plan', name: 'agenticos-v3.plan.json', path: 'C:\\work\\FarOS\\plans\\agenticos-v3.plan.json', size: 62860, modified: '2026-09-02T08:48' },
         { kind: 'spec', name: 'SPEC_v3.md', path: 'C:\\work\\FarOS\\docs\\SPEC_v3.md', size: 18120, modified: '2026-09-02T08:40' },
         { kind: 'review', name: 'eco_adv_producto_checklist_v3.md', path: 'C:\\work\\FarOS\\reviews\\eco_adv_producto_checklist_v3.md', size: 5024, modified: '2026-09-02T08:57' },
-      ].filter(() => wfDetail);
+      ].filter(() => wfDetail && !importedWf.has(Number(id)));
     },
     /* T3.5: lista completa (más reciente primero) y actividad desde una fecha */
     async handoffs(id) {
-      const { wfDetail } = await this._wf();
+      await this._wf(); const wfDetail = detailOf(id);
       if (!wfDetail.handoffs) wfDetail.handoffs = wfDetail.latest_handoff ? [wfDetail.latest_handoff] : [];
       return wfDetail.handoffs;
     },
     async activity(id, since, limit = 100) {
-      const { wfDetail } = await this._wf();
+      await this._wf(); const wfDetail = detailOf(id);
       const all = wfDetail.recent_activity ?? [];
       return (since ? all.filter(a => a.at >= since) : all).slice(0, limit);
     },

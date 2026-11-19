@@ -1,3 +1,3 @@
 """AgenticOS — tablero de la Casa, oficina de workflows y agentes headless."""
 
-__version__ = "3.3.41"
+__version__ = "3.3.46"

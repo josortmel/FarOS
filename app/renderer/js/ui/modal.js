@@ -469,6 +469,262 @@ export function dispatchDialog(t, agents, suggested) {
   });
 }
 
+/* ================= despachar el lote de tareas listas (#1317) ================= */
+
+/* #1317: el 400 del lote, en una frase que Pepe entienda. El motor manda
+   «dispatch_batch: items[i] (ticket #N) — causa» (workflows.py dispatch_batch); aquí se reconoce la causa y
+   se escribe entera, con la tarea por su clave y su título. Lo crudo se enseña debajo, como detalle.
+   Una frase ENTERA por caso (el catálogo casa la cadena completa; sin trozos pegados). */
+const YA_NO_LISTA = {
+  proposed: (n) => `Ya no está lista: «${n}» está propuesta (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  in_progress: (n) => `Ya no está lista: «${n}» está en curso (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  done: (n) => `Ya no está lista: «${n}» está hecha (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  verified: (n) => `Ya no está lista: «${n}» está verificada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  rejected: (n) => `Ya no está lista: «${n}» está rechazada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  expired: (n) => `Ya no está lista: «${n}» está expirada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+};
+const WF_NO_ACTIVO = {
+  paused: 'El workflow está en pausa: no se despacha.',
+  closed: 'El workflow está cerrado: no se despacha.',
+  cancelled: 'El workflow está cancelado: no se despacha.',
+  archived: 'El workflow está archivado: no se despacha.',
+};
+export function batchErrorSentence(raw, nombre) {
+  const estado = /dispatch ilegal desde '(\w+)'/.exec(raw)?.[1];
+  if (estado && nombre && YA_NO_LISTA[estado]) return YA_NO_LISTA[estado](nombre);
+  const deps = /dependencias sin verificar \(([^)]*)\)/.exec(raw)?.[1];
+  if (deps && nombre) return `Todavía espera a «${deps}».`;
+  const wf = /está (\w+) — no se despacha/.exec(raw)?.[1];
+  if (wf && WF_NO_ACTIVO[wf]) return WF_NO_ACTIVO[wf];
+  return 'Algo del lote no cuadra.';
+}
+
+/* Variante del dispatchDialog: una fila por tarea lista (casilla + clave y título + a quién).
+   `submit(items, note)` es quien llama a la API y devuelve su resultado; si lanza, el diálogo NO se
+   cierra y enseña el motivo encima del pie (con la tarea culpable). Resuelve el resultado de submit
+   o null si se cancela. Sin agente sugerido: el select arranca en «elige a quién» y la casilla
+   queda desmarcada y bloqueada hasta que se elija uno. */
+/* el motor compone «[T1] Schema»; la clave ya va aparte */
+const tituloLimpio = (t) => (t.plan_key ? t.title.replace(`[${t.plan_key}] `, '') : t.title);
+
+export function batchDispatchDialog(tickets, agents, submit, errorText = (e) => String(e?.reason ?? e?.message ?? e)) {
+  return new Promise((resolve) => {
+    const n0 = tickets.length;
+    const peers = [...new Set([...agents, ...tickets.map(t => t.suggested_agent).filter(Boolean)])];
+    const rows = tickets.map((t, i) => {
+      const sug = t.suggested_agent || '';
+      const opts = (sug ? '' : `<option value="" disabled selected>elige a quién</option>`)
+        + peers.map(a => `<option value="${esc(a)}"${a === sug ? ' selected' : ''}>${esc(a)}</option>`).join('');
+      return `
+        <div class="bd__row" role="group" aria-label="${esc(t.plan_key ?? t.title)}" data-i="${i}">
+          <input type="checkbox" id="bd-ck-${i}" ${sug ? 'checked' : 'disabled'}>
+          <label class="bd__what" for="bd-ck-${i}">
+            <span class="bd__key">${esc(t.plan_key ?? `#${t.id}`)}</span>
+            <span class="bd__title">${esc(tituloLimpio(t))}</span>
+          </label>
+          <select id="bd-to-${i}" aria-label="A quién">${opts}</select>
+        </div>`;
+    }).join('');
+    const modal = openModal(`
+      <h2 class="modal__title">${n0 === 1 ? 'Despachar 1 tarea lista' : `Despachar ${n0} tareas listas`}</h2>
+      <form id="bd-form">
+        <div class="bd__rows">${rows}</div>
+        <div class="field">
+          <label for="bd-note">Nota del lote</label>
+          <input type="text" id="bd-note" placeholder="opcional — queda en el historial">
+        </div>
+        <p class="hint" style="margin-bottom:var(--sp-3);">El aviso al peer va por relay — FarOS no notifica.</p>
+        <div class="bd__err" id="bd-err" role="alert" hidden></div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
+          <button type="submit" class="btn btn--primary" id="bd-go"></button>
+        </div>
+      </form>
+    `, resolve, { variant: 'batch' });
+
+    const go = modal.querySelector('#bd-go');
+    const err = modal.querySelector('#bd-err');
+    const row = (i) => ({
+      ck: modal.querySelector(`#bd-ck-${i}`), sel: modal.querySelector(`#bd-to-${i}`),
+      el: modal.querySelector(`.bd__row[data-i="${i}"]`),
+    });
+    const chosen = () => tickets.map((t, i) => ({ t, i, ...row(i) })).filter(r => r.ck.checked && r.sel.value);
+    let busy = false;
+    const refresh = () => {
+      const n = chosen().length;
+      /* una frase entera por número: el catálogo la casa con «Despachar {n}» */
+      go.textContent = tr(`Despachar ${n}`);
+      go.disabled = busy || n === 0;
+    };
+    tickets.forEach((_, i) => {
+      const { ck, sel } = row(i);
+      sel.addEventListener('change', () => { ck.disabled = !sel.value; ck.checked = !!sel.value; refresh(); });
+      ck.addEventListener('change', () => {
+        /* quitar la culpable es un toque: desmarcar basta, y el aviso de esa fila se va */
+        if (!ck.checked && err.dataset.row === String(i)) { err.hidden = true; row(i).el.classList.remove('is-bad'); delete err.dataset.row; }
+        refresh();
+      });
+    });
+    refresh();
+
+    modal.querySelector('#bd-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const picked = chosen();
+      if (busy || !picked.length) return;
+      busy = true; refresh();
+      err.hidden = true;
+      modal.querySelectorAll('.bd__row.is-bad').forEach(r => r.classList.remove('is-bad'));
+      const note = modal.querySelector('#bd-note').value.trim();
+      const items = picked.map(r => ({ ticket_id: r.t.id, to: r.sel.value, ...(note ? { note } : {}) }));
+      try {
+        const res = await submit(items, note || null);
+        modal.finish(res ?? true);
+      } catch (ex) {
+        busy = false; refresh();
+        /* «items[i] (ticket #N)»: i es la posición en LO ENVIADO → la fila culpable */
+        const raw = String(ex?.reason ?? ex?.message ?? '');
+        const m = /items\[(\d+)\]/.exec(raw);
+        const bad = m ? picked[Number(m[1])] : null;
+        const nombre = bad ? `${bad.t.plan_key ?? `#${bad.t.id}`} · ${tituloLimpio(bad.t)}` : null;
+        /* arriba la frase humana; debajo, lo que dijo el motor, pequeño y en mono */
+        err.innerHTML = `<div class="bd__why">${esc(tr(batchErrorSentence(raw, nombre)))}</div>`
+          + `<div class="bd__raw" data-i18n-skip>${esc(errorText(ex))}</div>`;
+        err.hidden = false;
+        if (bad) { bad.el.classList.add('is-bad'); err.dataset.row = String(bad.i); } else delete err.dataset.row;
+        applyI18n(err);
+      }
+    });
+  });
+}
+
+/* ================= importar un Plan JSON como workflow (#1318) ================= */
+
+/* El 400 del motor en una frase que Pepe entienda; lo crudo va debajo, como detalle.
+   «ya existe» y «plan inválido: …» (se quita el prefijo y el motivo empieza con mayúscula). */
+export function importPlanErrorSentence(raw) {
+  const ya = /^workflow (['"])(.*)\1 ya existe/s.exec(raw);
+  if (ya) return `Ya hay un workflow que se llama «${ya[2]}». Cámbiale el nombre en el plan si es otro.`;
+  const inval = /^plan inválido:\s*(.+)$/is.exec(raw);
+  if (inval) return inval[1].charAt(0).toUpperCase() + inval[1].slice(1);
+  return 'El motor no ha aceptado el plan.';
+}
+
+/* El texto, leído en el navegador: {vacio} | {error:{msg,line,col}} | {plan}. */
+export function parsePlanText(text) {
+  if (!text.trim()) return { vacio: true };
+  try { return { plan: JSON.parse(text) }; }
+  catch (ex) {
+    const full = String(ex?.message ?? ex);
+    let line = null, col = null;
+    const lc = /line (\d+) column (\d+)/.exec(full);
+    if (lc) { line = Number(lc[1]); col = Number(lc[2]); }
+    else {
+      /* «Unexpected end of JSON input» no trae posición: es el final del texto */
+      const pos = /position (\d+)/.exec(full) ?? (/end of JSON/i.test(full) ? [null, text.length] : null);
+      if (pos) {
+        const antes = text.slice(0, Number(pos[1])).split('\n');
+        line = antes.length; col = antes[antes.length - 1].length + 1;
+      }
+    }
+    return { error: { msg: full.replace(/\s*\(line \d+ column \d+\)/, ''), line, col } };
+  }
+}
+
+/* `submit({plan, repo_root})` llama a la API y devuelve su resultado; si lanza, el diálogo NO se cierra y
+   enseña el motivo encima del pie. Resuelve el resultado de submit o null si se cancela. */
+export function importPlanDialog(submit, errorText = (e) => String(e?.reason ?? e?.message ?? e)) {
+  return new Promise((resolve) => {
+    const modal = openModal(`
+      <h2 class="modal__title">Importar plan</h2>
+      <form id="ip-form" novalidate>
+        <div class="ip__pick">
+          <button type="button" class="btn btn--ghost" id="ip-pick">Elegir fichero .json</button>
+          <input type="file" id="ip-file" accept=".json,application/json" hidden>
+          <span class="hint ip__or">o pega el plan aquí</span>
+        </div>
+        <div class="field">
+          <label for="ip-text">Plan (JSON)</label>
+          <textarea id="ip-text" class="mono ip__text" rows="9" spellcheck="false" autocomplete="off"
+            placeholder='{ "workflow": { "name": "…" }, "phases": ["F1"], "tasks": [ … ] }'></textarea>
+          <p class="field__error" id="ip-parse" role="alert" hidden></p>
+        </div>
+        <p class="ip__preview" id="ip-preview" role="status" hidden></p>
+        <div class="field">
+          <label for="ip-repo">Carpeta del repo (ruta absoluta)</label>
+          <input type="text" id="ip-repo" placeholder="opcional" autocomplete="off" spellcheck="false">
+        </div>
+        <p class="hint" style="margin-bottom:var(--sp-3);">Las tareas entran aceptadas, listas para despachar. Un workflow con un nombre que ya existe no se vuelve a importar.</p>
+        <div class="bd__err" id="ip-err" role="alert" hidden></div>
+        <div class="modal__footer">
+          <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
+          <button type="submit" class="btn btn--primary" id="ip-go" disabled>Importar</button>
+        </div>
+      </form>
+    `, resolve, { variant: 'import' });
+
+    const q = (s) => modal.querySelector(s);
+    const text = q('#ip-text'), parseBox = q('#ip-parse'), preview = q('#ip-preview'), err = q('#ip-err'), go = q('#ip-go');
+    let plan = null, busy = false;
+    const refresh = () => { go.disabled = busy || plan == null; };
+
+    const onText = () => {
+      err.hidden = true;
+      const r = parsePlanText(text.value);
+      plan = r.plan ?? null;
+      parseBox.hidden = !r.error; preview.hidden = !('plan' in r);
+      text.closest('.field').classList.toggle('is-bad', !!r.error);
+      if (r.error) {
+        const pos = r.error.line != null
+          ? ` <span>${esc(tr(`línea ${r.error.line}, columna ${r.error.col}`))}</span>` : '';
+        parseBox.innerHTML = `<span>El texto no es un JSON válido:</span> <span data-i18n-skip>${esc(r.error.msg)}</span>${pos}`;
+        applyI18n(parseBox);
+      } else if (plan !== null) {
+        const o = plan && typeof plan === 'object' && !Array.isArray(plan) ? plan : {};
+        const nombre = String(o.workflow?.name ?? '').trim() || '(sin nombre)';
+        const f = Array.isArray(o.phases) ? o.phases.length : 0, n = Array.isArray(o.tasks) ? o.tasks.length : 0;
+        const coord = String(o.workflow?.coordinator ?? '').trim();
+        preview.innerHTML = `<b data-i18n-skip>«${esc(nombre)}»</b> · <span>${f === 1 ? '1 fase' : `${f} fases`}</span> · `
+          + `<span>${n === 1 ? '1 tarea' : `${n} tareas`}</span> · `
+          + (coord ? `<span>coordina</span> <b data-i18n-skip>${esc(coord)}</b>` : '<span>coordina tú</span>');
+        applyI18n(preview);
+      }
+      refresh();
+    };
+    text.addEventListener('input', onText);
+
+    q('#ip-pick').addEventListener('click', () => q('#ip-file').click());
+    q('#ip-file').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try { text.value = await file.text(); }
+      catch (ex) { text.value = ''; }
+      e.target.value = '';          // elegir el mismo fichero otra vez vuelve a leerlo
+      onText();
+    });
+
+    q('#ip-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (busy || plan == null) return;
+      busy = true; refresh(); err.hidden = true;
+      const repo_root = q('#ip-repo').value.trim() || undefined;
+      try {
+        const res = await submit({ plan, repo_root });
+        modal.finish(res ?? true);
+      } catch (ex) {
+        busy = false; refresh();
+        const raw = String(ex?.reason ?? ex?.message ?? '');
+        /* arriba la frase humana; debajo, lo que dijo el motor, pequeño y en mono */
+        err.innerHTML = `<div class="bd__why">${esc(tr(importPlanErrorSentence(raw)))}</div>`
+          + `<div class="bd__raw" data-i18n-skip>${esc(errorText(ex))}</div>`;
+        err.hidden = false;
+        applyI18n(err);
+        err.scrollIntoView({ block: 'nearest' });
+      }
+    });
+    text.focus();
+  });
+}
+
 /* ================= suspender o borrar un agente (#252) ================= */
 
 /* SUSPENDER (Pepe, 30-sep: «prefiero suspenderlo»). Resuelve {reassignTo} (null si no tenía

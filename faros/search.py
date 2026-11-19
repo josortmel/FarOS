@@ -35,9 +35,9 @@ def search(conn, q: str) -> dict:
     for j in jobs:
         j["section"] = "agentes"
     decisions = [dict(r) for r in conn.execute(
-        "SELECT d.id, d.title, d.status, d.workflow_id, d.decided_by, bm25(decisions_fts) AS score"
-        " FROM decisions_fts JOIN decisions d ON d.id = decisions_fts.rowid"
-        " WHERE decisions_fts MATCH ? ORDER BY score LIMIT ?", (terms, LIMIT))]
+        "SELECT d.id, d.title, d.status, d.workflow_id, d.decided_by, bm25(decisions_fts2) AS score"
+        " FROM decisions_fts2 JOIN decisions d ON d.id = decisions_fts2.rowid"
+        " WHERE decisions_fts2 MATCH ? ORDER BY score LIMIT ?", (terms, LIMIT))]
     for d in decisions:
         d["section"] = "oficina"
     return {"q": q, "tickets": tickets, "jobs": jobs, "decisions": decisions,
@@ -45,11 +45,12 @@ def search(conn, q: str) -> dict:
 
 
 def reindex(conn) -> dict:
-    """Reconstruye jobs_fts y decisions_fts desde las tablas (idempotente)."""
+    """Reconstruye jobs_fts y decisions_fts2 desde las tablas (idempotente)."""
     conn.execute("DELETE FROM jobs_fts")
     conn.execute("INSERT INTO jobs_fts (rowid, name, prompt) SELECT id, name, prompt FROM agent_jobs")
-    conn.execute("DELETE FROM decisions_fts")
-    conn.execute("INSERT INTO decisions_fts (rowid, title, context) SELECT id, title, context FROM decisions")
+    conn.execute("DELETE FROM decisions_fts2")
+    conn.execute("INSERT INTO decisions_fts2 (rowid, title, context, decision, rationale) SELECT id, title,"
+                 " context, coalesce(decision, ''), coalesce(rationale, '') FROM decisions")
     conn.commit()
     return {"jobs": conn.execute("SELECT COUNT(*) FROM jobs_fts").fetchone()[0],
-            "decisions": conn.execute("SELECT COUNT(*) FROM decisions_fts").fetchone()[0]}
+            "decisions": conn.execute("SELECT COUNT(*) FROM decisions_fts2").fetchone()[0]}

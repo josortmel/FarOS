@@ -20,7 +20,7 @@ import { jobModal } from './ui/job_modal.js';
 import { STATUS_LABEL, TRANSITIONS } from './transitions.js';
 import { initBoard, renderBoard, renderLaterals, flashCard, captureRects, flipFrom } from './ui/board.js';
 import { initPanel, openPanel, closePanel } from './ui/panel.js';
-import { createTaskModal, evidenceDialog, clearEvidenceDraft, reasonDialog, projectDialog, sweepResultToastText, dispatchDialog, handoffComposer, suspendAgentDialog, deleteAgentDialog, deleteCredentialDialog } from './ui/modal.js';
+import { createTaskModal, evidenceDialog, clearEvidenceDraft, reasonDialog, projectDialog, sweepResultToastText, dispatchDialog, batchDispatchDialog, importPlanDialog, handoffComposer, suspendAgentDialog, deleteAgentDialog, deleteCredentialDialog } from './ui/modal.js';
 import { initWorkflow, renderWorkflowSidebar, renderWorkflowBar, renderMilestoneBanner, renderPhaseStrip, renderWorkflowBoard, renderWorkflowPane, renderFindingsDrawer, renderSurfaceBadge, renderHandoff } from './ui/workflow.js';
 import { toast, toastReject } from './ui/toast.js';
 import { recordar as recordarAvisosCriterio } from './ui/criterio_avisos.js';   // #1136
@@ -798,6 +798,8 @@ async function main() {
     try { setState({ wfArchived: await api().workflows({ status: 'archived' }) }); } // el buscador filtra en cliente
     catch (err) { setState({ wfArchived: [] }); toast(`${tr('No se pudo leer Archivados:')} ${humanError(err)}`, 'reject'); }
   }
+  /* los peers a los que se puede despachar: la familia + los de siempre (despacho suelto y lote) */
+  const dispatchPeers = () => [...new Set([...(getState().meta.agents ?? []), 'code', 'verificador', 'adv-code', 'adv-seg'])];
   initWorkflow({
     onSelectWorkflow: selectWorkflow,
     onListMode: (wfListMode) => { setState({ wfListMode }); if (wfListMode === 'archived' && getState().wfArchived == null) refetchArchived(); },
@@ -908,8 +910,7 @@ async function main() {
     onToggleDrawer: () => setState({ drawerOpen: !getState().drawerOpen }),
     onToggleHandoff: () => setState({ handoffOpen: !getState().handoffOpen }),
     onOpenDispatch: async (t) => {
-      const meta = getState().meta;
-      const peers = [...new Set([...(meta.agents ?? []), 'code', 'verificador', 'adv-code', 'adv-seg'])];
+      const peers = dispatchPeers();
       const out = await dispatchDialog(t, peers, t.suggested_agent ?? null);
       if (!out) return;
       try {
@@ -920,6 +921,38 @@ async function main() {
         if (err instanceof ApiError && err.status === 409) toastReject(humanError(err));
         else toast(humanError(err), 'reject');
       }
+    },
+    /* #1317: despachar de golpe las listas del workflow. El diálogo llama a `submit`; si el motor da 400
+       (lote atómico: ninguna se despacha) el diálogo sigue abierto con el motivo. */
+    onOpenDispatchBatch: async (tickets) => {
+      const { workflowId, agent } = getState();
+      const out = await batchDispatchDialog(
+        tickets, dispatchPeers(),
+        (items) => api().dispatchBatch(workflowId, { agent, items }),
+        humanError,
+      );
+      if (!out || out === true) return;
+      const porPeer = new Map();
+      for (const d of out.dispatched ?? []) porPeer.set(d.to, (porPeer.get(d.to) ?? 0) + 1);
+      const reparto = [...porPeer].map(([to, c]) => (porPeer.size > 1 ? `${to} (${c})` : to)).join(', ');
+      const n = out.count ?? out.dispatched?.length ?? 0;
+      toast(n === 1 ? `1 despachada a «${reparto}». Avisa por relay.` : `${n} despachadas a «${reparto}». Avisa por relay.`, 'ok');   // toast() ya pasa por el catálogo
+      await refetchWorkflows();
+    },
+    /* #1318: importar un Plan. El diálogo llama a `submit`; si el motor da 400 (valida todo antes de escribir:
+       no se importa nada) el diálogo sigue abierto con el motivo. Si va bien: se cierra y se abre el nuevo. */
+    onOpenImportPlan: async () => {
+      const { agent } = getState();
+      const out = await importPlanDialog(
+        ({ plan, repo_root }) => api().importPlan({ agent, plan, repo_root }),
+        humanError,
+      );
+      if (!out || out === true) return;
+      const n = Object.values(out.tickets_by_phase ?? {}).reduce((a, arr) => a + arr.length, 0);
+      await refetchWorkflows();
+      setState({ wfListMode: 'active' });
+      await selectWorkflow(out.id);
+      toast(n === 1 ? `«${out.name}» importado: 1 tarea, aceptada y lista para despachar.` : `«${out.name}» importado: ${n} tareas, aceptadas y listas para despachar.`, 'ok');
     },
     onEditHandoff: async () => {
       const { workflowId, workflow, agent } = getState();

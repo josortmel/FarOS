@@ -142,7 +142,7 @@
 
   /* ventanas emergentes: hoja a pantalla completa, campos a 16 px (iOS no hace zoom) */
   .modal-root { padding: 0; align-items: stretch; }
-  .modal, .modal--sm, .modal--job {
+  .modal, .modal--sm, .modal--job, .modal--import {
     width: 100vw; max-width: none; height: 100dvh; max-height: none; border-radius: 0;
     padding: calc(var(--sp-4) + env(safe-area-inset-top)) var(--sp-4) calc(var(--sp-5) + env(safe-area-inset-bottom));
   }
@@ -157,6 +157,20 @@
   .modal--job .models-row .btn { min-width: 44px; }
   .modal__footer { position: sticky; bottom: calc(-1 * var(--sp-5)); background: var(--color-bg); padding-block: var(--sp-3); }
   .modal__footer .btn { min-height: 48px; flex: 1; }
+
+  /* #1318: importar plan — el textarea a todo el ancho, dianas de 44 px, y «Importar plan…» a la vista en la lista */
+  .ip__text { min-height: 180px; }
+  .ip__pick .btn { min-height: 44px; }
+  .ip__preview, .modal--import .field__error { font-size: 14px; }
+  .wfside__import { min-height: 44px; }
+
+  /* #1317: despachar el lote — cada fila apilada: casilla y título arriba, «a quién» debajo, a todo el ancho */
+  .bd__rows { max-height: none; overflow: visible; }
+  .bd__row { grid-template-columns: 44px minmax(0, 1fr); gap: var(--sp-2) var(--sp-1); padding: var(--sp-2); }
+  .bd__row input[type="checkbox"] { justify-self: center; }
+  .bd__what { min-height: 44px; justify-content: center; }
+  .bd__row select { grid-column: 1 / -1; }
+  #wf-dispatch-batch { min-height: 44px; position: sticky; right: 0; background: var(--color-bg); box-shadow: -8px 0 8px -4px var(--color-bg); }   /* la tira corre en horizontal: el botón no se queda fuera */
 
   /* ---------- Preguntas: superficie propia ---------- */
   .mob-dec { flex: 1; overflow-y: auto; padding: var(--sp-3) var(--sp-4) var(--sp-5); }
@@ -295,7 +309,7 @@
 
   /* ventanas emergentes: centradas y con su ancho de escritorio */
   .modal-root { padding: var(--sp-5); align-items: center; }
-  .modal, .modal--sm, .modal--job {
+  .modal, .modal--sm, .modal--job, .modal--import {
     width: min(680px, 100%); height: auto; max-height: 88dvh; border-radius: var(--radius-panel);
     padding: var(--sp-5);
   }

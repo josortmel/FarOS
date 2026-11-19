@@ -797,6 +797,37 @@ select:focus-visible, textarea:focus-visible {
   padding: var(--sp-5);
 }
 .modal--sm { width: min(460px, 100%); }
+.modal--batch { width: min(620px, 100%); }
+/* #1317: despachar el lote — una fila por tarea lista: casilla + clave/título + a quién */
+.bd__rows { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); max-height: 46vh; overflow-y: auto; }
+.bd__row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(150px, 200px); align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-rule); border-radius: 6px; background: var(--color-card);
+}
+.bd__row.is-bad { border-color: var(--color-danger); }
+.bd__row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--color-orange-deep); }
+.bd__what { min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; cursor: pointer; }
+.bd__key { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-orange-deep); font-weight: 700; }
+.bd__title { font-size: var(--text-small); overflow-wrap: anywhere; }
+.bd__row select {
+  width: 100%; padding: 0.45rem 0.6rem; border: 1px solid var(--color-rule-strong); border-radius: 6px;
+  background: var(--color-bg); color: var(--color-text); font: inherit; font-size: var(--text-small);
+}
+/* #1318: importar un plan — el modal, el pie de elegir fichero y la vista previa de una línea */
+.modal--import { width: min(640px, 100%); }
+.ip__pick { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-3); }
+.ip__or { margin: 0; }
+.ip__text { width: 100%; min-height: 160px; }
+.ip__preview {
+  margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: 6px; background: var(--color-bg-well);
+  font-size: var(--text-small); overflow-wrap: anywhere;
+}
+.ip__preview b { font-family: var(--font-mono); font-weight: 600; }
+.bd__raw { margin-top: var(--sp-1); font-family: var(--font-mono); font-size: var(--text-micro); color: var(--color-text-mute); }
+.bd__err {
+  margin-bottom: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--color-danger); border-radius: 6px;
+  color: var(--color-danger); font-size: var(--text-small); overflow-wrap: anywhere;
+}
 .modal__title {
   font-family: var(--font-display);
   font-size: 1.35rem;
@@ -2014,6 +2045,8 @@ body.is-dragging-cal, body.is-dragging-cal .day__ev, body.is-dragging-cal .day__
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .phchip__ready { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--color-orange-deep); font-weight: 700; white-space: nowrap; }
+/* #1317: «Despachar las listas (N)» al final de la tira; empujado a la derecha y siempre a la vista */
+.phbatch { flex: none; align-self: center; margin-left: auto; white-space: nowrap; }
 .phchip__count { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-text-mute); }
 
 /* tablero por estado del workflow — mismas 5 columnas que el Tablero */
@@ -2461,6 +2494,8 @@ body.is-dragging-cal, body.is-dragging-cal .day__ev, body.is-dragging-cal .day__
 .wfside__search { width: 100%; padding: 0.45rem 0.8rem; border: 1px solid var(--color-rule-strong); border-radius: 6px; background: var(--color-card); color: var(--color-text); font: inherit; font-size: var(--text-small); }
 .wfside__list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); }
 .wfside__empty { font-size: var(--text-small); color: var(--color-text-mute); padding: var(--sp-2); }
+/* #1318: «Importar plan…» al pie de la lista, a todo el ancho; secundario (ghost), como los demás */
+.wfside__import { flex: none; width: 100%; }
 .wfrow { position: relative; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: var(--sp-2); padding: 0.55rem 0.75rem; border-radius: var(--radius-card); background: var(--color-card); box-shadow: var(--shadow-card); cursor: pointer; border: 1px solid transparent; }
 .wfrow:hover { border-color: var(--color-rule-strong); }
 .wfrow.is-active { border-color: var(--color-orange-deep); box-shadow: 0 0 0 1px var(--color-orange-deep), var(--shadow-card); }

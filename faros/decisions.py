@@ -268,19 +268,59 @@ def _fila_faros(d: dict, sustituye: list[str]) -> dict:
     return fila
 
 
+# #1098: palabras que no deciden nada; sin quitarlas, «de» o «la» casaban con todo (la FTS unía con OR).
+_VACIAS = {"de", "la", "el", "en", "y", "a", "que", "los", "las", "del", "por", "con", "para", "un", "una",
+           "se", "no", "lo", "al", "es", "o", "u", "como", "qué", "quién", "cuándo", "cómo", "cuál"}
+
+
+def _palabras_tema(tema: str) -> list[str]:
+    import re
+    vistas, salida = set(), []
+    for w in re.findall(r"\w+", (tema or "").lower()):
+        if len(w) > 1 and w not in _VACIAS and w not in vistas:
+            vistas.add(w)
+            salida.append(w)
+    return salida[:8]
+
+
+def _candidatas_faros(conn, tema: str, agente: str | None, tope: int) -> list:
+    """#1098: en tramos, como la Biblioteca. Primero las que tienen TODAS las palabras con contenido; si no hay,
+    las que tienen al menos la mitad. Busca en título, contexto, respuesta y motivo (decisions_fts2). Una
+    decisión cuya respuesta es «RETIRADA» no está vigente y no sale."""
+    palabras = _palabras_tema(tema)
+    if not palabras:
+        return []
+    base = ("SELECT d.*, bm25(decisions_fts2) AS bm25 FROM decisions_fts2 JOIN decisions d"
+            " ON d.id = decisions_fts2.rowid WHERE decisions_fts2 MATCH ? AND d.status = 'decided'"
+            " AND upper(trim(coalesce(d.decision, ''))) NOT LIKE 'RETIRADA%'")
+    extra, params = "", []
+    if agente:
+        extra = " AND d.asked_by = ?"; params.append(agente)
+    todas = " AND ".join(f'"{w}"*' for w in palabras)
+    salen = list(conn.execute(base + extra + " ORDER BY bm25 LIMIT ?", [todas, *params, tope]).fetchall())
+    # #1098 (arreglo, 18-nov): el tramo OR COMPLETA lo que deja el AND hasta el tope; antes solo entraba si el
+    # AND no traía nada, y una fila con 4 de 5 palabras se perdía detrás de 2 que las tenían todas.
+    ya = {f["id"] for f in salen}
+    alguna = " OR ".join(f'"{w}"*' for w in palabras)
+    minimo = (len(palabras) + 1) // 2
+    for f in conn.execute(base + extra + " ORDER BY bm25 LIMIT ?", [alguna, *params, tope * 3]).fetchall():
+        if len(salen) >= tope:
+            break
+        if f["id"] in ya:
+            continue
+        texto = " ".join(str(f[k] or "") for k in ("title", "context", "decision", "rationale")).lower()
+        if sum(1 for w in palabras if w in texto) >= minimo:
+            salen.append(f)
+    return salen
+
+
 def vigentes_faros(conn, tema: str, agente: str | None = None, incluir_superadas: bool = False,
                    limit: int = 10, hoy: date | None = None) -> dict:
-    """Las decisiones DECIDIDAS de FarOS que valen hoy sobre `tema` (FTS sobre título y contexto)."""
-    from .search import _terms
+    """Las decisiones DECIDIDAS de FarOS que valen hoy sobre `tema` (FTS sobre título, contexto, respuesta y
+    motivo; #1098: AND antes que OR, sin palabras vacías, sin las RETIRADAS)."""
     hoy = hoy or date.today()
-    sql = ("SELECT d.* FROM decisions_fts JOIN decisions d ON d.id = decisions_fts.rowid"
-           " WHERE decisions_fts MATCH ? AND d.status = 'decided'")
-    params: list = [_terms(tema)]
-    if agente:
-        sql += " AND d.asked_by = ?"; params.append(agente)
-    sql += " ORDER BY bm25(decisions_fts) LIMIT ?"; params.append(limit * 3)
     salida, superadas, ya = [], [], set()
-    for c in conn.execute(sql, params).fetchall():
+    for c in _candidatas_faros(conn, tema, agente, limit * 3):
         actual, camino = dict(c), []
         while actual.get("superseded_by") is not None:
             sig = conn.execute("SELECT * FROM decisions WHERE id=?", (actual["superseded_by"],)).fetchone()
@@ -299,6 +339,8 @@ def vigentes_faros(conn, tema: str, agente: str | None = None, incluir_superadas
         if len(salida) >= limit:
             break
     r = {"vigentes": salida, "errores": []}
+    if not salida:
+        r["avisos"] = ["sin decisiones relevantes en FarOS para este tema"]
     if incluir_superadas:
         r["superadas"] = superadas
     return r
@@ -342,7 +384,7 @@ def combinar(f: dict, e: dict, limit: int, incluir_superadas: bool) -> dict:
     alternadas = [x for par in zip(*[m + [None] * (max(map(len, mitades)) - len(m)) for m in mitades])
                   for x in par if x is not None]
     r = {"vigentes": alternadas[:limit],
-         "errores": f["errores"] + e.get("errores", []), "avisos": e.get("avisos", [])}
+         "errores": f["errores"] + e.get("errores", []), "avisos": f.get("avisos", []) + e.get("avisos", [])}
     if incluir_superadas:
         r["superadas"] = f.get("superadas", []) + e.get("superadas", [])
     return r
