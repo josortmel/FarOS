@@ -20,6 +20,7 @@ def _cesion_real(mundo, monkeypatch):
     monkeypatch.setattr(L, "CEDER_S", L.CEDER_S_DEFECTO)
 
 
+@pytest.mark.stress  # depends on the machine's speed: out of CI, run at home (see pyproject)
 def test_el_recorrido_no_bloquea_a_otro_escritor(mundo, monkeypatch):
     """Un segundo escritor con el busy_timeout real (5 s) mientras un recorrido lee ficheros lentos:
     ningún «database is locked» y ninguna espera larga."""
@@ -278,6 +279,7 @@ def test_mezcla_de_cambiados_y_sin_cambios_no_lee_con_el_candado_cogido(mundo, m
     assert errores == []
 
 
+@pytest.mark.stress  # depends on the machine's speed: out of CI, run at home (see pyproject)
 def test_un_barrido_de_ficheros_sin_cambios_no_retiene_el_candado_todo_el_barrido(mundo, monkeypatch):
     for i in range(500):
         _w(mundo.ses / "quietos" / f"q{i:03d}.md", f"# Quieto {i}")
