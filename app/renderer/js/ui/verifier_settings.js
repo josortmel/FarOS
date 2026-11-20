@@ -11,15 +11,20 @@ import { esc } from '../util.js';
 import { t as tr } from '../i18n.js';
 
 let handlers = null; // { onQuiet(bool), onSaveRoots(lista) }
-export function initVerifierSettings(h) { handlers = h; }
+export function initVerifierSettings(h) {
+  handlers = h;
+}
 
 /* Agentes se repinta con cada aviso del motor: lo escrito y el cursor se guardan aquí (como en #601). */
 let borrador = null;
 let foco = null;
-export function clearRootsDraft() { borrador = null; foco = null; }
+export function clearRootsDraft() {
+  borrador = null;
+  foco = null;
+}
 
 export function renderQuietSetting(body, state) {
-  if (state.maquinaQuieta == null) return;   // motor sin el ajuste: no se pinta
+  if (state.maquinaQuieta == null) return; // motor sin el ajuste: no se pinta
   const on = !!state.maquinaQuieta;
   const root = document.createElement('section');
   root.className = 'settings__sec quiet';
@@ -40,7 +45,11 @@ export function renderQuietSetting(body, state) {
 export function renderReadRootsSetting(body, state) {
   const guardado = state.readRoots;
   if (guardado == null) return;
-  const lineas = String(guardado).split(';').map(s => s.trim()).filter(Boolean).join('\n');
+  const lineas = String(guardado)
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join('\n');
   const root = document.createElement('section');
   root.className = 'settings__sec readroots';
   root.setAttribute('aria-labelledby', 'roots-h');
@@ -54,15 +63,29 @@ export function renderReadRootsSetting(body, state) {
       <button type="submit" class="btn btn--ghost btn--sm">${esc(tr('Guardar'))}</button>
     </form>`;
   const ta = root.querySelector('#read-roots');
-  const recuerda = () => { borrador = ta.value; foco = { start: ta.selectionStart, end: ta.selectionEnd }; };
+  const recuerda = () => {
+    borrador = ta.value;
+    foco = { start: ta.selectionStart, end: ta.selectionEnd };
+  };
   ta.addEventListener('input', recuerda);
   ta.addEventListener('keyup', recuerda);
   ta.addEventListener('click', recuerda);
-  ta.addEventListener('blur', () => { foco = null; });
+  ta.addEventListener('blur', () => {
+    foco = null;
+  });
   root.querySelector('#roots-form').addEventListener('submit', (e) => {
     e.preventDefault();
-    handlers?.onSaveRoots(ta.value.split('\n').map(s => s.trim()).filter(Boolean).join(';'));
+    handlers?.onSaveRoots(
+      ta.value
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(';'),
+    );
   });
   body.appendChild(root);
-  if (foco) { ta.focus(); ta.setSelectionRange(foco.start, foco.end); }
+  if (foco) {
+    ta.focus();
+    ta.setSelectionRange(foco.start, foco.end);
+  }
 }

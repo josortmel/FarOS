@@ -4,11 +4,7 @@
     "installed": true,
     "version": "2.1.0",
     "billing": "subscription",
-    "capabilities": [
-      "mcp",
-      "json_schema",
-      "effort"
-    ],
+    "capabilities": ["mcp", "json_schema", "effort"],
     "models": [
       {
         "id": "fable",
@@ -101,18 +97,14 @@
     ],
     "models_source": "probe",
     "models_refreshed_at": "2026-09-29T22:10:00",
-    "families": [
-      "claude"
-    ]
+    "families": ["claude"]
   },
   {
     "name": "opencode",
     "installed": true,
     "version": "0.9.4",
     "billing": "api",
-    "capabilities": [
-      "mcp"
-    ],
+    "capabilities": ["mcp"],
     "models": [
       {
         "id": "deepseek/deepseek-v4-pro",
@@ -127,9 +119,7 @@
     ],
     "models_source": "static",
     "models_refreshed_at": null,
-    "families": [
-      "deepseek"
-    ]
+    "families": ["deepseek"]
   },
   {
     "name": "codex",

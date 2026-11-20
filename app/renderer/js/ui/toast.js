@@ -1,4 +1,4 @@
-import { t as t2 } from '../i18n.js';  // #262
+import { t as t2 } from '../i18n.js'; // #262
 /* toast.js — avisos efímeros. El rechazo del motor SIEMPRE se ve. */
 
 const root = () => document.getElementById('toasts');
@@ -22,7 +22,7 @@ export function toastReject(reason) {
   const el = document.createElement('div');
   el.className = 'toast toast--reject';
   const b = document.createElement('b');
-  b.textContent = t2('El motor lo rechaza:') + ' ';  // #262/#264
+  b.textContent = t2('El motor lo rechaza:') + ' '; // #262/#264
   el.append(b, document.createTextNode(reason));
   root().appendChild(el);
   setTimeout(() => el.remove(), 7000);

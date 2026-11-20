@@ -7,14 +7,14 @@ import { esc, humanError } from '../util.js';
 import { STATUS_LABEL } from '../transitions.js';
 import { t as tr } from '../i18n.js';
 
-const LIMITE = 10;          // search.py: LIMIT por grupo
-const ESPERA = 180;         // ms entre teclas antes de preguntar al daemon
+const LIMITE = 10; // search.py: LIMIT por grupo
+const ESPERA = 180; // ms entre teclas antes de preguntar al daemon
 
 const GRUPOS = [
-  { k: 'tickets',   kind: 'ticket',   titulo: 'Tareas' },
+  { k: 'tickets', kind: 'ticket', titulo: 'Tareas' },
   { k: 'decisions', kind: 'decision', titulo: 'Preguntas' },
   { k: 'workflows', kind: 'workflow', titulo: 'Workflows' },
-  { k: 'jobs',      kind: 'job',      titulo: 'Agentes' },
+  { k: 'jobs', kind: 'job', titulo: 'Agentes' },
 ];
 const ESTADO_PREGUNTA = { pending: 'sin contestar', decided: 'decidida', deferred: 'aplazada' };
 const ESTADO_WF = { active: 'activo', closed: 'cerrado', archived: 'archivado', cancelled: 'cancelado' };
@@ -22,14 +22,15 @@ const ESTADO_JOB = { active: 'activo', paused: 'en pausa', archived: 'archivado'
 /* lo que pide algo de alguien va en naranja; lo demás, en gris */
 const VIVO = new Set(['in_progress', 'pending', 'active']);
 
-const ICONO = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2 20 20"/></svg>';
+const ICONO =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2 20 20"/></svg>';
 
 let api = () => null;
 let onOpen = async () => {};
 let raiz, campo, lista, estado, boton;
-let filas = [];            // [{ kind, item }] en el orden en que se pintan
+let filas = []; // [{ kind, item }] en el orden en que se pintan
 let activa = -1;
-let turno = 0;             // descarta respuestas viejas si se escribe deprisa
+let turno = 0; // descarta respuestas viejas si se escribe deprisa
 let espera = null;
 let ultimaQ = '';
 
@@ -38,23 +39,38 @@ const plano = (c) => {
   const n = c.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
   return n.length === 1 ? n : c.toLowerCase();
 };
-const palabras = (q) => q.split(/\s+/).map(w => w.replace(/"/g, '')).filter(w => w.length > 1).slice(0, 8);
+const palabras = (q) =>
+  q
+    .split(/\s+/)
+    .map((w) => w.replace(/"/g, ''))
+    .filter((w) => w.length > 1)
+    .slice(0, 8);
 
 export function marcar(texto, q) {
   const s = String(texto ?? '');
-  const ws = palabras(q).map(w => [...w].map(plano).join(''));
+  const ws = palabras(q).map((w) => [...w].map(plano).join(''));
   if (!ws.length) return esc(s);
   const chars = [...s];
   const norm = chars.map(plano).join('');
   const on = new Array(chars.length).fill(false);
   for (const w of ws) {
     let i = norm.indexOf(w);
-    while (i !== -1) { for (let j = i; j < i + w.length; j++) on[j] = true; i = norm.indexOf(w, i + w.length); }
+    while (i !== -1) {
+      for (let j = i; j < i + w.length; j++) on[j] = true;
+      i = norm.indexOf(w, i + w.length);
+    }
   }
-  let out = '', abierto = false;
+  let out = '',
+    abierto = false;
   chars.forEach((c, i) => {
-    if (on[i] && !abierto) { out += '<mark>'; abierto = true; }
-    if (!on[i] && abierto) { out += '</mark>'; abierto = false; }
+    if (on[i] && !abierto) {
+      out += '<mark>';
+      abierto = true;
+    }
+    if (!on[i] && abierto) {
+      out += '</mark>';
+      abierto = false;
+    }
     out += esc(c);
   });
   return abierto ? out + '</mark>' : out;
@@ -64,16 +80,24 @@ export function marcar(texto, q) {
 function fila(kind, it, q, n) {
   let titulo, meta, st, stTxt;
   if (kind === 'ticket') {
-    titulo = it.title; st = it.status; stTxt = STATUS_LABEL[it.status] ?? it.status;
+    titulo = it.title;
+    st = it.status;
+    stTxt = STATUS_LABEL[it.status] ?? it.status;
     meta = [it.owner, it.workflow_id ? tr('en un workflow') : null].filter(Boolean).join(' · ');
   } else if (kind === 'decision') {
-    titulo = it.title; st = it.status; stTxt = tr(ESTADO_PREGUNTA[it.status] ?? it.status);
+    titulo = it.title;
+    st = it.status;
+    stTxt = tr(ESTADO_PREGUNTA[it.status] ?? it.status);
     meta = it.decided_by ? `${tr('decidió')} ${it.decided_by}` : '';
   } else if (kind === 'workflow') {
-    titulo = it.name; st = it.status; stTxt = tr(ESTADO_WF[it.status] ?? it.status);
+    titulo = it.name;
+    st = it.status;
+    stTxt = tr(ESTADO_WF[it.status] ?? it.status);
     meta = it.coordinator ? `${tr('coordina')} ${it.coordinator}` : '';
   } else {
-    titulo = it.name; st = it.status; stTxt = tr(ESTADO_JOB[it.status] ?? it.status);
+    titulo = it.name;
+    st = it.status;
+    stTxt = tr(ESTADO_JOB[it.status] ?? it.status);
     meta = [it.harness, it.model].filter(Boolean).join(' · ');
   }
   const id = kind === 'workflow' ? '' : `#${it.id}`;
@@ -92,7 +116,10 @@ function pintar(res, q) {
     if (!items.length) continue;
     const tope = items.length >= LIMITE ? `<span class="lupa__more">${tr('las 10 más parecidas')}</span>` : '';
     html += `<section class="lupa__group" data-k="${g.k}" aria-label="${esc(tr(g.titulo))}"><h3 class="lupa__gh">${esc(tr(g.titulo))} <span class="lupa__n">${items.length}</span>${tope}</h3>`;
-    for (const it of items) { html += fila(g.kind, it, q, filas.length); filas.push({ kind: g.kind, item: it }); }
+    for (const it of items) {
+      html += fila(g.kind, it, q, filas.length);
+      filas.push({ kind: g.kind, item: it });
+    }
     html += '</section>';
   }
   lista.innerHTML = html;
@@ -113,7 +140,9 @@ function decir(txt, tipo = '') {
 }
 
 function vacio() {
-  filas = []; activa = -1; lista.innerHTML = '';
+  filas = [];
+  activa = -1;
+  lista.innerHTML = '';
   campo.removeAttribute('aria-activedescendant');
   campo.setAttribute('aria-expanded', 'false');
   decir(tr('Escribe una palabra: busca a la vez en tareas, preguntas, workflows y agentes.'), 'pista');
@@ -122,7 +151,9 @@ function vacio() {
 function mover(n) {
   if (!filas.length) return;
   activa = (n + filas.length) % filas.length;
-  lista.querySelectorAll('.lupa__row').forEach(b => b.setAttribute('aria-selected', String(Number(b.dataset.n) === activa)));
+  lista
+    .querySelectorAll('.lupa__row')
+    .forEach((b) => b.setAttribute('aria-selected', String(Number(b.dataset.n) === activa)));
   const b = lista.querySelector(`#lupa-opt-${activa}`);
   campo.setAttribute('aria-activedescendant', b.id);
   b.scrollIntoView({ block: 'nearest' });
@@ -137,7 +168,9 @@ async function buscar(q) {
     pintar(res, q);
   } catch (err) {
     if (mio !== turno) return;
-    lista.innerHTML = ''; filas = []; activa = -1;
+    lista.innerHTML = '';
+    filas = [];
+    activa = -1;
     decir(`${tr('No se pudo buscar:')} ${humanError(err)}`, 'error');
   } finally {
     if (mio === turno) raiz.classList.remove('is-busy');
@@ -149,7 +182,12 @@ function alEscribir() {
   const q = campo.value.trim();
   if (q === ultimaQ) return;
   ultimaQ = q;
-  if (!palabras(q).length) { turno++; raiz.classList.remove('is-busy'); vacio(); return; }
+  if (!palabras(q).length) {
+    turno++;
+    raiz.classList.remove('is-busy');
+    vacio();
+    return;
+  }
   espera = setTimeout(() => buscar(q), ESPERA);
 }
 
@@ -162,7 +200,11 @@ async function abrirFila(n) {
 
 /* --------- abrir y cerrar --------- */
 export function abrirLupa() {
-  if (!raiz.hidden) { campo.focus(); campo.select(); return; }
+  if (!raiz.hidden) {
+    campo.focus();
+    campo.select();
+    return;
+  }
   raiz.hidden = false;
   document.body.classList.add('lupa-on');
   boton?.setAttribute('aria-expanded', 'true');
@@ -212,16 +254,28 @@ export function initLupa(opts) {
   onOpen = opts.onOpen;
   boton = document.getElementById('btn-lupa');
   construir();
-  boton?.addEventListener('click', (e) => { e.stopPropagation(); abrirLupa(); });
+  boton?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    abrirLupa();
+  });
 
   campo.addEventListener('input', alEscribir);
   campo.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); mover(activa + 1); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); mover(activa - 1); }
-    else if (e.key === 'Enter') {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      mover(activa + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      mover(activa - 1);
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       /* si aún no ha contestado el daemon, se busca ya y se espera */
-      if (espera && campo.value.trim() !== '' && !filas.length) { clearTimeout(espera); espera = null; buscar(campo.value.trim()); return; }
+      if (espera && campo.value.trim() !== '' && !filas.length) {
+        clearTimeout(espera);
+        espera = null;
+        buscar(campo.value.trim());
+        return;
+      }
       if (activa >= 0) abrirFila(activa);
     }
   });
@@ -233,25 +287,48 @@ export function initLupa(opts) {
     const b = e.target.closest('.lupa__row');
     if (b && Number(b.dataset.n) !== activa) mover(Number(b.dataset.n));
   });
-  raiz.addEventListener('click', (e) => { if (e.target.closest('[data-cerrar]')) cerrarLupa({ devolverFoco: true }); });
+  raiz.addEventListener('click', (e) => {
+    if (e.target.closest('[data-cerrar]')) cerrarLupa({ devolverFoco: true });
+  });
   /* el foco no se escapa del cuadro: Tab va del campo a «Cerrar» y vuelve */
   raiz.addEventListener('keydown', (e) => {
     if (e.key !== 'Tab') return;
     const cerrar = raiz.querySelector('.lupa__close');
-    const visibles = [campo, cerrar].filter(el => el.offsetParent !== null);
-    if (visibles.length < 2) { e.preventDefault(); campo.focus(); return; }
+    const visibles = [campo, cerrar].filter((el) => el.offsetParent !== null);
+    if (visibles.length < 2) {
+      e.preventDefault();
+      campo.focus();
+      return;
+    }
     const i = visibles.indexOf(document.activeElement);
     e.preventDefault();
     visibles[(i + (e.shiftKey ? -1 : 1) + visibles.length) % visibles.length].focus();
   });
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !raiz.hidden) { e.preventDefault(); e.stopPropagation(); cerrarLupa({ devolverFoco: true }); return; }
-    const atajo = (e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
-    const barra = e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !escribiendo(document.activeElement)
-      && document.getElementById('modal-root')?.hidden !== false;
-    if (atajo || (barra && raiz.hidden)) { e.preventDefault(); abrirLupa(); }
-  }, true);
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key === 'Escape' && !raiz.hidden) {
+        e.preventDefault();
+        e.stopPropagation();
+        cerrarLupa({ devolverFoco: true });
+        return;
+      }
+      const atajo = (e.key === 'k' || e.key === 'K') && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+      const barra =
+        e.key === '/' &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        !escribiendo(document.activeElement) &&
+        document.getElementById('modal-root')?.hidden !== false;
+      if (atajo || (barra && raiz.hidden)) {
+        e.preventDefault();
+        abrirLupa();
+      }
+    },
+    true,
+  );
 }
 
 export const LUPA_ICONO = ICONO;

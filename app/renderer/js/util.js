@@ -13,7 +13,7 @@ export function fmtWhen(iso) {
   const now = new Date();
   const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return `${t2('hoy')} ${hhmm}`;   // #262: etiqueta aparte del dato
+  if (sameDay) return `${t2('hoy')} ${hhmm}`; // #262: etiqueta aparte del dato
   const ayer = new Date(now.getTime() - 864e5);
   if (d.toDateString() === ayer.toDateString()) return `${t2('ayer')} ${hhmm}`;
   return `${d.getDate()} ${MES(d.getMonth())} ${hhmm}`;
@@ -27,20 +27,22 @@ export function fmtDate(iso) {
 
 /* ---- T2.10: tiempo en la tarjeta, en palabras de la Casa ---- */
 
-
 /* «jue 3» / «hoy» / «mañana» — de un ISO local (fecha o fecha-hora) */
 export function fmtDayShort(iso) {
   if (!iso) return '';
   const d = new Date(iso.length === 10 ? iso + 'T00:00:00' : iso);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const day = new Date(d);
+  day.setHours(0, 0, 0, 0);
   const diff = Math.round((day - today) / 864e5);
   if (diff === 0) return t2('hoy');
   if (diff === 1) return t2('mañana');
   if (diff === -1) return t2('ayer');
   const base = `${DIA_CORTO(d.getDay())} ${d.getDate()}`;
   return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear()
-    ? base : `${base} ${MES(d.getMonth())}`;
+    ? base
+    : `${base} ${MES(d.getMonth())}`;
 }
 
 /* «09:00–10:00» / «09:00» / «todo el día» */
@@ -56,13 +58,15 @@ export function fmtTimeRange(scheduledAt, durationMin, allDay) {
 
 /* la línea «cuándo está programada» de una tarea; '' si no hay nada que decir */
 export function fmtWhenScheduled(t) {
-  if (t.scheduled_at) return `${fmtDayShort(t.scheduled_at)} · ${fmtTimeRange(t.scheduled_at, t.duration_min, t.all_day)}`;
+  if (t.scheduled_at)
+    return `${fmtDayShort(t.scheduled_at)} · ${fmtTimeRange(t.scheduled_at, t.duration_min, t.all_day)}`;
   if (t.all_day && t.due_at) return `${fmtDayShort(t.due_at)} · ${t2('todo el día')}`;
   /* #262: «próxima» es interfaz y lo que le sigue es dato, en el MISMO nodo de texto — que
      es justo lo que un catálogo de cadena completa no puede alcanzar. Se traduce la palabra
      aquí, que es donde se sabe cuál es cuál. Si no, «próxima» se queda como la única palabra
      en español de la pantalla más mirada de la app. */
-  if (t.cadence_days && t.next_due) return `${t2('próxima')} ${fmtDayShort(t.next_due)}${t.preferred_time ? ' · ' + t.preferred_time : ''}`;
+  if (t.cadence_days && t.next_due)
+    return `${t2('próxima')} ${fmtDayShort(t.next_due)}${t.preferred_time ? ' · ' + t.preferred_time : ''}`;
   return '';
 }
 
@@ -77,7 +81,13 @@ function fmtHours(at) {
 }
 export function fmtSchedule(s) {
   if (!s) return '—';
-  if (typeof s === 'string') { try { s = JSON.parse(s); } catch { return s; } }
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch {
+      return s;
+    }
+  }
   if (s.type === 'manual') return t2('manual (solo botón)');
   if (s.type === 'once') return `${t2('una vez')} · ${fmtWhen(s.run_at)}`;
   if (s.type === 'recurring') {
@@ -85,7 +95,7 @@ export function fmtSchedule(s) {
     return `${d} · ${fmtHours(s.at)}`;
   }
   if (s.type === 'weekly') {
-    const days = (s.weekdays ?? []).map(i => diaLetra(i) ?? '?').join(' ');
+    const days = (s.weekdays ?? []).map((i) => diaLetra(i) ?? '?').join(' ');
     return `${days || t2('sin días')} · ${fmtHours(s.at)}`;
   }
   return JSON.stringify(s);
@@ -110,7 +120,8 @@ export function fmtUsd(n) {
 export function fmtRelative(iso) {
   if (!iso) return '';
   const ms = new Date(iso) - Date.now();
-  const abs = Math.abs(ms), m = Math.round(abs / 6e4);
+  const abs = Math.abs(ms),
+    m = Math.round(abs / 6e4);
   let txt;
   if (m < 1) return t2('ahora');
   if (m < 60) txt = `${m} min`;
@@ -124,12 +135,12 @@ export function fmtRelative(iso) {
 /* color de proyecto con respaldo: los proyectos migrados pueden venir sin
    color — paleta de marca determinista por id, nunca un punto invisible */
 const PROJECT_FALLBACK = [
-  'oklch(58% 0.12 50)',   /* naranja apagado — el primero es de la casa */
-  'oklch(52% 0.10 240)',  /* azul acero */
-  'oklch(50% 0.10 150)',  /* verde bosque */
-  'oklch(52% 0.11 310)',  /* malva */
-  'oklch(48% 0.09 85)',   /* ocre */
-  'oklch(50% 0.10 15)',   /* teja */
+  'oklch(58% 0.12 50)' /* naranja apagado — el primero es de la casa */,
+  'oklch(52% 0.10 240)' /* azul acero */,
+  'oklch(50% 0.10 150)' /* verde bosque */,
+  'oklch(52% 0.11 310)' /* malva */,
+  'oklch(48% 0.09 85)' /* ocre */,
+  'oklch(50% 0.10 15)' /* teja */,
 ];
 export function projectColor(p) {
   if (p?.color) return p.color;

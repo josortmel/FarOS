@@ -15,11 +15,11 @@
 import { applyI18n } from '../i18n.js';
 
 const root = () => document.getElementById('modal-root');
-let current = null;   // el finish de la ventana abierta, si la hay
+let current = null; // el finish de la ventana abierta, si la hay
 
 /* variant: '' | 'sm' | 'job' (la clase modal--<variant>) */
 export function openModal(html, resolve, { variant = '' } = {}) {
-  current?.(null);    // una ventana encima de otra: la de debajo se cierra y resuelve, sin restos
+  current?.(null); // una ventana encima de otra: la de debajo se cierra y resuelve, sin restos
   /* #810: quién la abrió, para devolverle el foco al cerrar (patrón de diálogo del APG) */
   const opener = document.activeElement;
   const r = root();
@@ -30,10 +30,20 @@ export function openModal(html, resolve, { variant = '' } = {}) {
   applyI18n(modal);
 
   let done = false;
-  const onEscape = (e) => { if (e.key === 'Escape') { e.preventDefault(); finish(null); } };
+  const onEscape = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      finish(null);
+    }
+  };
   /* el fondo: solo un mousedown EN el fondo; arrastrar desde un campo hasta fuera no cierra */
   /* #810: preventDefault para que ese mismo clic no se lleve el foco al body después de devolverlo */
-  const onBackdrop = (e) => { if (e.target === r) { e.preventDefault(); finish(null); } };
+  const onBackdrop = (e) => {
+    if (e.target === r) {
+      e.preventDefault();
+      finish(null);
+    }
+  };
   function finish(value) {
     if (done) return;
     done = true;
@@ -45,7 +55,7 @@ export function openModal(html, resolve, { variant = '' } = {}) {
     /* #810: el foco vuelve a quien la abrió. Si ya no está en la página porque su barra se repintó
        (la de Agentes lo hace con cada refresco), al que lleva su mismo id; si tampoco hay, el navegador
        decide (p. ej. la abrió algo de una ventana que esta sustituyó) */
-    const back = opener?.isConnected ? opener : (opener?.id ? document.getElementById(opener.id) : null);
+    const back = opener?.isConnected ? opener : opener?.id ? document.getElementById(opener.id) : null;
     if (back && back !== document.body) back.focus();
     resolve(value);
   }

@@ -16,7 +16,7 @@
 import { esc, fmtSchedule } from '../util.js';
 import { diaLargo, diaLetra, applyI18n, t as tr } from '../i18n.js';
 import { api } from '../api.js';
-import { openModal } from './shell.js';   // #357
+import { openModal } from './shell.js'; // #357
 
 /* #262/#271 (lo encontro Eco): las iniciales salen de Intl con el locale activo.
    El INDICE se conserva tal cual porque ES el weekday del motor (0=lunes, estilo
@@ -32,32 +32,56 @@ const DANGEROUS = /\b(Read|Bash|Write|Edit|MultiEdit|NotebookEdit)\b/;
 /* normaliza el schedule que llega (string JSON o objeto, v1 «at» string o v3 «at» lista) */
 function normSchedule(s) {
   if (!s) return { type: 'manual' };
-  if (typeof s === 'string') { try { s = JSON.parse(s); } catch { return { type: 'manual' }; } }
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch {
+      return { type: 'manual' };
+    }
+  }
   const at = Array.isArray(s.at) ? s.at : s.at ? [s.at] : [];
-  if (s.type === 'recurring') return { type: 'recurring', every_days: s.every_days ?? 1, at: at.length ? at : ['08:00'] };
-  if (s.type === 'weekly') return { type: 'weekly', weekdays: s.weekdays ?? [0, 1, 2, 3, 4], at: at.length ? at : ['08:00'] };
+  if (s.type === 'recurring')
+    return { type: 'recurring', every_days: s.every_days ?? 1, at: at.length ? at : ['08:00'] };
+  if (s.type === 'weekly')
+    return { type: 'weekly', weekdays: s.weekdays ?? [0, 1, 2, 3, 4], at: at.length ? at : ['08:00'] };
   if (s.type === 'once') return { type: 'once', run_at: s.run_at ?? '' };
   return { type: 'manual' };
 }
 
-export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [], agents = [], projects = [] }) {
+export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [], projects = [] }) {
   const editing = Boolean(job);
   const j = job ?? {};
-  const h0 = harnesses.find(h => h.name === (j.harness ?? 'claude-cli')) ?? harnesses.find(h => h.installed) ?? harnesses[0];
+  const h0 =
+    harnesses.find((h) => h.name === (j.harness ?? 'claude-cli')) ?? harnesses.find((h) => h.installed) ?? harnesses[0];
   let schedule = normSchedule(j.schedule);
   let models = h0?.models ?? [];
 
   return new Promise((resolve) => {
-    const harnessOpts = harnesses.map(h => `<option value="${esc(h.name)}"${h.name === h0?.name ? ' selected' : ''}${h.installed ? '' : ' disabled'}>${esc(h.name)}${h.installed ? '' : ' (no instalado)'}${h.version ? ' · ' + esc(h.version) : ''}</option>`).join('');
-    const projOpts = `<option value="">— sin proyecto —</option>` + projects.filter(p => !p.archived).map(p => `<option value="${p.id}"${j.project_id === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+    const harnessOpts = harnesses
+      .map(
+        (h) =>
+          `<option value="${esc(h.name)}"${h.name === h0?.name ? ' selected' : ''}${h.installed ? '' : ' disabled'}>${esc(h.name)}${h.installed ? '' : ' (no instalado)'}${h.version ? ' · ' + esc(h.version) : ''}</option>`,
+      )
+      .join('');
+    const projOpts =
+      `<option value="">— sin proyecto —</option>` +
+      projects
+        .filter((p) => !p.archived)
+        .map((p) => `<option value="${p.id}"${j.project_id === p.id ? ' selected' : ''}>${esc(p.name)}</option>`)
+        .join('');
     /* T5.9 (el dueño §4): los MCP del job salen del REGISTRO propio (mcp_servers, lista de nombres),
        para claude-cli y opencode. Si el registro está vacío, se cae a los heredados de la sesión. */
     const fromRegistry = mcpServers.length > 0;
     const chosen = new Set(fromRegistry ? (j.mcp_servers ?? []) : (j.inherit_mcp ?? []));
-    const mcpBoxes = (fromRegistry ? mcpServers : (mcpInherited ?? [])).map(m => `
-      <label data-mcp-name="${esc(m.name.toLowerCase())}"><input type="checkbox" name="mcp" value="${esc(m.name)}"${chosen.has(m.name) ? ' checked' : ''}${fromRegistry && m.enabled === false ? ' disabled' : ''}> ${esc(m.name)} <small>${esc(m.scope ?? m.source ?? '')}${m.transport ? ' · ' + esc(m.transport) : ''}${fromRegistry && m.enabled === false ? ' · ' + tr('deshabilitado') : ''}</small></label>`).join('');
+    const mcpBoxes = (fromRegistry ? mcpServers : (mcpInherited ?? []))
+      .map(
+        (m) => `
+      <label data-mcp-name="${esc(m.name.toLowerCase())}"><input type="checkbox" name="mcp" value="${esc(m.name)}"${chosen.has(m.name) ? ' checked' : ''}${fromRegistry && m.enabled === false ? ' disabled' : ''}> ${esc(m.name)} <small>${esc(m.scope ?? m.source ?? '')}${m.transport ? ' · ' + esc(m.transport) : ''}${fromRegistry && m.enabled === false ? ' · ' + tr('deshabilitado') : ''}</small></label>`,
+      )
+      .join('');
 
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">${editing ? 'Editar job' : 'Nuevo job agéntico'}</h2>
       <form id="job-form" novalidate>
         <div class="field">
@@ -157,11 +181,11 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
           <div class="field-row-3">
             <div class="field">
               <label for="j-perm">Permisos</label>
-              <select id="j-perm">${['dontAsk', 'acceptEdits', 'plan', 'bypassPermissions'].map(p => `<option${(j.permission_mode ?? 'dontAsk') === p ? ' selected' : ''}>${p}</option>`).join('')}</select>
+              <select id="j-perm">${['dontAsk', 'acceptEdits', 'plan', 'bypassPermissions'].map((p) => `<option${(j.permission_mode ?? 'dontAsk') === p ? ' selected' : ''}>${p}</option>`).join('')}</select>
             </div>
             <div class="field">
               <label for="j-effort">Effort</label>
-              <select id="j-effort">${['', 'low', 'medium', 'high', 'max'].map(e => `<option value="${e}"${(j.effort ?? '') === e ? ' selected' : ''}>${e || '— por defecto —'}</option>`).join('')}</select>
+              <select id="j-effort">${['', 'low', 'medium', 'high', 'max'].map((e) => `<option value="${e}"${(j.effort ?? '') === e ? ' selected' : ''}>${e || '— por defecto —'}</option>`).join('')}</select>
             </div>
             <div class="field">
               <label for="j-fallback">Modelo de respaldo</label>
@@ -192,68 +216,109 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
           <button type="submit" class="btn btn--primary">${editing ? 'Guardar job' : 'Crear job'}</button>
         </div>
       </form>
-    `, resolve, { variant: 'job' });
+    `,
+      resolve,
+      { variant: 'job' },
+    );
 
     const q = (sel) => modal.querySelector(sel);
-    const capOf = (name) => harnesses.find(h => h.name === name) ?? {};
+    const capOf = (name) => harnesses.find((h) => h.name === name) ?? {};
 
     /* ---- modelos: siempre del harness. T5.5: en dos niveles (familia → id concreto) ---- */
-    const modelLabel = (m) => `${m.label ?? m.id}${m.alias_of ? '' : m.tier ? ` · ${m.tier}` : ''}${m.validated ? ' ✓' : ''}${m.validated_at ? ` ${m.validated_at}` : ''}`;
+    const modelLabel = (m) =>
+      `${m.label ?? m.id}${m.alias_of ? '' : m.tier ? ` · ${m.tier}` : ''}${m.validated ? ' ✓' : ''}${m.validated_at ? ` ${m.validated_at}` : ''}`;
     function familiesOf() {
       /* el catálogo trae familias; si no (opencode, lista tal cual), una sola «todos» */
-      const withFam = models.filter(m => m.family);
+      const withFam = models.filter((m) => m.family);
       if (!withFam.length) return [{ family: '', label: 'todos', models }];
       const byFam = new Map();
-      for (const m of models) { const k = m.family ?? ''; if (!byFam.has(k)) byFam.set(k, []); byFam.get(k).push(m); }
+      for (const m of models) {
+        const k = m.family ?? '';
+        if (!byFam.has(k)) byFam.set(k, []);
+        byFam.get(k).push(m);
+      }
       return [...byFam.entries()].map(([family, ms]) => ({
-        family, label: family ? family[0].toUpperCase() + family.slice(1) : 'otros',
+        family,
+        label: family ? family[0].toUpperCase() + family.slice(1) : 'otros',
         models: [...ms].sort((a, b) => Number(Boolean(b.alias_of)) - Number(Boolean(a.alias_of))), // alias primero
       }));
     }
     function fillModels(keepFamily = false) {
-      const famSel = q('#j-family'); const sel = q('#j-model'); const fb = q('#j-fallback');
+      const famSel = q('#j-family');
+      const sel = q('#j-model');
+      const fb = q('#j-fallback');
       const current = sel.value || j.model;
       const fams = familiesOf();
       const single = fams.length === 1 && !fams[0].family;
       famSel.hidden = single;
-      const curFam = models.find(m => m.id === current)?.family ?? null;
-      const chosen = keepFamily && famSel.value !== undefined && fams.some(f => f.family === famSel.value) ? famSel.value
-        : (curFam ?? fams[0]?.family ?? '');
-      famSel.innerHTML = fams.map(f => `<option value="${esc(f.family)}"${f.family === chosen ? ' selected' : ''}>${esc(f.label)}</option>`).join('');
-      const list = (fams.find(f => f.family === chosen) ?? fams[0])?.models ?? [];
-      sel.innerHTML = list.map(m => `<option value="${esc(m.id)}"${m.id === current ? ' selected' : ''}>${esc(modelLabel(m))}</option>`).join('')
-        || '<option value="">(el harness no devolvió modelos)</option>';
-      if (!models.some(m => m.id === current) && current && editing) {
+      const curFam = models.find((m) => m.id === current)?.family ?? null;
+      const chosen =
+        keepFamily && famSel.value !== undefined && fams.some((f) => f.family === famSel.value)
+          ? famSel.value
+          : (curFam ?? fams[0]?.family ?? '');
+      famSel.innerHTML = fams
+        .map(
+          (f) => `<option value="${esc(f.family)}"${f.family === chosen ? ' selected' : ''}>${esc(f.label)}</option>`,
+        )
+        .join('');
+      const list = (fams.find((f) => f.family === chosen) ?? fams[0])?.models ?? [];
+      sel.innerHTML =
+        list
+          .map(
+            (m) => `<option value="${esc(m.id)}"${m.id === current ? ' selected' : ''}>${esc(modelLabel(m))}</option>`,
+          )
+          .join('') || '<option value="">(el harness no devolvió modelos)</option>';
+      if (!models.some((m) => m.id === current) && current && editing) {
         // el job usa un modelo que el harness ya no lista: se conserva, pero se dice
-        sel.insertAdjacentHTML('afterbegin', `<option value="${esc(current)}" selected>${esc(current)} (no listado por el harness)</option>`);
+        sel.insertAdjacentHTML(
+          'afterbegin',
+          `<option value="${esc(current)}" selected>${esc(current)} (no listado por el harness)</option>`,
+        );
       }
       noteModel();
-      fb.innerHTML = '<option value="">— ninguno —</option>' + models.map(m => `<option value="${esc(m.id)}"${m.id === (j.fallback_model ?? '') ? ' selected' : ''}>${esc(m.label ?? m.id)}</option>`).join('');
+      fb.innerHTML =
+        '<option value="">— ninguno —</option>' +
+        models
+          .map(
+            (m) =>
+              `<option value="${esc(m.id)}"${m.id === (j.fallback_model ?? '') ? ' selected' : ''}>${esc(m.label ?? m.id)}</option>`,
+          )
+          .join('');
       const h = capOf(q('#j-harness').value);
       /* #305: el catalogo traduce cadenas COMPLETAS y esto es una plantilla con texto
          interpolado, asi que «· fuente: help+measured · 12:32» no casa nunca con una
          clave fija. Se parte: la etiqueta al catalogo, el dato fuera. */
-      q('#j-models-src').textContent = h.models_source ? `· ${tr('fuente:')} ${h.models_source}${h.models_refreshed_at ? ' · ' + h.models_refreshed_at.slice(11, 16) : ''}` : '';
+      q('#j-models-src').textContent = h.models_source
+        ? `· ${tr('fuente:')} ${h.models_source}${h.models_refreshed_at ? ' · ' + h.models_refreshed_at.slice(11, 16) : ''}`
+        : '';
     }
     /* lo que se va a guardar, dicho en claro: alias (cambia solo) o id fijo */
     function noteModel() {
-      const m = models.find(x => x.id === q('#j-model').value);
-      q('#j-model-note').textContent = !m ? '' : m.alias_of
-        ? `${tr('alias: hoy apunta a')} ${m.alias_of} ${tr('y cambiará cuando Anthropic suba versión')}`
-        : `id fijo: ${m.id}${m.note ? ' · ' + m.note : ''}`;
+      const m = models.find((x) => x.id === q('#j-model').value);
+      q('#j-model-note').textContent = !m
+        ? ''
+        : m.alias_of
+          ? `${tr('alias: hoy apunta a')} ${m.alias_of} ${tr('y cambiará cuando Anthropic suba versión')}`
+          : `id fijo: ${m.id}${m.note ? ' · ' + m.note : ''}`;
     }
     async function loadModels(refresh) {
       const name = q('#j-harness').value;
-      q('#j-refresh').disabled = true; q('#j-refresh').textContent = '…';
+      q('#j-refresh').disabled = true;
+      q('#j-refresh').textContent = '…';
       try {
         const res = refresh ? await api().harnessModelsRefresh(name) : await api().harnessModels(name);
         models = res.models ?? [];
         const h = capOf(name);
-        if (h) { h.models = models; h.models_source = res.source ?? h.models_source; h.models_refreshed_at = res.refreshed_at ?? h.models_refreshed_at; }
+        if (h) {
+          h.models = models;
+          h.models_source = res.source ?? h.models_source;
+          h.models_refreshed_at = res.refreshed_at ?? h.models_refreshed_at;
+        }
       } catch {
         models = capOf(name).models ?? [];
       }
-      q('#j-refresh').disabled = false; q('#j-refresh').textContent = '↻';
+      q('#j-refresh').disabled = false;
+      q('#j-refresh').textContent = '↻';
       fillModels();
     }
 
@@ -271,31 +336,56 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
       note.textContent = sinCoste
         ? `${h.name} ${tr('factura por API pero no informa del coste: el tope en USD no se puede aplicar. El gasto se mira en la cuenta del servicio.')}`
         : h.billing === 'local'
-        ? 'Harness local: no factura. El presupuesto no aplica.'
-        : `${h.name ?? 'Este harness'} ${tr('consume la suscripción: no se cobra por uso, el tope en USD no aplica. El coste que reporte se guarda como equivalente informativo.')}`;
-        /* #302: la MARCA del harness es un dato y no se traduce; la frase si. */
-      for (const [id, key] of [['#j-effort', 'effort'], ['#j-fallback', 'fallback_model'], ['#j-schema', 'json_schema'], ['#j-dirs', 'add_dir'], ['#j-perm', 'permission_mode'], ['#j-tools', 'allowed_tools']]) {
+          ? 'Harness local: no factura. El presupuesto no aplica.'
+          : `${h.name ?? 'Este harness'} ${tr('consume la suscripción: no se cobra por uso, el tope en USD no aplica. El coste que reporte se guarda como equivalente informativo.')}`;
+      /* #302: la MARCA del harness es un dato y no se traduce; la frase si. */
+      for (const [id, key] of [
+        ['#j-effort', 'effort'],
+        ['#j-fallback', 'fallback_model'],
+        ['#j-schema', 'json_schema'],
+        ['#j-dirs', 'add_dir'],
+        ['#j-perm', 'permission_mode'],
+        ['#j-tools', 'allowed_tools'],
+      ]) {
         const el = q(id);
         const supported = cap[key] !== false;
         el.disabled = !supported;
         el.title = supported ? '' : `${h.name} no soporta esta opción`;
       }
-      q('#j-mcp').querySelectorAll('input').forEach(i => { i.disabled = cap.inherit_mcp === false; });
+      q('#j-mcp')
+        .querySelectorAll('input')
+        .forEach((i) => {
+          i.disabled = cap.inherit_mcp === false;
+        });
     }
     q('#j-mcp-q').addEventListener('input', (e) => {
       const k = e.target.value.trim().toLowerCase();
-      q('#j-mcp').querySelectorAll('label[data-mcp-name]').forEach(l => { l.hidden = Boolean(k) && !l.dataset.mcpName.includes(k); });
+      q('#j-mcp')
+        .querySelectorAll('label[data-mcp-name]')
+        .forEach((l) => {
+          l.hidden = Boolean(k) && !l.dataset.mcpName.includes(k);
+        });
     });
-    q('#j-harness').addEventListener('change', () => { applyHarness(); loadModels(false); });
+    q('#j-harness').addEventListener('change', () => {
+      applyHarness();
+      loadModels(false);
+    });
     q('#j-refresh').addEventListener('click', () => loadModels(true));
-    q('#j-family').addEventListener('change', () => { q('#j-model').value = ''; fillModels(true); });
+    q('#j-family').addEventListener('change', () => {
+      q('#j-model').value = '';
+      fillModels(true);
+    });
     q('#j-model').addEventListener('change', noteModel);
 
     /* ---- aviso rojo de tools ---- */
-    const toolsWarn = () => { q('#j-tools-warning').hidden = !DANGEROUS.test(q('#j-tools').value); };
+    const toolsWarn = () => {
+      q('#j-tools-warning').hidden = !DANGEROUS.test(q('#j-tools').value);
+    };
     q('#j-tools').addEventListener('input', toolsWarn);
     /* FIX #140 (finding #9): add_dirs amplía el acceso (--add-dir) — mismo aviso, mismo tono */
-    const dirsWarn = () => { q('#j-dirs-warning').hidden = !q('#j-dirs').value.trim(); };
+    const dirsWarn = () => {
+      q('#j-dirs-warning').hidden = !q('#j-dirs').value.trim();
+    };
     q('#j-dirs').addEventListener('input', dirsWarn);
     dirsWarn(); // un job editado con carpetas ya abiertas avisa desde el principio
 
@@ -304,7 +394,12 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
       const span = document.createElement('span');
       span.className = 'sched__time';
       span.innerHTML = `<input type="time" value="${esc(value)}" required><button type="button" aria-label="quitar hora" title="quitar">✕</button>`;
-      span.querySelector('button').addEventListener('click', () => { if (q('#sched-body').querySelectorAll('.sched__time').length > 1) { span.remove(); syncSchedule(); } });
+      span.querySelector('button').addEventListener('click', () => {
+        if (q('#sched-body').querySelectorAll('.sched__time').length > 1) {
+          span.remove();
+          syncSchedule();
+        }
+      });
       span.querySelector('input').addEventListener('change', syncSchedule);
       return span;
     }
@@ -313,13 +408,20 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
       wrap.className = 'sched__times';
       for (const t of at) wrap.appendChild(timeRow(t));
       const add = document.createElement('button');
-      add.type = 'button'; add.className = 'btn btn--ghost btn--sm'; add.textContent = '+ hora';
-      add.addEventListener('click', () => { wrap.insertBefore(timeRow('20:00'), add); syncSchedule(); });
+      add.type = 'button';
+      add.className = 'btn btn--ghost btn--sm';
+      add.textContent = '+ hora';
+      add.addEventListener('click', () => {
+        wrap.insertBefore(timeRow('20:00'), add);
+        syncSchedule();
+      });
       wrap.appendChild(add);
       return wrap;
     }
     function renderSchedule() {
-      modal.querySelectorAll('.sched__modes button').forEach(b => b.classList.toggle('is-active', b.dataset.mode === schedule.type));
+      modal
+        .querySelectorAll('.sched__modes button')
+        .forEach((b) => b.classList.toggle('is-active', b.dataset.mode === schedule.type));
       const body = q('#sched-body');
       body.innerHTML = '';
       if (schedule.type === 'once') {
@@ -358,23 +460,36 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
       if (schedule.type === 'once') schedule.run_at = q('#s-runat')?.value ?? '';
       if (schedule.type === 'recurring') schedule.every_days = Math.max(1, Number(q('#s-every')?.value) || 1);
       if (schedule.type === 'recurring' || schedule.type === 'weekly') {
-        schedule.at = [...body.querySelectorAll('.sched__time input')].map(i => i.value).filter(Boolean).sort();
+        schedule.at = [...body.querySelectorAll('.sched__time input')]
+          .map((i) => i.value)
+          .filter(Boolean)
+          .sort();
       }
-      if (schedule.type === 'weekly') schedule.weekdays = [...body.querySelectorAll('.sched__days input:checked')].map(i => Number(i.value));
+      if (schedule.type === 'weekly')
+        schedule.weekdays = [...body.querySelectorAll('.sched__days input:checked')].map((i) => Number(i.value));
       q('#sched-human').textContent = fmtSchedule(schedule);
     }
-    modal.querySelectorAll('.sched__modes button').forEach(b => b.addEventListener('click', () => {
-      const mode = b.dataset.mode;
-      const keepAt = schedule.at ?? ['08:00'];
-      schedule = mode === 'recurring' ? { type: 'recurring', every_days: schedule.every_days ?? 1, at: keepAt }
-        : mode === 'weekly' ? { type: 'weekly', weekdays: schedule.weekdays ?? [0, 1, 2, 3, 4], at: keepAt }
-        : mode === 'once' ? { type: 'once', run_at: schedule.run_at ?? '' }
-        : { type: 'manual' };
-      renderSchedule();
-    }));
+    modal.querySelectorAll('.sched__modes button').forEach((b) =>
+      b.addEventListener('click', () => {
+        const mode = b.dataset.mode;
+        const keepAt = schedule.at ?? ['08:00'];
+        schedule =
+          mode === 'recurring'
+            ? { type: 'recurring', every_days: schedule.every_days ?? 1, at: keepAt }
+            : mode === 'weekly'
+              ? { type: 'weekly', weekdays: schedule.weekdays ?? [0, 1, 2, 3, 4], at: keepAt }
+              : mode === 'once'
+                ? { type: 'once', run_at: schedule.run_at ?? '' }
+                : { type: 'manual' };
+        renderSchedule();
+      }),
+    );
 
     /* ---- arranque ---- */
-    applyHarness(); fillModels(); renderSchedule(); toolsWarn();
+    applyHarness();
+    fillModels();
+    renderSchedule();
+    toolsWarn();
     if (!models.length) loadModels(false);
 
     /* #316: este modal SECUESTRABA la app. Se enviaba vacío (que es lo primero que hace
@@ -396,15 +511,31 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
       if (!v('#j-prompt')) errors.push('el prompt es obligatorio');
       if (!q('#j-model').value) errors.push('elige un modelo (pide la lista al harness con ↻)');
       if (schedule.type === 'once' && !schedule.run_at) errors.push('«una vez» necesita fecha y hora');
-      if ((schedule.type === 'recurring' || schedule.type === 'weekly') && !schedule.at.length) errors.push('añade al menos una hora');
+      if ((schedule.type === 'recurring' || schedule.type === 'weekly') && !schedule.at.length)
+        errors.push('añade al menos una hora');
       if (schedule.type === 'weekly' && !schedule.weekdays.length) errors.push('marca al menos un día');
-      let schema = v('#j-schema') || null, mcpjson = v('#j-mcpjson') || null;
-      for (const [label, val] of [['esquema JSON', schema], ['MCP extra', mcpjson]]) {
-        if (val) { try { JSON.parse(val); } catch { errors.push(`${label}: no es JSON válido`); } }
+      let schema = v('#j-schema') || null,
+        mcpjson = v('#j-mcpjson') || null;
+      for (const [label, val] of [
+        ['esquema JSON', schema],
+        ['MCP extra', mcpjson],
+      ]) {
+        if (val) {
+          try {
+            JSON.parse(val);
+          } catch {
+            errors.push(`${label}: no es JSON válido`);
+          }
+        }
       }
       if (errors.length) {
         let box = q('#job-errors');
-        if (!box) { box = document.createElement('div'); box.id = 'job-errors'; box.className = 'tool-warning'; q('.modal__footer').before(box); }
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'job-errors';
+          box.className = 'tool-warning';
+          q('.modal__footer').before(box);
+        }
         box.innerHTML = errors.map(esc).join('<br>');
         /* #291: esta caja se pinta al ENVIAR, despues de que applyI18n
            recorriera el documento, asi que sus nodos nunca pasaban por el
@@ -414,7 +545,6 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
         applyI18n(box);
         return;
       }
-      const h = capOf(v('#j-harness'));
       const payload = {
         name: v('#j-name'),
         prompt: v('#j-prompt'),
@@ -428,11 +558,16 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
         ticket_id: v('#j-ticket') ? Number(v('#j-ticket')) : null,
         permission_mode: v('#j-perm'),
         allowed_tools: v('#j-tools') || null,
-        inherit_mcp: fromRegistry ? [] : [...q('#j-mcp').querySelectorAll('input:checked')].map(i => i.value),
-        mcp_servers: fromRegistry ? [...q('#j-mcp').querySelectorAll('input:checked')].map(i => i.value) : [],
+        inherit_mcp: fromRegistry ? [] : [...q('#j-mcp').querySelectorAll('input:checked')].map((i) => i.value),
+        mcp_servers: fromRegistry ? [...q('#j-mcp').querySelectorAll('input:checked')].map((i) => i.value) : [],
         mcp_config: mcpjson,
         strict_mcp: q('#j-strict').checked ? 1 : 0,
-        add_dirs: v('#j-dirs') ? v('#j-dirs').split('\n').map(s => s.trim()).filter(Boolean) : [],
+        add_dirs: v('#j-dirs')
+          ? v('#j-dirs')
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
         cwd: v('#j-cwd') || null,
         effort: v('#j-effort') || null,
         fallback_model: q('#j-fallback').value || null,
@@ -441,7 +576,7 @@ export function jobModal({ job = null, harnesses, mcpInherited, mcpServers = [],
         /* #580: se manda lo que se ve. Un tope tecleado con otro harness y oculto después no viaja. */
         max_budget_usd: !q('#j-budget-field').hidden && v('#j-budget') ? Number(v('#j-budget')) : null,
       };
-      modal.finish(payload);   // #357: desengancha las salidas, cierra y resuelve una vez
+      modal.finish(payload); // #357: desengancha las salidas, cierra y resuelve una vez
     });
   });
 }

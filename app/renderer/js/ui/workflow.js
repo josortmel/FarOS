@@ -19,13 +19,15 @@ let handlers = null;
 //   onOpenDispatch, onDispatchFinding, onDismissFinding, onToggleDrawer, onToggleHandoff,
 //   onEditHandoff, onCopyDraft, onMarkSaved, onOpenImportPlan }
 
-export function initWorkflow(h) { handlers = h; }
+export function initWorkflow(h) {
+  handlers = h;
+}
 
 const SEV = {
   critical: { label: 'crítica', cls: 'sev--critical', glyph: '◆◆' },
-  high:     { label: 'alta',    cls: 'sev--high',     glyph: '◆' },
-  medium:   { label: 'media',   cls: 'sev--medium',   glyph: '◇' },
-  low:      { label: 'baja',    cls: 'sev--low',      glyph: '·' },
+  high: { label: 'alta', cls: 'sev--high', glyph: '◆' },
+  medium: { label: 'media', cls: 'sev--medium', glyph: '◇' },
+  low: { label: 'baja', cls: 'sev--low', glyph: '·' },
 };
 
 /* ---------------- barra: selector + mesa de bugs ---------------- */
@@ -40,7 +42,9 @@ const SEV = {
 const WF_STATUS = { active: 'activo', closed: 'cerrado', cancelled: 'cancelado', archived: 'archivado' };
 const wfEstado = (st) => tr(WF_STATUS[st] ?? st);
 
-function closeMenu() { document.querySelectorAll('.ctxmenu').forEach(m => m.remove()); }
+function closeMenu() {
+  document.querySelectorAll('.ctxmenu').forEach((m) => m.remove());
+}
 /* menú contextual de una fila: clic derecho o el ⋯ de la tarjeta. Las mismas opciones. */
 function openMenu(x, y, w, archived) {
   closeMenu();
@@ -50,16 +54,25 @@ function openMenu(x, y, w, archived) {
   const items = archived
     ? [['Reactivar', () => handlers.onUnarchive(w), false, 'vuelve a Activos']]
     : [
-        ['Archivar', () => handlers.onArchive(w), false, w.status === 'active' ? 'lo cierra y lo guarda; queda buscable' : 'sale de Activos, queda buscable'],
+        [
+          'Archivar',
+          () => handlers.onArchive(w),
+          false,
+          w.status === 'active' ? 'lo cierra y lo guarda; queda buscable' : 'sale de Activos, queda buscable',
+        ],
         ['Cancelar…', () => handlers.onCancel(w), w.status !== 'active', 'con motivo; después se puede archivar'],
       ];
   for (const [label, fn, disabled, hint] of items) {
     const b = document.createElement('button');
-    b.type = 'button'; b.setAttribute('role', 'menuitem');
+    b.type = 'button';
+    b.setAttribute('role', 'menuitem');
     b.className = 'ctxmenu__item';
     b.disabled = disabled;
     b.innerHTML = `${esc(label)}<small>${esc(hint)}</small>`;
-    b.addEventListener('click', () => { closeMenu(); fn(); });
+    b.addEventListener('click', () => {
+      closeMenu();
+      fn();
+    });
     m.appendChild(b);
   }
   document.body.appendChild(m);
@@ -79,11 +92,17 @@ function openMenu(x, y, w, archived) {
   m.style.top = `${Math.min(y, window.innerHeight - r.height - 8)}px`;
   setTimeout(() => {
     document.addEventListener('click', closeMenu, { once: true });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); }, { once: true });
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key === 'Escape') closeMenu();
+      },
+      { once: true },
+    );
   }, 0);
 }
 
-let cursorWf = null;   // #400: posición del cursor en #wf-q entre repintados
+let cursorWf = null; // #400: posición del cursor en #wf-q entre repintados
 
 export function renderWorkflowSidebar(state) {
   const side = document.getElementById('wf-side');
@@ -99,25 +118,34 @@ export function renderWorkflowSidebar(state) {
     <button type="button" role="tab" data-list="active" class="${archived ? '' : 'is-active'}" aria-selected="${!archived}">Activos</button>
     <button type="button" role="tab" data-list="archived" class="${archived ? 'is-active' : ''}" aria-selected="${archived}">Archivados</button>
     <span class="wfside__knob${archived ? ' is-right' : ''}" aria-hidden="true"></span>`;
-  sw.querySelectorAll('[data-list]').forEach(b => b.addEventListener('click', () => handlers.onListMode(b.dataset.list)));
+  sw.querySelectorAll('[data-list]').forEach((b) =>
+    b.addEventListener('click', () => handlers.onListMode(b.dataset.list)),
+  );
   side.appendChild(sw);
 
   const search = document.createElement('input');
-  search.type = 'search'; search.id = 'wf-q'; search.className = 'wfside__search';
-  search.placeholder = 'buscar por nombre…'; search.value = state.wfQuery ?? '';
+  search.type = 'search';
+  search.id = 'wf-q';
+  search.className = 'wfside__search';
+  search.placeholder = 'buscar por nombre…';
+  search.value = state.wfQuery ?? '';
   search.setAttribute('aria-label', 'Buscar workflows');
   // #400: cada tecla repinta y crea un input NUEVO; la posición del cursor se guarda
   // en el propio evento (el único sitio donde el viejo sigue vivo), como en #mcp-search.
-  search.addEventListener('input', () => { cursorWf = search.selectionStart; handlers.onSearch(search.value); });
+  search.addEventListener('input', () => {
+    cursorWf = search.selectionStart;
+    handlers.onSearch(search.value);
+  });
   side.appendChild(search);
 
   const all = (archived ? state.wfArchived : state.workflows) ?? null;
-  const list = (all ?? []).filter(w => !q || w.name.toLowerCase().includes(q));
+  const list = (all ?? []).filter((w) => !q || w.name.toLowerCase().includes(q));
   const ul = document.createElement('div');
   ul.className = 'wfside__list';
   ul.setAttribute('role', 'list');
   if (all == null) ul.innerHTML = `<div class="wfside__empty">${tr('cargando…')}</div>`;
-  else if (!list.length) ul.innerHTML = `<div class="wfside__empty">${tr(q ? 'Nada coincide.' : archived ? 'Ningún workflow archivado.' : 'Sin workflows. Se importan desde un Plan por MCP o API.')}</div>`;
+  else if (!list.length)
+    ul.innerHTML = `<div class="wfside__empty">${tr(q ? 'Nada coincide.' : archived ? 'Ningún workflow archivado.' : 'Sin workflows. Se importan desde un Plan por MCP o API.')}</div>`;
   for (const w of list) {
     const row = document.createElement('div');
     row.className = `wfrow${state.workflowId === w.id ? ' is-active' : ''}${['closed', 'cancelled', 'archived'].includes(w.status) ? ' wfrow--closed' : ''}`;
@@ -128,9 +156,16 @@ export function renderWorkflowSidebar(state) {
       <span class="wfrow__name">${esc(w.name)}</span>
       <span class="wfrow__meta">${w.pct_global ?? 0}%${w.open_findings ? ` · <b class="wfrow__bugs">${w.open_findings}</b>` : ''} · ${esc(wfEstado(w.status))}</span>
       <button type="button" class="wfrow__more" aria-label="Opciones" title="Opciones">⋯</button>`;
-    row.addEventListener('click', (e) => { if (!e.target.closest('.wfrow__more')) handlers.onSelectWorkflow(w.id); });
-    row.addEventListener('keydown', (e) => { if (e.key === 'Enter') handlers.onSelectWorkflow(w.id); });
-    row.addEventListener('contextmenu', (e) => { e.preventDefault(); openMenu(e.clientX, e.clientY, w, archived); });
+    row.addEventListener('click', (e) => {
+      if (!e.target.closest('.wfrow__more')) handlers.onSelectWorkflow(w.id);
+    });
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handlers.onSelectWorkflow(w.id);
+    });
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      openMenu(e.clientX, e.clientY, w, archived);
+    });
     row.querySelector('.wfrow__more').addEventListener('click', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       openMenu(r.left, r.bottom + 4, w, archived);
@@ -140,7 +175,9 @@ export function renderWorkflowSidebar(state) {
   side.appendChild(ul);
   /* #1318: importar un Plan JSON como workflow nuevo */
   const imp = document.createElement('button');
-  imp.type = 'button'; imp.id = 'wf-import'; imp.className = 'btn btn--ghost wfside__import';
+  imp.type = 'button';
+  imp.id = 'wf-import';
+  imp.className = 'btn btn--ghost wfside__import';
   imp.textContent = 'Importar plan…';
   imp.addEventListener('click', () => handlers.onOpenImportPlan());
   side.appendChild(imp);
@@ -168,10 +205,28 @@ export function renderWorkflowBar(state) {
   const fresh = state.wfLastSeen ? (state.wfActivity?.length ?? 0) : 0;
   const defs = [
     ['tasks', 'Tareas', ''],
-    ['handoffs', 'Handoffs', state.wfHandoffs?.length ? `<span class="views__n">${state.wfHandoffs.length}</span>` : ''],
-    ['activity', 'Actividad', fresh ? `<span class="wf-badge wf-badge--new" title="desde tu última visita">${fresh}</span>` : ''],
-    ['documents', 'Documentos', state.wfDocuments?.length ? `<span class="views__n">${state.wfDocuments.length}</span>` : ''],
-    ['decisions', 'Bisagras', pendingCount(state.wfDecisions) ? `<span class="wf-badge wf-badge--new" title="pendientes del dueño">${pendingCount(state.wfDecisions)}</span>` : ''],
+    [
+      'handoffs',
+      'Handoffs',
+      state.wfHandoffs?.length ? `<span class="views__n">${state.wfHandoffs.length}</span>` : '',
+    ],
+    [
+      'activity',
+      'Actividad',
+      fresh ? `<span class="wf-badge wf-badge--new" title="desde tu última visita">${fresh}</span>` : '',
+    ],
+    [
+      'documents',
+      'Documentos',
+      state.wfDocuments?.length ? `<span class="views__n">${state.wfDocuments.length}</span>` : '',
+    ],
+    [
+      'decisions',
+      'Bisagras',
+      pendingCount(state.wfDecisions)
+        ? `<span class="wf-badge wf-badge--new" title="pendientes del dueño">${pendingCount(state.wfDecisions)}</span>`
+        : '',
+    ],
   ];
   for (const [key, label, extra] of defs) {
     const b = document.createElement('button');
@@ -190,7 +245,7 @@ export function renderWorkflowBar(state) {
   meta.innerHTML = `<b>${esc(wf.name)}</b> · coordinador <b>${esc(wf.coordinator)}</b> · ${esc(wfEstado(wf.status))}`;
   bar.appendChild(meta);
 
-  const open = state.findings?.filter(f => f.status === 'open').length ?? 0;
+  const open = state.findings?.filter((f) => f.status === 'open').length ?? 0;
   const bugs = document.createElement('button');
   bugs.className = 'btn btn--ghost wf__bugsbtn';
   bugs.innerHTML = `Mesa de bugs${open ? ` <span class="wf-badge">${open}</span>` : ''}`;
@@ -203,7 +258,10 @@ export function renderWorkflowBar(state) {
 export function renderHandoff(state) {
   const el = document.getElementById('wf-handoff');
   const wf = state.workflow;
-  if (!wf) { el.hidden = true; return; }
+  if (!wf) {
+    el.hidden = true;
+    return;
+  }
   el.hidden = false;
   el.innerHTML = '';
 
@@ -212,7 +270,7 @@ export function renderHandoff(state) {
   row.className = 'handoff__row';
 
   if (h) {
-    const firstLine = (h.content ?? '').split('\n').find(l => l.trim()) ?? '';
+    const firstLine = (h.content ?? '').split('\n').find((l) => l.trim()) ?? '';
     row.innerHTML = `
       <span class="handoff__label">handoff</span>
       <span class="handoff__meta">${esc(h.created_by)} · ${fmtWhen(h.created_at)}</span>
@@ -253,17 +311,21 @@ export function renderHandoff(state) {
 
 export function renderMilestoneBanner(state) {
   const el = document.getElementById('wf-banner');
-  const pending = state.workflow?.milestones_pending_ecodb
-    ?? (state.workflow?.milestones ?? []).filter(m => !m.ecodb_saved);
-  if (!state.workflow || !pending.length) { el.hidden = true; return; }
+  const pending =
+    state.workflow?.milestones_pending_ecodb ?? (state.workflow?.milestones ?? []).filter((m) => !m.ecodb_saved);
+  if (!state.workflow || !pending.length) {
+    el.hidden = true;
+    return;
+  }
   el.hidden = false;
   el.innerHTML = '';
   for (const m of pending) {
     const row = document.createElement('div');
     row.className = 'wf__banner-row';
-    const what = m.kind === 'workflow_closed'
-      ? `Workflow <b>${esc(state.workflow.name)}</b> cerrado`
-      : `Fase <b>«${esc(m.phase)}»</b> completada`;
+    const what =
+      m.kind === 'workflow_closed'
+        ? `Workflow <b>${esc(state.workflow.name)}</b> cerrado`
+        : `Fase <b>«${esc(m.phase)}»</b> completada`;
     row.innerHTML = `
       <span class="wf__banner-text">✦ ${what} — <b>memoria EcoDB pendiente</b></span>`;
     const copy = document.createElement('button');
@@ -283,7 +345,7 @@ export function renderMilestoneBanner(state) {
 
 function stackedBar(p) {
   const total = p.total || 1;
-  const seg = (n, cls) => n ? `<span class="progress__seg ${cls}" style="flex-grow:${n}" title="${n}"></span>` : '';
+  const seg = (n, cls) => (n ? `<span class="progress__seg ${cls}" style="flex-grow:${n}" title="${n}"></span>` : '');
   const rest = total - p.verified - p.done - p.in_progress;
   return `<div class="progress" role="img" aria-label="${p.verified} verificadas de ${p.total}">
     ${seg(p.verified, 'progress__seg--verified')}
@@ -306,17 +368,20 @@ function workflowTickets(wf) {
 export function renderPhaseStrip(state) {
   const el = document.getElementById('wf-phases');
   const wf = state.workflow;
-  if (!wf) { el.hidden = true; return; }
+  if (!wf) {
+    el.hidden = true;
+    return;
+  }
   el.hidden = false;
   el.innerHTML = '';
 
   const all = workflowTickets(wf);
   const sum = (arr) => ({
     total: arr.length,
-    verified: arr.filter(x => x.t.status === 'verified').length,
-    done: arr.filter(x => x.t.status === 'done').length,
-    in_progress: arr.filter(x => x.t.status === 'in_progress').length,
-    ready: arr.filter(x => x.t.ready && x.t.status === 'accepted' && !x.t.dispatched_to).length,
+    verified: arr.filter((x) => x.t.status === 'verified').length,
+    done: arr.filter((x) => x.t.status === 'done').length,
+    in_progress: arr.filter((x) => x.t.status === 'in_progress').length,
+    ready: arr.filter((x) => x.t.ready && x.t.status === 'accepted' && !x.t.dispatched_to).length,
   });
 
   const chip = (label, key, p, { done = false } = {}) => {
@@ -336,13 +401,16 @@ export function renderPhaseStrip(state) {
 
   el.appendChild(chip('Todas', null, sum(all)));
   for (const phase of wf.phases) {
-    const mine = all.filter(x => x.phase === phase);
-    const p = (wf.phases_summary ?? []).find(s => s.phase === phase);
-    const ps = { ...sum(mine), ...(p ? { total: p.total, verified: p.verified, done: p.done, in_progress: p.in_progress, ready: p.ready } : {}) };
+    const mine = all.filter((x) => x.phase === phase);
+    const p = (wf.phases_summary ?? []).find((s) => s.phase === phase);
+    const ps = {
+      ...sum(mine),
+      ...(p ? { total: p.total, verified: p.verified, done: p.done, in_progress: p.in_progress, ready: p.ready } : {}),
+    };
     el.appendChild(chip(phase, phase, ps, { done: ps.total > 0 && ps.verified === ps.total }));
   }
   if (wf.stray_tickets?.length) {
-    el.appendChild(chip(STRAY, STRAY, sum(all.filter(x => x.phase === STRAY))));
+    el.appendChild(chip(STRAY, STRAY, sum(all.filter((x) => x.phase === STRAY))));
   }
 
   /* #1317: despachar de golpe las listas de TODO el workflow (no solo las de la fase filtrada).
@@ -353,7 +421,7 @@ export function renderPhaseStrip(state) {
     b.type = 'button';
     b.className = 'btn btn--ghost phbatch';
     b.id = 'wf-dispatch-batch';
-    b.textContent = `Despachar las listas (${listas.length})`;   /* frase entera: el catálogo la casa con «({n})» */
+    b.textContent = `Despachar las listas (${listas.length})`; /* frase entera: el catálogo la casa con «({n})» */
     b.addEventListener('click', () => handlers.onOpenDispatchBatch(listas));
     el.appendChild(b);
   }
@@ -361,7 +429,9 @@ export function renderPhaseStrip(state) {
 
 /* «Lista» = lista de verdad: sin dependencias por verificar, aceptada y sin despachar */
 export function readyTickets(wf) {
-  return workflowTickets(wf).map(x => x.t).filter(t => t.ready && t.status === 'accepted' && !t.dispatched_to);
+  return workflowTickets(wf)
+    .map((x) => x.t)
+    .filter((t) => t.ready && t.status === 'accepted' && !t.dispatched_to);
 }
 
 /* ---------------- tarjetas ---------------- */
@@ -386,7 +456,10 @@ function wfCard(t, phase, { showPhase }) {
       ${t.verified_by ? `<span class="card--slim__by">${esc(t.verified_by)}</span>` : ''}`;
     el.addEventListener('click', () => handlers.onOpenTicket(t));
     el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlers.onOpenTicket(t); }
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handlers.onOpenTicket(t);
+      }
     });
     return el;
   }
@@ -398,7 +471,8 @@ function wfCard(t, phase, { showPhase }) {
   let lock = '';
   if (t.ready === false) {
     const deps = (t.unmet_deps ?? [])
-      .map(d => `${d.plan_key ?? '#' + d.id} (${STATUS_LABEL[d.status] ?? d.status})`).join(' · ');
+      .map((d) => `${d.plan_key ?? '#' + d.id} (${STATUS_LABEL[d.status] ?? d.status})`)
+      .join(' · ');
     lock = `<span class="wflock" tabindex="0" aria-label="${tr('Bloqueada por dependencias:')} ${esc(deps)}">🔒<span class="wflock__tip">${tr('espera a')} ${esc(deps)}</span></span>`;
   }
 
@@ -427,9 +501,12 @@ function wfCard(t, phase, { showPhase }) {
     const btn = document.createElement('button');
     btn.className = 'wfdispatch wfdispatch--btn';
     btn.textContent = t.suggested_agent
-      ? `${tr('Despachar')} → ${t.suggested_agent}…`   /* #262: la etiqueta, aparte del nombre */
+      ? `${tr('Despachar')} → ${t.suggested_agent}…` /* #262: la etiqueta, aparte del nombre */
       : 'Despachar…';
-    btn.addEventListener('click', (e) => { e.stopPropagation(); handlers.onOpenDispatch(t); });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handlers.onOpenDispatch(t);
+    });
     meta.appendChild(btn);
   }
   if (meta.childNodes.length) el.appendChild(meta);
@@ -446,7 +523,10 @@ function wfCard(t, phase, { showPhase }) {
 
   el.addEventListener('click', () => handlers.onOpenTicket(t));
   el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlers.onOpenTicket(t); }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handlers.onOpenTicket(t);
+    }
   });
   makeDraggable(el, t);
   return el;
@@ -456,9 +536,11 @@ function wfCard(t, phase, { showPhase }) {
 
 /* orden dentro de una columna: por fase (el pipeline) y luego por key del Plan */
 function planOrder(a, b, phases) {
-  const pa = phases.indexOf(a.phase), pb = phases.indexOf(b.phase);
+  const pa = phases.indexOf(a.phase),
+    pb = phases.indexOf(b.phase);
   if (pa !== pb) return (pa < 0 ? 99 : pa) - (pb < 0 ? 99 : pb);
-  const ka = a.t.plan_key ?? '', kb = b.t.plan_key ?? '';
+  const ka = a.t.plan_key ?? '',
+    kb = b.t.plan_key ?? '';
   return ka.localeCompare(kb, 'es', { numeric: true }) || a.t.id - b.t.id;
 }
 
@@ -469,7 +551,8 @@ function planOrder(a, b, phases) {
 function marcarScrollWf(root) {
   if (!root) return;
   const queda = root.scrollWidth - root.clientWidth - root.scrollLeft;
-  if (queda > 4) root.dataset.mas = 'si'; else delete root.dataset.mas;
+  if (queda > 4) root.dataset.mas = 'si';
+  else delete root.dataset.mas;
 }
 
 export function renderWorkflowBoard(state) {
@@ -487,7 +570,7 @@ export function renderWorkflowBoard(state) {
 
   const showPhase = state.wfPhase == null;
   const items = workflowTickets(wf)
-    .filter(x => state.wfPhase == null || x.phase === state.wfPhase)
+    .filter((x) => state.wfPhase == null || x.phase === state.wfPhase)
     .sort((a, b) => planOrder(a, b, wf.phases));
 
   if (!items.length) {
@@ -496,7 +579,7 @@ export function renderWorkflowBoard(state) {
   }
 
   for (const def of COLUMNS) {
-    const cards = items.filter(x => x.t.status === def.status).map(x => wfCard(x.t, x.phase, { showPhase }));
+    const cards = items.filter((x) => x.t.status === def.status).map((x) => wfCard(x.t, x.phase, { showPhase }));
     root.appendChild(buildStateColumn(def, cards, { onDrop: handlers.onDropTicket, extraClass: 'col--wf' }));
   }
 
@@ -505,7 +588,9 @@ export function renderWorkflowBoard(state) {
     ['blocked', 'Bloqueadas'],
     ['rejected', 'Rechazadas'],
     ['expired', 'Expiradas'],
-  ].map(([k, label]) => [label, items.filter(x => x.t.status === k)]).filter(([, arr]) => arr.length);
+  ]
+    .map(([k, label]) => [label, items.filter((x) => x.t.status === k)])
+    .filter(([, arr]) => arr.length);
   if (!groups.length) return;
   lat.hidden = false;
   for (const [label, arr] of groups) {
@@ -547,12 +632,21 @@ export function renderWorkflowPane(state) {
     pane.appendChild(head);
 
     const list = state.wfHandoffs;
-    if (list == null) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">cargando…</div>`); return; }
-    if (!list.length) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">Sin handoffs todavía — la próxima sesión entrará a ciegas. Escribe el primero.</div>`); return; }
+    if (list == null) {
+      pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">cargando…</div>`);
+      return;
+    }
+    if (!list.length) {
+      pane.insertAdjacentHTML(
+        'beforeend',
+        `<div class="pane__empty">Sin handoffs todavía — la próxima sesión entrará a ciegas. Escribe el primero.</div>`,
+      );
+      return;
+    }
     for (const h of list) {
       const item = document.createElement('article');
       item.className = 'hitem';
-      const firstLine = (h.content ?? '').split('\n').find(l => l.trim()) ?? '';
+      const firstLine = (h.content ?? '').split('\n').find((l) => l.trim()) ?? '';
       item.innerHTML = `
         <div class="hitem__top">
           <span class="hitem__by">${esc(h.created_by)}</span>
@@ -568,8 +662,14 @@ export function renderWorkflowPane(state) {
     return;
   }
 
-  if (state.wfTab === 'documents') { renderDocuments(pane, state); return; }
-  if (state.wfTab === 'decisions') { renderDecisionsPane(pane, state, handlers); return; }
+  if (state.wfTab === 'documents') {
+    renderDocuments(pane, state);
+    return;
+  }
+  if (state.wfTab === 'decisions') {
+    renderDecisionsPane(pane, state, handlers);
+    return;
+  }
 
   if (state.wfTab === 'activity') {
     const head = document.createElement('div');
@@ -588,8 +688,17 @@ export function renderWorkflowPane(state) {
     pane.appendChild(head);
 
     const list = state.wfActivity;
-    if (list == null) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">cargando…</div>`); return; }
-    if (!list.length) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">${state.wfLastSeen ? `${tr('Nada nuevo desde')} ${fmtWhen(state.wfLastSeen)}.` : tr('Nada nuevo.')}</div>`); return; }
+    if (list == null) {
+      pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">cargando…</div>`);
+      return;
+    }
+    if (!list.length) {
+      pane.insertAdjacentHTML(
+        'beforeend',
+        `<div class="pane__empty">${state.wfLastSeen ? `${tr('Nada nuevo desde')} ${fmtWhen(state.wfLastSeen)}.` : tr('Nada nuevo.')}</div>`,
+      );
+      return;
+    }
     const ul = document.createElement('ul');
     ul.className = 'act';
     for (const a of list) {
@@ -636,7 +745,15 @@ function fmtSize(n) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
   return `${(n / 1048576).toFixed(1)} MB`;
 }
-const DOC_KIND = { plan: 'plan', spec: 'spec', review: 'review', handoff: 'handoff', doc: 'doc', screenshot: 'captura', report: 'informe' };
+const DOC_KIND = {
+  plan: 'plan',
+  spec: 'spec',
+  review: 'review',
+  handoff: 'handoff',
+  doc: 'doc',
+  screenshot: 'captura',
+  report: 'informe',
+};
 
 function renderDocuments(pane, state) {
   const head = document.createElement('div');
@@ -646,14 +763,24 @@ function renderDocuments(pane, state) {
     <span class="pane__hint">Plan, spec, reviews y demás ficheros del workflow. ${canOpen ? 'Clic abre el fichero con la app del sistema.' : 'Abrir solo funciona dentro de la app de escritorio (aquí se enseña la ruta).'}</span>`;
   pane.appendChild(head);
   const docs = state.wfDocuments;
-  if (docs == null) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">cargando…</div>`); return; }
-  if (!docs.length) { pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">Sin documentos registrados para este workflow.</div>`); return; }
+  if (docs == null) {
+    pane.insertAdjacentHTML('beforeend', `<div class="pane__empty">cargando…</div>`);
+    return;
+  }
+  if (!docs.length) {
+    pane.insertAdjacentHTML(
+      'beforeend',
+      `<div class="pane__empty">Sin documentos registrados para este workflow.</div>`,
+    );
+    return;
+  }
   const ul = document.createElement('ul');
   ul.className = 'docs';
   for (const d of docs) {
     const li = document.createElement('li');
     li.className = 'docs__row';
-    li.setAttribute('role', 'button'); li.tabIndex = 0;
+    li.setAttribute('role', 'button');
+    li.tabIndex = 0;
     li.title = d.path;
     li.innerHTML = `
       <span class="docs__kind docs__kind--${esc(d.kind ?? 'doc')}">${esc(DOC_KIND[d.kind] ?? d.kind ?? 'doc')}</span>
@@ -662,7 +789,9 @@ function renderDocuments(pane, state) {
       <span class="docs__path">${esc(d.path)}</span>`;
     const open = () => handlers.onOpenDocument(d);
     li.addEventListener('click', open);
-    li.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
+    li.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') open();
+    });
     ul.appendChild(li);
   }
   pane.appendChild(ul);
@@ -670,10 +799,10 @@ function renderDocuments(pane, state) {
 
 function findInWorkflow(wf, id) {
   for (const arr of Object.values(wf.tickets_by_phase ?? {})) {
-    const t = arr.find(x => x.id === id);
+    const t = arr.find((x) => x.id === id);
     if (t) return t;
   }
-  return (wf.stray_tickets ?? []).find(x => x.id === id) ?? null;
+  return (wf.stray_tickets ?? []).find((x) => x.id === id) ?? null;
 }
 
 /* ---------------- mesa de bugs ---------------- */
@@ -685,17 +814,21 @@ export function renderFindingsDrawer(state) {
   const drawer = document.getElementById('findings-drawer');
   if (!state.drawerOpen || !state.workflow) {
     drawer.classList.remove('is-open');
-    setTimeout(() => { if (!state.drawerOpen) drawer.hidden = true; }, 240);
+    setTimeout(() => {
+      if (!state.drawerOpen) drawer.hidden = true;
+    }, 240);
     return;
   }
   drawer.hidden = false;
   requestAnimationFrame(() => drawer.classList.add('is-open'));
 
   const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
-  const findings = [...(state.findings ?? [])]
-    .sort((a, b) => (F_ORDER[a.status] - F_ORDER[b.status])
-      || (SEV_ORDER[a.severity] - SEV_ORDER[b.severity])
-      || (a.created_at < b.created_at ? 1 : -1));
+  const findings = [...(state.findings ?? [])].sort(
+    (a, b) =>
+      F_ORDER[a.status] - F_ORDER[b.status] ||
+      SEV_ORDER[a.severity] - SEV_ORDER[b.severity] ||
+      (a.created_at < b.created_at ? 1 : -1),
+  );
 
   drawer.innerHTML = `
     <header class="drawer__head">
@@ -763,8 +896,9 @@ export function renderSurfaceBadge(state) {
   badge.hidden = !open;
   badge.textContent = open;
   const dec = document.getElementById('wf-decisions-badge');
-  const pending = (state.workflows ?? []).reduce((n, w) => n + (w.decisions_pending_count ?? 0), 0)
-    || (state.workflow?.decisions_pending_count ?? pendingCount(state.wfDecisions));
+  const pending =
+    (state.workflows ?? []).reduce((n, w) => n + (w.decisions_pending_count ?? 0), 0) ||
+    (state.workflow?.decisions_pending_count ?? pendingCount(state.wfDecisions));
   dec.hidden = !pending;
   dec.textContent = pending;
   dec.title = `${pending} bisagra${pending === 1 ? '' : 's'} esperando al dueño`;

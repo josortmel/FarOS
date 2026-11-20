@@ -11,16 +11,20 @@ import { monthWeeks } from './calendar_month.js';
 import { isClosed, isOverdue } from './calendar_day.js';
 
 let handlers = null; // { todayISO(), onOpenMonth(dateISO) }
-export function initYear(h) { handlers = h; }
+export function initYear(h) {
+  handlers = h;
+}
 
 /* #262 */
 import { mesLargo as MES, diaLetra, t as tr } from '../i18n.js';
 /* #314/reel: estaban escritas a mano en español y salían «l m x j v s d» con la app en inglés.
    diaLetra ya resuelve el índice (0 = lunes, como el motor) contra Intl (0 = domingo). */
-const dias = () => [0, 1, 2, 3, 4, 5, 6].map(i => diaLetra(i).toLowerCase());
+const dias = () => [0, 1, 2, 3, 4, 5, 6].map((i) => diaLetra(i).toLowerCase());
 
 /* nivel de densidad 0–4 por número de ocurrencias del día (escala corta, legible de lejos) */
-function level(n) { return n === 0 ? 0 : n <= 2 ? 1 : n <= 5 ? 2 : n <= 10 ? 3 : 4; }
+function level(n) {
+  return n === 0 ? 0 : n <= 2 ? 1 : n <= 5 ? 2 : n <= 10 ? 3 : 4;
+}
 
 export function renderYear(body, state) {
   const data = state.calData;
@@ -52,10 +56,13 @@ export function renderYear(body, state) {
 
   for (let k = 0; k < 12; k++) {
     const dm = new Date(anchor.getFullYear(), anchor.getMonth() + k, 1);
-    const year = dm.getFullYear(), m = dm.getMonth();
+    const year = dm.getFullYear(),
+      m = dm.getMonth();
     const first = `${year}-${String(m + 1).padStart(2, '0')}-01`;
     const weeks = monthWeeks(year, m);
-    const monthN = [...byDay.entries()].filter(([d]) => d.startsWith(first.slice(0, 7))).reduce((a, [, v]) => a + v.n, 0);
+    const monthN = [...byDay.entries()]
+      .filter(([d]) => d.startsWith(first.slice(0, 7)))
+      .reduce((a, [, v]) => a + v.n, 0);
     const box = document.createElement('section');
     box.className = `year__month${today.startsWith(first.slice(0, 7)) ? ' is-current' : ''}${monthN ? '' : ' is-empty'}`;
     box.dataset.month = first.slice(0, 7);
@@ -63,7 +70,9 @@ export function renderYear(body, state) {
       <button type="button" class="year__name" title="abrir en la vista Mes">
         <span>${esc(MES(m))}${anchor.getMonth() === 0 ? '' : ` <small>${String(year).slice(2)}</small>`}</span><b>${monthN ? monthN : '—'}</b>
       </button>
-      <div class="year__cab">${dias().map(d => `<i>${esc(d)}</i>`).join('')}</div>
+      <div class="year__cab">${dias()
+        .map((d) => `<i>${esc(d)}</i>`)
+        .join('')}</div>
       <div class="year__days"></div>`;
     box.querySelector('.year__name').addEventListener('click', () => handlers.onOpenMonth(first));
     const days = box.querySelector('.year__days');
@@ -76,7 +85,11 @@ export function renderYear(body, state) {
         cell.className = `year__day lv-${lv}${inMonth ? '' : ' is-out'}${inMonth && iso === today ? ' is-today' : ''}${v?.overdue ? ' has-overdue' : ''}${v?.live ? ' has-live' : ''}`;
         cell.dataset.date = iso;
         cell.textContent = inMonth ? String(Number(iso.slice(8, 10))) : '';
-        cell.title = inMonth ? tr(`${iso}: ${v ? `${v.n} tarea${v.n === 1 ? '' : 's'}${v.overdue ? ` · ${v.overdue} vencidas` : ''}${v.live ? ` · ${v.live} en curso` : ''}${v.closed ? ` · ${v.closed} hechas` : ''}` : 'nada'}`) : '';   // #497: el catálogo ya tiene las combinaciones
+        cell.title = inMonth
+          ? tr(
+              `${iso}: ${v ? `${v.n} tarea${v.n === 1 ? '' : 's'}${v.overdue ? ` · ${v.overdue} vencidas` : ''}${v.live ? ` · ${v.live} en curso` : ''}${v.closed ? ` · ${v.closed} hechas` : ''}` : 'nada'}`,
+            )
+          : ''; // #497: el catálogo ya tiene las combinaciones
         if (!inMonth) cell.disabled = true;
         cell.addEventListener('click', () => handlers.onOpenMonth(iso));
         days.appendChild(cell);

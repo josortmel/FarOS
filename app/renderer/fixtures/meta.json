@@ -1,8 +1,5 @@
 {
-  "harnesses": [
-    "claude-cli",
-    "opencode"
-  ],
+  "harnesses": ["claude-cli", "opencode"],
   "models": [
     {
       "alias": "haiku",
@@ -25,25 +22,9 @@
       "tier": "max"
     }
   ],
-  "permission_modes": [
-    "dontAsk",
-    "acceptEdits",
-    "plan",
-    "bypassPermissions"
-  ],
-  "evidence_types": [
-    "file_path",
-    "command_output",
-    "memory_id",
-    "peer_attestation",
-    "run_output"
-  ],
-  "verification_levels": [
-    "self",
-    "peer",
-    "auto",
-    "external"
-  ],
+  "permission_modes": ["dontAsk", "acceptEdits", "plan", "bypassPermissions"],
+  "evidence_types": ["file_path", "command_output", "memory_id", "peer_attestation", "run_output"],
+  "verification_levels": ["self", "peer", "auto", "external"],
   "defaults": {
     "model": "haiku",
     "timeout_s": 1800,
@@ -53,13 +34,7 @@
     },
     "verification_level": "auto"
   },
-  "agents": [
-    "owner",
-    "alice",
-    "bob",
-    "carol",
-    "dave"
-  ],
+  "agents": ["owner", "alice", "bob", "carol", "dave"],
   "docs_dir": "$FAROS_HOME/docs",
   "owner": "owner",
   "fixtures_hoy": "2026-09-30"

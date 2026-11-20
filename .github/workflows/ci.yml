@@ -110,6 +110,25 @@ jobs:
                       exit 1
                   fi
                   echo "no dead code in faros/"
+            # The app: eslint and prettier, at the exact versions in app/package.json (package-lock.json).
+            # --ignore-scripts: no Electron binary download, the checks do not need it.
+            - uses: actions/setup-node@v4
+              if: ${{ !cancelled() }}
+              with:
+                  node-version: "24"
+            - name: Install the app's dev tools
+              id: npm
+              if: ${{ !cancelled() }}
+              working-directory: app
+              run: npm ci --ignore-scripts --no-audit --no-fund
+            - name: eslint (app)
+              if: ${{ !cancelled() && steps.npm.outcome == 'success' }}
+              working-directory: app
+              run: npm run lint
+            - name: prettier --check (app)
+              if: ${{ !cancelled() && steps.npm.outcome == 'success' }}
+              working-directory: app
+              run: npm run format:check
 
     secrets:
         runs-on: ubuntu-24.04

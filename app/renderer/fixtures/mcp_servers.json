@@ -4,9 +4,7 @@
     "name": "gmail",
     "transport": "stdio",
     "command": "node",
-    "args": [
-      "/srv/projects/atlas/mcp/gmail/index.js"
-    ],
+    "args": ["/srv/projects/atlas/mcp/gmail/index.js"],
     "url": null,
     "env": {
       "GMAIL_OAUTH_TOKEN": "••••"
