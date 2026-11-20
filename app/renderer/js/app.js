@@ -187,6 +187,7 @@ async function refetchAgents() {
       roster,
       credentials,
       credDeliveries,
+      credChanges,
       motorSettings,
       timbre,
     ] = await Promise.all([
@@ -207,6 +208,9 @@ async function refetchAgents() {
         .credentialDeliveries()
         .catch(() => null), // #499: daemon sin entregas → no se pinta
       api()
+        .credentialChanges()
+        .catch(() => null), // #1132: daemon sin historial de cambios → no se pinta
+      api()
         .settings()
         .catch(() => null), // #601: proof_repos; un daemon sin él no pinta la sección
       api()
@@ -222,6 +226,7 @@ async function refetchAgents() {
       roster,
       credentials,
       credDeliveries,
+      credChanges,
       timbre,
       proofRepos: motorSettings && 'proof_repos' in motorSettings ? motorSettings.proof_repos : null,
       // #695: los dos ajustes del verificador; un daemon sin ellos no pinta su sección
@@ -1527,15 +1532,18 @@ async function main() {
      el servicio rechaza no te saca de lo que estabas haciendo. Probar tarda (hasta 10 s):
      mientras, el botón dice «Probando…». */
   async function afterCredWrite(extra = {}) {
-    const [credentials, credDeliveries] = await Promise.all([
+    const [credentials, credDeliveries, credChanges] = await Promise.all([
       api()
         .credentials()
         .catch(() => null),
       api()
         .credentialDeliveries()
         .catch(() => null),
+      api()
+        .credentialChanges()
+        .catch(() => null), // #1132
     ]);
-    setState({ credentials, credDeliveries, credError: null, credBusy: null, ...extra });
+    setState({ credentials, credDeliveries, credChanges, credError: null, credBusy: null, ...extra });
   }
   const credFail = (where, err) => setState({ credBusy: null, credError: { where, msg: humanError(err) } });
   /* #601: los repos donde el verificador puede correr una «proof» */

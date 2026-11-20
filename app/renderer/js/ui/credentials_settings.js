@@ -219,6 +219,7 @@ export function renderCredentials(body, state) {
   if (!list.length) ul.innerHTML = '<div class="pane__empty">Todavía no hay ninguna clave.</div>';
   for (const c of list) ul.appendChild(fila(c, state));
   root.appendChild(entregas(state.credDeliveries));
+  root.appendChild(cambios(state.credChanges)); // #1132
 
   const f = root.querySelector('#cred-add');
   f.querySelector('#cred-name').addEventListener('input', (e) => {
@@ -272,6 +273,100 @@ function entregas(lista) {
       <span class="entrega__que"><b data-i18n-skip>${esc(d.name ?? '—')}</b> · <span data-i18n-skip>${esc(d.requested_by ?? '—')}</span>${d.purpose ? ` · <span class="entrega__para" data-i18n-skip>${esc(d.purpose)}</span>` : ''}</span>
       <span class="entrega__res">${d.ok ? 'entregada' : 'negada'}</span>
       ${!d.ok && d.reason ? `<span class="entrega__motivo" data-i18n-skip>${esc(d.reason)}</span>` : ''}`;
+    ul.appendChild(li);
+  }
+  sec.appendChild(ul);
+  return sec;
+}
+
+/* #1132: el historial de cambios de las claves (#1078), el más nuevo primero, en frases: quién hizo qué y cuándo.
+   El valor no viene nunca («valor» solo dice «cambiado»). Lo que el motor escribe a la vez (misma persona, mismo
+   segundo) se cuenta junto: pasar «en uso» de A a B son dos filas y una frase, y el alta de la primera clave de un
+   tipo trae su «en uso». Las frases llevan los nombres entre comillas angulares para que el catálogo las traduzca. */
+const q = (x) => `«${x ?? '—'}»`;
+const tipo = (k) => tr(TIPOS[k] ?? k);
+function frase(r) {
+  const n = q(r.name);
+  switch (r.field) {
+    case 'alta':
+      return `dio de alta ${n}, de tipo ${q(tipo(r.despues))}.`;
+    case 'nombre':
+      return `cambió el nombre ${q(r.antes)} por ${q(r.despues)}.`;
+    case 'origen':
+      return r.despues ? `cambió de dónde viene ${n}: ${q(r.despues)}.` : `quitó de dónde viene ${n}.`;
+    case 'valor':
+      return `cambió el valor de ${n}.`;
+    case 'en uso':
+      return r.despues === 'sí' ? `empezó a usar ${n}.` : `dejó de usar ${n}.`;
+    case 'entregable':
+      return r.despues === 'sí' ? `marcó ${n} para entregarse bajo demanda.` : `dejó de entregar ${n} bajo demanda.`;
+    case 'borrada':
+      return `borró ${n}.`;
+    default:
+      return `cambió ${q(r.field)} de ${n}.`;
+  }
+}
+export function frasesDeCambios(lista) {
+  /* Se juntan solo filas SEGUIDAS de la misma persona y el mismo segundo, en el orden en que las escribe el motor
+     (el más nuevo primero): «en uso» de B a sí, «en uso» de A a no y, si B es nueva, su «alta». Juntar todo lo del
+     mismo segundo mezclaba operaciones distintas hechas deprisa. Límite: dar de alta B y pasar a usarla en el MISMO
+     segundo escribe lo mismo que un alta que ya entra en uso, y se cuenta así. */
+  const out = [];
+  const junto = (a, b) => b && a.at === b.at && a.changed_by === b.changed_by;
+  for (let i = 0; i < lista.length; i++) {
+    const r = lista[i];
+    const n1 = lista[i + 1];
+    const n2 = lista[i + 2];
+    let texto = null;
+    if (r.field === 'en uso' && r.despues === 'sí') {
+      const deja = junto(r, n1) && n1.field === 'en uso' && n1.despues === 'no' ? n1 : null;
+      const alta = deja
+        ? junto(r, n2) && n2.field === 'alta' && n2.name === r.name
+          ? n2
+          : null
+        : junto(r, n1) && n1.field === 'alta' && n1.name === r.name
+          ? n1
+          : null;
+      if (alta && deja) {
+        texto = `dio de alta ${q(r.name)}, de tipo ${q(tipo(alta.despues))}, y la usa en vez de ${q(deja.name)}.`;
+        i += 2;
+      } else if (alta) {
+        texto = `dio de alta ${q(r.name)}, de tipo ${q(tipo(alta.despues))}, y la puso en uso.`;
+        i += 1;
+      } else if (deja) {
+        texto = `pasó a usar ${q(r.name)} en vez de ${q(deja.name)}.`;
+        i += 1;
+      }
+    }
+    out.push({ at: r.at, by: r.changed_by, texto: texto ?? frase(r), field: r.field });
+  }
+  return out;
+}
+
+/* Plegada de base: es historial, se mira poco y crece sin parar; plegada no alarga Ajustes. Se recuerda si se abre. */
+let cambiosAbiertos = false;
+function cambios(lista) {
+  const sec = document.createElement('details');
+  sec.className = 'creds__cambios';
+  if (!Array.isArray(lista)) return document.createElement('div'); // daemon sin #1078: nada que pintar
+  sec.open = cambiosAbiertos;
+  sec.addEventListener('toggle', () => {
+    cambiosAbiertos = sec.open;
+  });
+  const frases = frasesDeCambios(lista);
+  sec.innerHTML = `<summary class="settings__sub creds__entregas-h creds__cambios-h">Cambios <span class="creds__cambios-n">${frases.length}</span></summary>`;
+  if (!frases.length) {
+    sec.insertAdjacentHTML('beforeend', '<div class="pane__empty">Todavía no ha cambiado ninguna clave.</div>');
+    return sec;
+  }
+  const ul = document.createElement('ul');
+  ul.className = 'entregas cambios';
+  for (const c of frases) {
+    const li = document.createElement('li');
+    li.className = `entrega cambio cambio--${c.field.replace(/\s+/g, '-')}`;
+    li.innerHTML = `
+      <time data-i18n-skip>${esc(fmtWhen(c.at))}</time>
+      <span class="entrega__que"><b data-i18n-skip>${esc(c.by ?? '—')}</b> <span class="cambio__que">${esc(c.texto)}</span></span>`;
     ul.appendChild(li);
   }
   sec.appendChild(ul);

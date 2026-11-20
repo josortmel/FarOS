@@ -246,6 +246,7 @@ const live = {
   credentialDelete: (id, agent) =>
     http(`/api/credentials/${id}?agent=${encodeURIComponent(agent)}`, { method: 'DELETE' }),
   credentialDeliveries: (limit = 50) => http(`/api/credentials/deliveries?limit=${limit}`), // #499: quién pidió qué; nunca el valor
+  credentialChanges: (limit = 50) => http(`/api/credentials/changes?limit=${limit}`), // #1132 (#1078): quién cambió qué; nunca el valor
   // #1302: el «Copiar» del navegador del móvil (sin Electron no hay copiarClave). La ÚNICA llamada de la página que
   // trae un valor; Pepe aceptó (17-nov) que en el móvil pase por la página. Queda en Entregas como cualquier otra.
   credentialDeliver: (b) => http('/api/credentials/deliver', { method: 'POST', body: JSON.stringify(b) }),
@@ -2242,7 +2243,25 @@ function makeMock() {
         });
       return { ok: true, detail: kind === 'telegram' ? '@bot_de_prueba' : '12 modelos' };
     },
-    _credMarcar(c) {
+    /* #1132, espejo de credentials._cambio: cada cambio deja su fila, con el nombre y nunca el valor */
+    _credCambio(c, field, antes, despues, agent) {
+      const d = new Date(),
+        at = new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 19);
+      (db.credChanges ??= []).unshift({
+        id: (db.credChangeSeq = (db.credChangeSeq ?? 0) + 1),
+        credential_id: c.id,
+        name: c.name,
+        field,
+        antes,
+        despues,
+        changed_by: agent,
+        at,
+      });
+    },
+    _credMarcar(c, agent) {
+      for (const o of this._creds())
+        if (o.kind === c.kind && o.in_use && o !== c) this._credCambio(o, 'en uso', 'sí', 'no', agent);
+      if (!c.in_use) this._credCambio(c, 'en uso', 'no', 'sí', agent);
       for (const o of this._creds()) if (o.kind === c.kind) o.in_use = false;
       c.in_use = true;
     },
@@ -2293,8 +2312,9 @@ function makeMock() {
         updated_at: now,
       };
       this._creds().push(c);
+      this._credCambio(c, 'alta', null, kind, agent);
       if (in_use ?? (this._credUso[kind] && !this._creds().some((o) => o.kind === kind && o.in_use)))
-        this._credMarcar(c);
+        this._credMarcar(c, agent);
       emitChange('credentials.changed', { id: c.id });
       return this._credOut(c);
     },
@@ -2307,15 +2327,27 @@ function makeMock() {
           code: 'credential.not_found',
           reason: `no existe la clave ${id}`,
         });
+      const cambios = [];
       if ('value' in b && b.value !== '••••') {
         const t = this._credProbar(c.kind, b.value);
+        if (String(b.value).trim() !== c.value) cambios.push(['valor', null, 'cambiado']);
         Object.assign(c, { value: String(b.value).trim(), test_ok: t.ok, test_detail: t.detail });
       }
-      if ('name' in b) c.name = String(b.name).trim();
-      if ('origin' in b) c.origin = String(b.origin).trim();
+      if ('name' in b && String(b.name).trim() !== c.name) {
+        cambios.push(['nombre', c.name, String(b.name).trim()]);
+        c.name = String(b.name).trim();
+      }
+      if ('origin' in b && String(b.origin).trim() !== (c.origin ?? '')) {
+        cambios.push(['origen', c.origin || null, String(b.origin).trim() || null]);
+        c.origin = String(b.origin).trim();
+      }
+      for (const [campo, de, a] of cambios) this._credCambio(c, campo, de, a, agent);
       if ('in_use' in b) {
-        if (b.in_use) this._credMarcar(c);
-        else c.in_use = false;
+        if (b.in_use) this._credMarcar(c, agent);
+        else {
+          if (c.in_use) this._credCambio(c, 'en uso', 'sí', 'no', agent);
+          c.in_use = false;
+        }
       }
       /* #499 espejado: entregable bajo demanda, solo el dueño de la casa */
       if ('deliverable' in b) {
@@ -2326,6 +2358,8 @@ function makeMock() {
             code: 'credential.deliverable_owner_only',
             reason: `solo ${db.meta.owner} decide qué claves se entregan bajo demanda`,
           });
+        if (Boolean(b.deliverable) !== Boolean(c.deliverable))
+          this._credCambio(c, 'entregable', c.deliverable ? 'sí' : 'no', b.deliverable ? 'sí' : 'no', agent);
         c.deliverable = Boolean(b.deliverable);
       }
       emitChange('credentials.changed', { id: c.id });
@@ -2335,6 +2369,11 @@ function makeMock() {
     async credentialDeliveries(limit = 50) {
       if (!db) await load();
       return (db.credDeliveries ??= []).slice(0, limit);
+    },
+    /* #1132 espejado: el historial de cambios, el más nuevo primero */
+    async credentialChanges(limit = 50) {
+      if (!db) await load();
+      return (db.credChanges ??= []).slice(0, limit);
     },
     async credentialTest(id) {
       const c = this._creds().find((x) => x.id === Number(id));
@@ -2346,7 +2385,7 @@ function makeMock() {
       }
       return this._credOut(c);
     },
-    async credentialDelete(id) {
+    async credentialDelete(id, agent) {
       const l = this._creds(),
         i = l.findIndex((x) => x.id === Number(id));
       if (i < 0)
@@ -2356,6 +2395,7 @@ function makeMock() {
           reason: `no existe la clave ${id}`,
         });
       const [c] = l.splice(i, 1);
+      this._credCambio(c, 'borrada', null, null, agent);
       emitChange('credentials.changed', { id: c.id, deleted: true });
       return { id: c.id, deleted: true, was_in_use: c.in_use };
     },

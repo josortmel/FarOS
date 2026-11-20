@@ -6846,3 +6846,48 @@ body.lupa-on {
     transition: none;
   }
 }
+
+/* #1132: «Cambios» en Ajustes › Claves, con el mismo patrón que Entregas (una línea por cambio: cuándo, quién y qué) */
+.creds__cambios {
+  margin-top: var(--sp-4);
+}
+.cambio__que {
+  color: var(--color-text-soft);
+}
+.creds__cambios-h {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.creds__cambios-n {
+  font-weight: 400;
+  color: var(--color-text-mute);
+  font-variant-numeric: tabular-nums;
+}
+/* con display:flex el summary pierde su triángulo: un indicador propio que gira al abrir */
+.creds__cambios-h {
+  list-style: none;
+}
+.creds__cambios-h::-webkit-details-marker {
+  display: none;
+}
+.creds__cambios-h::before {
+  content: '';
+  width: 0.45em;
+  height: 0.45em;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--t-fast) var(--ease-out);
+  margin-right: 0.15em;
+}
+.creds__cambios[open] > .creds__cambios-h::before {
+  transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .creds__cambios-h::before {
+    transition: none;
+  }
+}

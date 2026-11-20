@@ -2,6 +2,20 @@
 
 Notable changes to FarOS. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 3.3.51 — 2026-11-20
+
+### Added
+- **Search everything at once.** A magnifier in the top bar (desktop and phone) finds tasks, decisions and workflows by a word, grouped, and opens the one you tap.
+- **Free time from the task panel.** A task can be marked as free time from its panel: when it starts, the bell sends the free-time invitation instead of «you had planned».
+- **Key history in plain words.** Settings › Keys › «Changes» tells each key's history (created, delivered, tested, rotated) as sentences.
+
+### Fixed
+- Cancelling a run while it is running now ends it as `cancelled`, not `error`, and the Telegram notice says so. The linter found it: the variable was computed and never used.
+
+### Changed
+- The CI also checks style and dead code: ruff (lint and format) and vulture in Python, eslint and prettier in the app, at exact versions; coverage is shown as a report. The code was formatted accordingly (formatting only).
+- The opencode MCP code that sat behind the «disabled» error is gone; the error stays.
+
 ## 3.3.50 — 2026-11-19
 
 Everything since 3.3.1, the first public release since September: 48 versions that ran at home in between. The version in which each change arrived is in brackets.
