@@ -46,9 +46,12 @@ jobs:
               shell: bash
               env:
                   MIN_TESTS: 1080
+                  # #1361: coverage as a REPORT (which code no test runs), on one Python only. It does not fail
+                  # the build: a percentage gate rewards tests that touch code without checking it.
+                  COV_ARGS: ${{ matrix.python == '3.14' && '--cov=faros --cov-report=term' || '' }}
               run: |
                   set +e
-                  python -m pytest -q -p no:cacheprovider tests 2>&1 | tee pytest-output.txt
+                  python -m pytest -q -p no:cacheprovider $COV_ARGS tests 2>&1 | tee pytest-output.txt
                   status=${PIPESTATUS[0]}
                   passed=$(grep -oE '[0-9]+ passed' pytest-output.txt | tail -1 | grep -oE '[0-9]+')
                   passed=${passed:-0}

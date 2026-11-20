@@ -43,7 +43,7 @@ dependencies = [
 # daba 87 avisos y el 20-nov, otra version con otros «por defecto», 404 sobre el
 # mismo codigo. Un CI que depende de lo que la herramienta mire por defecto se
 # pone en rojo un dia sin que nadie haya tocado nada.
-dev = ["pytest>=9.0", "ruff==0.17.6", "vulture==2.16"]
+dev = ["pytest>=9.0", "ruff==0.17.6", "vulture==2.16", "pytest-cov==7.1.0"]
 
 # SIN [project.scripts] a proposito. Lo escribi primero como
 # `faros-daemon = "faros.daemon:main"` y al comprobarlo NO EXISTE
