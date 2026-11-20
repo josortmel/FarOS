@@ -14,15 +14,14 @@ import asyncio
 import json
 import os
 import subprocess
-
-from .procutil import hidden_popen_kwargs, hidden_console_popen_kwargs
 from pathlib import Path
 
-from . import service, harness
-from .harness.base import RunResult  # noqa: F401  (re-export: verifier y tests lo usan)
-
-from .db import DATA_DIR  # una sola resolución de la casa (AGENTICOS_HOME > LOCALAPPDATA)
 from . import env as _env
+from . import harness, service
+from .db import DATA_DIR  # una sola resolución de la casa (AGENTICOS_HOME > LOCALAPPDATA)
+from .harness.base import RunResult  # noqa: F401  (re-export: verifier y tests lo usan)
+from .procutil import hidden_popen_kwargs
+
 ARTIFACTS_DIR = DATA_DIR / "artifacts"
 JOBS_DIR = DATA_DIR / "jobs"
 SUMMARY_MAX = 2000
@@ -35,19 +34,22 @@ from .env import redact_home as _redact_home  # noqa: E402
 
 # run_id → (proceso, job_object) de los runs en curso, para poder cancelarlos.
 LIVE_RUNS: dict[int, tuple] = {}
+# #1361: los runs que alguien canceló estando vivos. Lo apunta cancel_run ANTES de matar el árbol y lo lee
+# execute_job al cerrar; antes se adivinaba por el código de salida, la variable no se usaba y quedaban «error».
+CANCELADOS: set[int] = set()
 
 
 async def cancel_run(conn, run_id: int) -> dict:
-    """Mata el proceso del run en curso y lo marca cancelled. El execute_job que
-    lo lanzó verá el run ya cerrado y no lo pisará."""
+    """Mata el proceso del run en curso. El execute_job que lo lanzó lo cierra como cancelled
+    (con lo que llevara escrito); un run huérfano sin proceso se cierra aquí mismo."""
     entry = LIVE_RUNS.get(run_id)
     if entry is None:
         run = service.get_run(conn, run_id)
         if run["status"] == "running":  # huérfano sin proceso registrado
-            return service.finish_run(conn, run_id, "cancelled",
-                                      result_summary="(cancelado; proceso no localizado)")
+            return service.finish_run(conn, run_id, "cancelled", result_summary="(cancelado; proceso no localizado)")
         raise service.TicketError(f"run #{run_id} no está en curso ({run['status']})")
     proc, job_obj = entry
+    CANCELADOS.add(run_id)
     await _kill_tree(proc, job=job_obj)
     return {"run_id": run_id, "cancelling": True}
 
@@ -64,33 +66,43 @@ def get_adapter(name: str):
     return adapter
 
 
-PREAMBLE_FILE = Path(_env.get("AGENT_PREAMBLE")
-                     or Path(__file__).resolve().parent.parent / "verify" / "agent_preamble.md")
+PREAMBLE_FILE = Path(
+    _env.get("AGENT_PREAMBLE") or Path(__file__).resolve().parent.parent / "verify" / "agent_preamble.md"
+)
 
 
 def compose_preamble(job: dict, run_id: int | None) -> str:
     """Bloque fijo de contexto para el agente genérico (T1.9). Editable en
     verify/agent_preamble.md. Vacío si la plantilla no existe."""
     from . import schedule as schedule_mod
+
     try:
         template = PREAMBLE_FILE.read_text(encoding="utf-8")
     except OSError:
         return ""
     if job.get("json_schema"):
-        deliver = ("- Tu respuesta final debe ser ÚNICAMENTE el JSON que cumple el esquema "
-                   "exigido (salida estructurada). Sin texto alrededor.")
+        deliver = (
+            "- Tu respuesta final debe ser ÚNICAMENTE el JSON que cumple el esquema "
+            "exigido (salida estructurada). Sin texto alrededor."
+        )
     else:
-        deliver = ("- Empieza con un resumen de 1-3 líneas de lo que hiciste y encontraste.\n"
-                   "- Después el resultado completo en markdown claro (listas, no párrafos largos).\n"
-                   "- Si algo falló o no pudiste hacerlo, dilo explícitamente al principio.")
+        deliver = (
+            "- Empieza con un resumen de 1-3 líneas de lo que hiciste y encontraste.\n"
+            "- Después el resultado completo en markdown claro (listas, no párrafos largos).\n"
+            "- Si algo falló o no pudiste hacerlo, dilo explícitamente al principio."
+        )
     return template.format(
         job_name=job.get("name") or f"job #{job.get('id')}",
-        job_id=job.get("id"), run_id=run_id if run_id is not None else "-",
+        job_id=job.get("id"),
+        run_id=run_id if run_id is not None else "-",
         schedule_human=schedule_mod.human(job.get("schedule") or {"type": "manual"}),
-        harness=job.get("harness"), model=job.get("model"),
-        verify_criteria=(job.get("verify_criteria") or
-                         "(sin criterio declarado: se juzgará que el resultado sea sustantivo, "
-                         "coherente con el encargo y sin afirmaciones no demostradas)"),
+        harness=job.get("harness"),
+        model=job.get("model"),
+        verify_criteria=(
+            job.get("verify_criteria")
+            or "(sin criterio declarado: se juzgará que el resultado sea sustantivo, "
+            "coherente con el encargo y sin afirmaciones no demostradas)"
+        ),
         deliver_instructions=deliver,
     )
 
@@ -111,11 +123,25 @@ def build_invocation(adapter, job: dict, run_id: int | None) -> tuple[list[str],
 
 
 _ENV_WHITELIST = {
-    "PATH", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR",
-    "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "HOME",
-    "COMSPEC", "PATHEXT", "USERNAME",
-    "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES",
-    "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS",
+    "PATH",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "HOME",
+    "COMSPEC",
+    "PATHEXT",
+    "USERNAME",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "COMMONPROGRAMFILES",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "OS",
 }
 
 
@@ -126,15 +152,16 @@ def _env_for(conn, adapter, run_token: str | None = None) -> dict:
     #1109: an adapter with via_proxy gets the daemon's forwarder and a per-run token instead
     of the key; without a token it gets the placeholder (fails closed, never the key)."""
     from . import settings as settings_mod
+
     env = {k: v for k, v in os.environ.items() if k.upper() in _ENV_WHITELIST}
     try:
-        needed = {k: settings_mod.get(conn, k) for k in adapter.required_settings
-                  if k in settings_mod.DEFAULTS}
+        needed = {k: settings_mod.get(conn, k) for k in adapter.required_settings if k in settings_mod.DEFAULTS}
         env.update({k: str(v) for k, v in adapter.env(needed).items() if v})
     except Exception:
         pass
     if getattr(adapter, "via_proxy", False):
         from . import deepseek_proxy
+
         env["ANTHROPIC_BASE_URL"] = deepseek_proxy.url_local()
         env["ANTHROPIC_AUTH_TOKEN"] = run_token or adapter.TOKEN_RELLENO
     return env
@@ -158,9 +185,15 @@ async def _kill_tree(proc: asyncio.subprocess.Process, job=None) -> None:
         job.terminate()
     elif os.name == "nt":
         killer = await asyncio.create_subprocess_exec(
-            "taskkill", "/PID", str(proc.pid), "/T", "/F",
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            **hidden_popen_kwargs())
+            "taskkill",
+            "/PID",
+            str(proc.pid),
+            "/T",
+            "/F",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **hidden_popen_kwargs(),
+        )
         await killer.wait()
     else:
         proc.kill()
@@ -170,7 +203,7 @@ async def _kill_tree(proc: asyncio.subprocess.Process, job=None) -> None:
         pass
 
 
-LEER_TRAS_S = 5   # #1281: tras acabar (o matar) el proceso, lo que se espera a que las tuberías terminen de vaciarse
+LEER_TRAS_S = 5  # #1281: tras acabar (o matar) el proceso, lo que se espera a que las tuberías terminen de vaciarse
 
 
 async def _leer(stream, buf: bytearray) -> None:
@@ -200,6 +233,7 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
     event loop — cada llamada a service es síncrona hasta su commit.
     """
     from . import jobs as jobs_mod
+
     job = jobs_mod.get_job(conn, job_id)
     adapter = get_adapter(job["harness"])
     if run is None:
@@ -212,26 +246,29 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
     workspace = _workspace_for(job)
     # v3.1 (T5.6): MCP del registro → fichero temporal por run (se borra al acabar).
     from . import mcp_registry as _reg
+
     mcp_tmp = None
     try:
         job, mcp_tmp = _reg.materialize(conn, job, run_dir, harness=adapter.name)
     except Exception as exc:  # registro incompleto: el run falla con motivo, no el daemon
         (run_dir / "stderr.log").write_text(f"mcp: {exc}", encoding="utf-8")
-        return jobs_mod.finish_run(conn, run["id"], "error", exit_code=-1,
-                                   output_path=None, result_summary=f"(mcp: {exc})")
+        return jobs_mod.finish_run(
+            conn, run["id"], "error", exit_code=-1, output_path=None, result_summary=f"(mcp: {exc})"
+        )
     cmd, stdin_bytes = build_invocation(adapter, job, run["id"])
 
     job_obj = None
     if os.name == "nt":
         try:
             from .jobobj import JobObject
+
             job_obj = JobObject()
         except Exception:
             pass  # fallback to taskkill in _kill_tree
 
     timed_out = False
-    cancelled = False
     from . import deepseek_proxy
+
     run_token = deepseek_proxy.emitir(f"run #{run['id']}") if getattr(adapter, "via_proxy", False) else None
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -255,8 +292,7 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
         out_buf, err_buf = bytearray(), bytearray()
         lectores = [asyncio.create_task(_leer(proc.stdout, out_buf)), asyncio.create_task(_leer(proc.stderr, err_buf))]
         try:
-            await asyncio.wait_for(asyncio.gather(_alimentar(proc, stdin_bytes), proc.wait()),
-                                   timeout=job["timeout_s"])
+            await asyncio.wait_for(asyncio.gather(_alimentar(proc, stdin_bytes), proc.wait()), timeout=job["timeout_s"])
         except asyncio.TimeoutError:
             timed_out = True
             await _kill_tree(proc, job=job_obj)
@@ -268,13 +304,13 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
         stdout = stdout_b.decode("utf-8", errors="replace")
         stderr = stderr_b.decode("utf-8", errors="replace")
         exit_code = proc.returncode
-        # Terminado por señal (cancel externo mató el árbol): exit code negativo/no-cero
-        cancelled = exit_code not in (0, None) and not timed_out and not stdout.strip()
     except Exception as exc:  # spawn imposible (exe borrado, permisos...)
         stdout, stderr, exit_code = "", f"spawn failed: {exc}", -1
     finally:
         LIVE_RUNS.pop(run["id"], None)
-        deepseek_proxy.revocar(run_token)   # #1109: el token muere con su run
+        cancelado = run["id"] in CANCELADOS
+        CANCELADOS.discard(run["id"])
+        deepseek_proxy.revocar(run_token)  # #1109: el token muere con su run
         if job_obj is not None:
             job_obj.close()
         _reg.cleanup(mcp_tmp)  # secretos fuera de disco en cuanto el proceso muere
@@ -282,39 +318,63 @@ async def execute_job(conn, job_id: int, emit=None, run: dict | None = None) -> 
     # A partir de aquí NADA puede dejar el run en 'running': parse o escritura
     # de artifacts que reviente se registra como error, no como run zombi.
     try:
-        if timed_out:   # #1281: lo que llevaba escrito, marcado como parcial (antes quedaba «sin output»)
-            parcial = (f"(PARCIAL: el run cortó por timeout a los {job['timeout_s']} s; esto es lo que el proceso "
-                       f"llevaba escrito)\n\n{stdout}" if stdout.strip()
-                       else f"(PARCIAL: el run cortó por timeout a los {job['timeout_s']} s sin haber escrito nada)")
+        if timed_out:  # #1281: lo que llevaba escrito, marcado como parcial (antes quedaba «sin output»)
+            parcial = (
+                f"(PARCIAL: el run cortó por timeout a los {job['timeout_s']} s; esto es lo que el proceso "
+                f"llevaba escrito)\n\n{stdout}"
+                if stdout.strip()
+                else f"(PARCIAL: el run cortó por timeout a los {job['timeout_s']} s sin haber escrito nada)"
+            )
             result = RunResult("timeout", exit_code, None, None, parcial, None)
+        elif cancelado:  # #1361: lo canceló alguien con el run vivo; se guarda lo que llevaba escrito
+            parcial = (
+                f"(CANCELADO con el run en curso; esto es lo que el proceso llevaba escrito)\n\n{stdout}"
+                if stdout.strip()
+                else "(CANCELADO con el run en curso, sin haber escrito nada)"
+            )
+            result = RunResult("cancelled", exit_code, None, None, parcial, None)
         else:
             result = adapter.parse_output(stdout, exit_code if exit_code is not None else -1)
 
         (run_dir / "output.md").write_text(result.output_text or "(sin output)", encoding="utf-8")
         if stderr.strip():
             (run_dir / "stderr.log").write_text(stderr, encoding="utf-8")
-        (run_dir / "meta.json").write_text(json.dumps({
-            "cmd": [("<mcp_config>" if c == str(mcp_tmp) else _redact_home(c))
-                    for c in cmd],
-            "workspace": _redact_home(str(workspace)), "exit_code": exit_code,
-            "status": result.status, "cost_usd": result.cost_usd,
-            "session_id": result.session_id, "raw": result.raw,
-        }, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        (run_dir / "meta.json").write_text(
+            json.dumps(
+                {
+                    "cmd": [("<mcp_config>" if c == str(mcp_tmp) else _redact_home(c)) for c in cmd],
+                    "workspace": _redact_home(str(workspace)),
+                    "exit_code": exit_code,
+                    "status": result.status,
+                    "cost_usd": result.cost_usd,
+                    "session_id": result.session_id,
+                    "raw": result.raw,
+                },
+                indent=2,
+                ensure_ascii=False,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
         summary = (result.output_text or "").strip()[:SUMMARY_MAX] or f"({result.status}, sin output)"
     except Exception as exc:
         result = RunResult("error", exit_code, None, None, stdout[:SUMMARY_MAX], None)
         summary = f"(runner error: {exc})"
         try:
-            (run_dir / "stderr.log").write_text(f"{stderr}\n\nrunner exception: {exc}",
-                                                encoding="utf-8")
+            (run_dir / "stderr.log").write_text(f"{stderr}\n\nrunner exception: {exc}", encoding="utf-8")
         except OSError:
             pass
 
     closed = jobs_mod.finish_run(
-        conn, run["id"], result.status,
-        exit_code=exit_code, cost_usd=result.cost_usd, session_id=result.session_id,
-        output_path=str(run_dir / "output.md"), result_summary=summary)
+        conn,
+        run["id"],
+        result.status,
+        exit_code=exit_code,
+        cost_usd=result.cost_usd,
+        session_id=result.session_id,
+        output_path=str(run_dir / "output.md"),
+        result_summary=summary,
+    )
     if emit:
-        emit("run.finished", {"run_id": run["id"], "ticket_id": run["ticket_id"],
-                              "status": result.status})
+        emit("run.finished", {"run_id": run["id"], "ticket_id": run["ticket_id"], "status": result.status})
     return closed

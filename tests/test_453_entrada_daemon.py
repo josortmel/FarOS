@@ -5,6 +5,7 @@ Ahora la entrada (build/daemon_entry.py, la misma que empaqueta PyInstaller) val
 importar faros y antes de tocar la casa: --help imprime la ayuda y sale con 0, un argumento desconocido sale con
 2, y en ninguno de los dos casos se crea nada en la casa.
 """
+
 import os
 import socket
 import subprocess
@@ -19,8 +20,14 @@ def _correr(tmp_path, *args, timeout=30):
     casa = tmp_path / "casa"
     env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("FAROS_", "AGENTICOS_"))}
     env.update(FAROS_HOME=str(casa), PYTHONPATH=str(ENTRADA.parent.parent))
-    r = subprocess.run([sys.executable, str(ENTRADA), *args], capture_output=True, text=True, env=env,
-                       timeout=timeout, cwd=str(tmp_path))
+    r = subprocess.run(
+        [sys.executable, str(ENTRADA), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=timeout,
+        cwd=str(tmp_path),
+    )
     return r, casa
 
 
@@ -44,14 +51,21 @@ def test_un_puerto_que_no_es_numero_tambien_se_rechaza(tmp_path):
 
 def test_sin_argumentos_raros_arranca_como_siempre(tmp_path):
     with socket.socket() as s:
-        s.bind(("127.0.0.1", 0)); puerto = s.getsockname()[1]
+        s.bind(("127.0.0.1", 0))
+        puerto = s.getsockname()[1]
     casa = tmp_path / "casa"
     env = {k: v for k, v in os.environ.items() if not k.upper().startswith(("FAROS_", "AGENTICOS_"))}
     env.update(FAROS_HOME=str(casa), PYTHONPATH=str(ENTRADA.parent.parent))
-    p = subprocess.Popen([sys.executable, str(ENTRADA), "--port", str(puerto)], env=env, cwd=str(tmp_path),
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(
+        [sys.executable, str(ENTRADA), "--port", str(puerto)],
+        env=env,
+        cwd=str(tmp_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     try:
         import urllib.request
+
         for _ in range(60):
             try:
                 with urllib.request.urlopen(f"http://127.0.0.1:{puerto}/api/health", timeout=2) as r:

@@ -158,7 +158,7 @@ python -m faros.daemon           # http://127.0.0.1:8756
 cd app && npm install && npm start
 ```
 
-Tests — 1093 of them, no API keys required:
+Tests — 1089 of them, no API keys required:
 
 ```
 pip install -e ".[dev]"

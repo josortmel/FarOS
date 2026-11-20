@@ -9,19 +9,24 @@ from pathlib import Path
 
 from faros import db, jobs, runner
 
-COLGADO = ("import sys, time\n"
-           "print('paso 1: abro la nota', flush=True)\n"
-           "print('paso 2: compruebo 60 URL', flush=True)\n"
-           "time.sleep(60)\n")
+COLGADO = (
+    "import sys, time\n"
+    "print('paso 1: abro la nota', flush=True)\n"
+    "print('paso 2: compruebo 60 URL', flush=True)\n"
+    "time.sleep(60)\n"
+)
 ECO = "import sys\nprint('he leido: ' + sys.stdin.read().strip(), flush=True)\n"
 
 
 def _correr(tmp_path, monkeypatch, script, timeout_s, stdin=b""):
     conn = db.connect(tmp_path / "r.db")
     monkeypatch.setattr(runner, "ARTIFACTS_DIR", tmp_path / "artifacts")
-    monkeypatch.setattr(runner, "build_invocation", lambda adapter, job, run_id: ([sys.executable, "-c", script], stdin))
-    job = jobs.create_job(conn, "owner", name="revista", harness="claude-cli", prompt="hola", model="haiku",
-                          timeout_s=max(timeout_s, 30))
+    monkeypatch.setattr(
+        runner, "build_invocation", lambda adapter, job, run_id: ([sys.executable, "-c", script], stdin)
+    )
+    job = jobs.create_job(
+        conn, "owner", name="revista", harness="claude-cli", prompt="hola", model="haiku", timeout_s=max(timeout_s, 30)
+    )
     # create_job no admite menos de 30 s; en la base del test se baja a mano para no esperar medio minuto
     conn.execute("UPDATE agent_jobs SET timeout_s = ? WHERE id = ?", (timeout_s, job["id"]))
     conn.commit()
@@ -32,7 +37,7 @@ def _correr(tmp_path, monkeypatch, script, timeout_s, stdin=b""):
 def test_el_timeout_guarda_lo_escrito_y_lo_marca_como_parcial(tmp_path, monkeypatch):
     run, salida = _correr(tmp_path, monkeypatch, COLGADO, timeout_s=2)
     assert run["status"] == "timeout"
-    assert salida.startswith("(PARCIAL: el run cortó por timeout a los 2 s")      # antes: «(sin output)»
+    assert salida.startswith("(PARCIAL: el run cortó por timeout a los 2 s")  # antes: «(sin output)»
     assert "paso 1: abro la nota" in salida and "paso 2: compruebo 60 URL" in salida
     assert run["result_summary"].startswith("(PARCIAL")
 

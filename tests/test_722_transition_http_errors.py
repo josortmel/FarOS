@@ -27,9 +27,17 @@ def cli(tmp_path, monkeypatch):
 
 
 def _ticket(cli, *actions):
-    tid = cli.post("/api/tickets", headers=H, json={
-        "agent": "owner", "title": "t722", "owner": "alice", "verification_level": "peer",
-        "scheduled_at": "2031-03-05T10:00"}).json()["ticket"]["id"]
+    tid = cli.post(
+        "/api/tickets",
+        headers=H,
+        json={
+            "agent": "owner",
+            "title": "t722",
+            "owner": "alice",
+            "verification_level": "peer",
+            "scheduled_at": "2031-03-05T10:00",
+        },
+    ).json()["ticket"]["id"]
     for body in actions:
         assert _tr(cli, tid, **body).status_code == 200
     return tid
@@ -53,8 +61,11 @@ COMPLETE = {"agent": "alice", "action": "complete", "evidence_type": "file_path"
 
 def test_complete_with_blank_evidence_is_400_evidence(cli):
     tid = _ticket(cli, ACCEPT)
-    _is_400(_tr(cli, tid, agent="alice", action="complete", evidence_type="file_path", evidence=" "),
-            "evidence", "complete.evidence_required")
+    _is_400(
+        _tr(cli, tid, agent="alice", action="complete", evidence_type="file_path", evidence=" "),
+        "evidence",
+        "complete.evidence_required",
+    )
 
 
 def test_complete_with_no_evidence_at_all_is_400_evidence_type(cli):
@@ -75,10 +86,14 @@ def test_pause_with_a_short_note_is_400_note(cli):
 
 def test_complete_with_a_bad_evidence_type_is_400_evidence_type(cli):
     tid = _ticket(cli, ACCEPT)
-    _is_400(_tr(cli, tid, agent="alice", action="complete", evidence_type="test", evidence="x"),
-            "evidence_type", "complete.evidence_required")
-    _is_400(_tr(cli, tid, agent="alice", action="complete", evidence="x"),
-            "evidence_type", "complete.evidence_required")
+    _is_400(
+        _tr(cli, tid, agent="alice", action="complete", evidence_type="test", evidence="x"),
+        "evidence_type",
+        "complete.evidence_required",
+    )
+    _is_400(
+        _tr(cli, tid, agent="alice", action="complete", evidence="x"), "evidence_type", "complete.evidence_required"
+    )
 
 
 def test_block_without_reason_is_400_reason(cli):
@@ -93,8 +108,9 @@ def test_bad_verdict_is_400_verdict(cli):
 
 def test_bad_provenance_is_400_provenance(cli):
     tid = _ticket(cli, ACCEPT, COMPLETE)
-    _is_400(_tr(cli, tid, agent="bob", action="verify", provenance="external"),
-            "provenance", "verify.provenance_invalid")
+    _is_400(
+        _tr(cli, tid, agent="bob", action="verify", provenance="external"), "provenance", "verify.provenance_invalid"
+    )
 
 
 def test_illegal_transition_is_still_409(cli):

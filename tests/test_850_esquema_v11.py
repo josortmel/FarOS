@@ -8,8 +8,9 @@ from faros import db
 
 
 def _bases_de_copia(path):
-    return sorted((path.parent / "backups").glob("faros_pre_migration_*.db")) \
-        if (path.parent / "backups").exists() else []
+    return (
+        sorted((path.parent / "backups").glob("faros_pre_migration_*.db")) if (path.parent / "backups").exists() else []
+    )
 
 
 def _v10(path):
@@ -70,17 +71,20 @@ def test_reabrir_no_hace_segunda_copia(tmp_path):
 def _llamadas_a_backup(monkeypatch):
     """Quién llama a backup_before_migration, en orden (no cuenta ficheros: cuenta llamadas)."""
     import sys
+
     quien, real = [], db.backup_before_migration
 
     def espia(conn, path):
         quien.append(sys._getframe(1).f_code.co_name)
         return real(conn, path)
+
     monkeypatch.setattr(db, "backup_before_migration", espia)
     return quien
 
 
 def _base_v2(path, con_version=True):
     from test_migration import SCHEMA_V2
+
     c = sqlite3.connect(path)
     c.executescript(SCHEMA_V2)
     if con_version:
@@ -96,7 +100,7 @@ def test_estructural_con_version_una_sola_llamada_y_desde_connect(tmp_path, monk
     path = tmp_path / "faros.db"
     _base_v2(path)
     db.connect(path).close()
-    assert quien == ["connect"]          # la forzada; la rama estructural no repite
+    assert quien == ["connect"]  # la forzada; la rama estructural no repite
     assert len(_bases_de_copia(path)) == 1
 
 
@@ -139,6 +143,7 @@ def test_dos_copias_en_el_mismo_instante_no_se_pisan(tmp_path, monkeypatch):
         @classmethod
         def now(cls, tz=None):
             return cls(2026, 11, 4, 10, 0, 0, 123456)
+
     monkeypatch.setattr(db, "datetime", Fijo)
     path = tmp_path / "faros.db"
     conn = db.connect(path)
@@ -178,6 +183,7 @@ def test_fallo_de_copia_en_la_rama_estructural(tmp_path):
 
 def test_la_copia_forzada_deja_una_linea_de_log_con_la_ruta(tmp_path, caplog):
     import logging
+
     path = tmp_path / "faros.db"
     _v10(path)
     with caplog.at_level(logging.INFO, logger="faros.db"):
@@ -188,6 +194,7 @@ def test_la_copia_forzada_deja_una_linea_de_log_con_la_ruta(tmp_path, caplog):
 
 def test_estructural_solo_una_copia(tmp_path):
     from test_migration import SCHEMA_V2  # noqa: F401  (base v2 existente)
+
     path = tmp_path / "faros.db"
     c = sqlite3.connect(path)
     c.executescript(SCHEMA_V2)
@@ -210,8 +217,10 @@ def test_en_memoria_no_copia():
 
 def test_indice_unico_de_links(tmp_path):
     conn = db.connect(tmp_path / "faros.db")
-    conn.execute("INSERT INTO library_items (clase, ruta, titulo, origen, creado, actualizado)"
-                 " VALUES ('faro', 'r', 't', 'scan', 'x', 'x')")
+    conn.execute(
+        "INSERT INTO library_items (clase, ruta, titulo, origen, creado, actualizado)"
+        " VALUES ('faro', 'r', 't', 'scan', 'x', 'x')"
+    )
     for _ in range(2):
         conn.execute("INSERT OR IGNORE INTO library_links (item_id, ticket_id) VALUES (1, 5)")
         conn.execute("INSERT OR IGNORE INTO library_links (item_id, run_id) VALUES (1, NULL)")
@@ -223,18 +232,24 @@ def test_check_rechaza_fuera_de_lista(tmp_path, campo, valor):
     conn = db.connect(tmp_path / "faros.db")
     datos = {"clase": "faro", "origen": "scan", "estado": "presente", campo: valor}
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute("INSERT INTO library_items (clase, ruta, titulo, origen, estado, creado, actualizado)"
-                     " VALUES (?, 'r', 't', ?, ?, 'x', 'x')",
-                     (datos["clase"], datos["origen"], datos["estado"]))
+        conn.execute(
+            "INSERT INTO library_items (clase, ruta, titulo, origen, estado, creado, actualizado)"
+            " VALUES (?, 'r', 't', ?, ?, 'x', 'x')",
+            (datos["clase"], datos["origen"], datos["estado"]),
+        )
 
 
 def test_ruta_unica_y_fts(tmp_path):
     conn = db.connect(tmp_path / "faros.db")
-    conn.execute("INSERT INTO library_items (clase, ruta, titulo, origen, creado, actualizado)"
-                 " VALUES ('faro', 'r', 't', 'scan', 'x', 'x')")
+    conn.execute(
+        "INSERT INTO library_items (clase, ruta, titulo, origen, creado, actualizado)"
+        " VALUES ('faro', 'r', 't', 'scan', 'x', 'x')"
+    )
     with pytest.raises(sqlite3.IntegrityError):
-        conn.execute("INSERT INTO library_items (clase, ruta, titulo, origen, creado, actualizado)"
-                     " VALUES ('faro', 'r', 't2', 'scan', 'x', 'x')")
+        conn.execute(
+            "INSERT INTO library_items (clase, ruta, titulo, origen, creado, actualizado)"
+            " VALUES ('faro', 'r', 't2', 'scan', 'x', 'x')"
+        )
     conn.execute("INSERT OR REPLACE INTO library_fts (rowid, titulo, extracto) VALUES (1, 'hola', 'mundo')")
     assert conn.execute("SELECT rowid FROM library_fts WHERE library_fts MATCH 'mundo'").fetchone()[0] == 1
 
@@ -246,19 +261,19 @@ def test_tras_backup_fallido_la_conexion_esta_cerrada_y_no_queda_copia_a_medias(
 
     class Falla(sqlite3.Connection):
         def backup(self, target, **kw):
-            target.execute("CREATE TABLE parcial (a)")      # deja algo escrito en el destino...
+            target.execute("CREATE TABLE parcial (a)")  # deja algo escrito en el destino...
             target.commit()
-            raise sqlite3.OperationalError("disco lleno")    # ...y falla a mitad
+            raise sqlite3.OperationalError("disco lleno")  # ...y falla a mitad
 
     real = sqlite3
     falso = types.SimpleNamespace(**{k: getattr(real, k) for k in dir(real) if not k.startswith("__")})
     falso.connect = lambda *a, **k: real.connect(*a, factory=Falla, **k)
     monkeypatch.setattr(db, "sqlite3", falso)
     path = tmp_path / "faros.db"
-    monkeypatch.undo()                    # la base v10 se prepara con el sqlite3 de verdad
+    monkeypatch.undo()  # la base v10 se prepara con el sqlite3 de verdad
     _v10(path)
     monkeypatch.setattr(db, "sqlite3", falso)
     with pytest.raises(db.BackupFallido, match="disco lleno"):
         db.connect(path)
-    os.remove(path)                       # en Windows falla si la conexión sigue abierta
+    os.remove(path)  # en Windows falla si la conexión sigue abierta
     assert not list((tmp_path / "backups").glob("*.db"))

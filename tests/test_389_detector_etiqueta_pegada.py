@@ -10,7 +10,8 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location(
-    "buscar_etiqueta_pegada", RAIZ / "scripts" / "dev" / "buscar_etiqueta_pegada.py")
+    "buscar_etiqueta_pegada", RAIZ / "scripts" / "dev" / "buscar_etiqueta_pegada.py"
+)
 det = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(det)
 

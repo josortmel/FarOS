@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+
 from . import env as _env
 
 # Default neutro. No es "la casa": es lo que ve alguien que instala esto en
@@ -44,8 +45,8 @@ def _home() -> Path:
     """La casa, resuelta en un solo sitio (env.data_dir()). Tenia AgenticOS
     clavado y quedaba desalineada con la del daemon tras el rename."""
     from . import env as _env
-    return _env.data_dir()
 
+    return _env.data_dir()
 
 
 def _from_file() -> tuple[str, list[str], list[str]] | None:
@@ -134,9 +135,11 @@ def save(owner: str, active: set[str], suspended: set[str]) -> None:
     """Escribe roster.json de forma atómica (tmp + replace) y lo recarga."""
     path = _home() / ROSTER_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"owner": owner,
-            "agents": sorted(active | {owner}, key=str.lower),
-            "suspended": sorted(suspended - {owner}, key=str.lower)}
+    data = {
+        "owner": owner,
+        "agents": sorted(active | {owner}, key=str.lower),
+        "suspended": sorted(suspended - {owner}, key=str.lower),
+    }
     workflow = _workflow_from_file()  # #1186: la app no edita esta lista; se conserva tal cual
     if workflow:
         data["workflow_agents"] = workflow

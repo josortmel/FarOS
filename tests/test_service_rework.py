@@ -1,7 +1,10 @@
 """T2.1 (v3.1): owner mueve cualquier ticket; rework devuelve done/verified con motivo."""
+
 import pytest
 
-from faros import db, service as s, workflows as w
+from faros import db
+from faros import service as s
+from faros import workflows as w
 from faros.service import TicketError
 
 
@@ -13,8 +16,7 @@ def conn():
 
 
 def _peer_ticket(conn, owner="carol"):
-    t = s.propose_ticket(conn, "owner", "tarea de carol", owner=owner, verification_level="peer",
-                         auto_accept=True)
+    t = s.propose_ticket(conn, "owner", "tarea de carol", owner=owner, verification_level="peer", auto_accept=True)
     return t["ticket"]["id"] if "ticket" in t else t["id"]
 
 
@@ -35,8 +37,9 @@ def test_owner_can_start_any_ticket(conn):
 def test_other_agent_cannot_start_foreign_ticket(conn):
     # #367 (Pepe, salida A): con verificación peer SÍ puede (quien lo ejecuta lo arranca y
     # lo completa; sella un tercero). La prohibición sigue para los de verificación self.
-    t = s.propose_ticket(conn, "owner", "tarea de carol", owner="carol", verification_level="self",
-                         auto_accept=True)["ticket"]
+    t = s.propose_ticket(conn, "owner", "tarea de carol", owner="carol", verification_level="self", auto_accept=True)[
+        "ticket"
+    ]
     with pytest.raises(TicketError, match="solo puede hacerlo el owner"):
         s.start_ticket(conn, "bob", t["id"])
 
@@ -92,11 +95,17 @@ def test_rework_illegal_from_open_states_and_recurrentes(conn):
 
 
 def test_rework_verified_fix_reopens_finding_as_dispatched(conn):
-    plan = {"workflow": {"name": "wf", "kind": "construccion", "spec_path": "docs/SPEC.md",
-                         "project": "Demo", "coordinator": "alice"},
-            "phases": ["core"],
-            "tasks": [{"key": "T1", "phase": "core", "title": "x", "criterio": "y",
-                       "verification_level": "peer"}]}
+    plan = {
+        "workflow": {
+            "name": "wf",
+            "kind": "construccion",
+            "spec_path": "docs/SPEC.md",
+            "project": "Demo",
+            "coordinator": "alice",
+        },
+        "phases": ["core"],
+        "tasks": [{"key": "T1", "phase": "core", "title": "x", "criterio": "y", "verification_level": "peer"}],
+    }
     wf = w.import_plan(conn, "alice", plan)
     t1 = wf["tickets_by_phase"]["core"][0]["id"]
     s.start_ticket(conn, "code", t1)
@@ -118,7 +127,9 @@ def test_manual_ticket_without_time_is_left_for_its_owner_to_place(conn):
     La tarea nace «por ubicar» y le sale a su DUEÑO, que es quien la coloca."""
     t = s.propose_ticket(conn, "owner", "sin hora", owner="alice", auto_accept=True)["ticket"]
     assert t["scheduled_at"] is None and t["due_at"] is None
-    r = s.propose_ticket(conn, "owner", "recurrente sin hora", owner="alice", cadence_days=7, auto_accept=True)["ticket"]
+    r = s.propose_ticket(conn, "owner", "recurrente sin hora", owner="alice", cadence_days=7, auto_accept=True)[
+        "ticket"
+    ]
     assert r["preferred_time"] is None
     mine = {x["id"] for x in s.my_board(conn, "alice")["por_ubicar"]}
     assert {t["id"], r["id"]} <= mine

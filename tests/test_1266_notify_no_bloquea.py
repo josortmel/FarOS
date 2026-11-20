@@ -53,9 +53,9 @@ def test_dentro_del_bucle_no_para_al_daemon(conn, monkeypatch):
         return tarda, latidos
 
     tarda, latidos = asyncio.run(daemon())
-    assert tarda < 0.3                                   # antes: 2 s con el bucle parado
+    assert tarda < 0.3  # antes: 2 s con el bucle parado
     assert max(b - a for a, b in zip(latidos, latidos[1:])) < 0.5
-    assert lento.hecho.wait(5)                           # y el mensaje sale igual
+    assert lento.hecho.wait(5)  # y el mensaje sale igual
 
 
 def test_fuera_de_un_bucle_espera_la_respuesta(conn, monkeypatch):
@@ -73,6 +73,7 @@ def test_fuera_de_un_bucle_espera_la_respuesta(conn, monkeypatch):
 def test_el_error_de_red_no_escribe_la_url(conn, monkeypatch, caplog):
     def revienta(url, **kw):
         raise httpx.ConnectError(f"no llego a {url}")
+
     monkeypatch.setattr(notify.httpx, "post", revienta)
     with caplog.at_level(logging.INFO, logger="faros.notify"):
         assert notify.telegram(conn, "hola") is False

@@ -21,8 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from faros.roster import HOUSE_OWNER  # noqa: E402  (tras ajustar sys.path)
 
 DEFAULT_URL = os.environ.get("AGENTICOS_URL", "http://127.0.0.1:8756")
-TOKEN_FILE = Path(os.environ.get("AGENTICOS_HOME")
-                  or Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "AgenticOS") / "token"
+TOKEN_FILE = (
+    Path(os.environ.get("AGENTICOS_HOME") or Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "AgenticOS")
+    / "token"
+)
 
 
 def main():
@@ -43,9 +45,12 @@ def main():
                 repo_root = str(cand)
                 break
     token = TOKEN_FILE.read_text(encoding="utf-8").strip()
-    r = httpx.post(f"{args.url}/api/workflows/import",
-                   headers={"X-AgenticOS-Token": token},
-                   json={"agent": args.agent, "plan": plan, "repo_root": repo_root}, timeout=60)
+    r = httpx.post(
+        f"{args.url}/api/workflows/import",
+        headers={"X-AgenticOS-Token": token},
+        json={"agent": args.agent, "plan": plan, "repo_root": repo_root},
+        timeout=60,
+    )
     body = r.json()
     if r.status_code >= 400:
         print(f"ERROR {r.status_code}: {body.get('reason', body)}", file=sys.stderr)

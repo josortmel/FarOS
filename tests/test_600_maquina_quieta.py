@@ -6,7 +6,8 @@ import asyncio
 
 import pytest
 
-from faros import db, service as s, settings, verifier
+from faros import db, settings, verifier
+from faros import service as s
 
 
 @pytest.fixture
@@ -17,8 +18,7 @@ def conn():
 
 
 def _hecho(conn):
-    t = s.propose_ticket(conn, "owner", "Resumen", auto_accept=True,
-                         verification_level="auto")["ticket"]
+    t = s.propose_ticket(conn, "owner", "Resumen", auto_accept=True, verification_level="auto")["ticket"]
     s.complete_ticket(conn, "owner", t["id"], "command_output", "resumen con 3 correos")
     return t["id"]
 
@@ -27,6 +27,7 @@ def _juez_que_cuenta(veces):
     async def judge(prompt, model=None, env=None, read_dirs=None, read_files=None):
         veces["n"] += 1
         return {"verdict": "pass", "reason": "leído en el fichero"}
+
     return judge
 
 

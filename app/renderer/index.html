@@ -43,6 +43,10 @@
     </nav>
 
     <div class="topbar__actions">
+      <!-- #1320 (Pepe, 18-nov): la lupa busca en todo FarOS a la vez; Ctrl+K o «/» también la abren. ui/lupa.js -->
+      <button class="btn btn--ghost lupabtn" id="btn-lupa" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="lupa" aria-label="Buscar en FarOS" title="Buscar en todo FarOS (Ctrl+K)">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2 20 20"/></svg>
+      </button>
       <!-- T3.2: auto (sistema) → claro → oscuro; persiste en localStorage -->
       <button class="btn btn--ghost themebtn" id="btn-theme" data-theme="auto" title="Tema: sigue al sistema. Clic para cambiar" aria-label="Tema: automático">
         <span class="themebtn__dot" aria-hidden="true"></span><span id="theme-label">auto</span>

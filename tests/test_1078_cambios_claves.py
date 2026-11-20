@@ -8,7 +8,9 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from faros import api, credentials as cr, db, service as s
+from faros import api, db
+from faros import credentials as cr
+from faros import service as s
 
 SECRETO = "otra-" + "f00dfeed" * 4
 OTRO = "otra-" + "c0ffee00" * 4
@@ -61,7 +63,7 @@ def test_lo_que_no_cambia_no_deja_fila(conn):
 
 
 def test_marcar_en_uso_apunta_la_que_entra_y_la_que_sale(conn):
-    a = cr.create(conn, "alice", "DeepSeek A", "deepseek", "sk-a" * 8)          # primera de su tipo: en uso
+    a = cr.create(conn, "alice", "DeepSeek A", "deepseek", "sk-a" * 8)  # primera de su tipo: en uso
     b = cr.create(conn, "alice", "DeepSeek B", "deepseek", "sk-b" * 8)
     cr.update(conn, "bob", b["id"], {"in_use": True})
     cr.update(conn, "bob", b["id"], {"in_use": False})
@@ -79,7 +81,7 @@ def test_el_rastro_sobrevive_al_borrado_y_a_que_se_reutilice_el_id(conn):
     cr.delete(conn, "alice", c["id"])
     d = cr.create(conn, "bob", "Y", "otra", OTRO)
     assert [(n, f) for n, f, *_ in _historial(conn)] == [("X", "alta"), ("X", "borrada"), ("Y", "alta")]
-    assert d["id"] == c["id"]      # los ids se reutilizan (#1068): por eso cada fila lleva el nombre
+    assert d["id"] == c["id"]  # los ids se reutilizan (#1068): por eso cada fila lleva el nombre
 
 
 def test_los_ajustes_tambien_dejan_rastro(conn):
@@ -87,7 +89,10 @@ def test_los_ajustes_tambien_dejan_rastro(conn):
     cr.desde_ajuste(conn, "bob", "deepseek_api_key", "sk-y" * 8)
     cr.desde_ajuste(conn, "dave", "deepseek_api_key", "")
     assert [(f, a, d, by) for _, f, a, d, by in _historial(conn)] == [
-        ("alta", None, "deepseek", "bob"), ("valor", None, "cambiado", "bob"), ("en uso", "sí", "no", "dave")]
+        ("alta", None, "deepseek", "bob"),
+        ("valor", None, "cambiado", "bob"),
+        ("en uso", "sí", "no", "dave"),
+    ]
 
 
 @pytest.fixture
@@ -120,7 +125,7 @@ def test_una_base_v12_recibe_la_tabla_al_migrar_y_hace_copia_antes(tmp_path):
     c.commit()
     c.close()
     c = db.connect(str(ruta))
-    assert db.schema_version(c) == db.SCHEMA_VERSION >= 13   # >=: la v14 (#1279) va después
+    assert db.schema_version(c) == db.SCHEMA_VERSION >= 13  # >=: la v14 (#1279) va después
     assert c.execute("SELECT name FROM credentials WHERE id = ?", (k["id"],)).fetchone()["name"] == "X"
     cr.update(c, "alice", k["id"], {"name": "Y"})
     assert [r["field"] for r in cr.changes(c)] == ["nombre"]

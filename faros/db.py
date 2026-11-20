@@ -13,6 +13,7 @@ import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+
 from . import env as _env
 
 log = logging.getLogger("faros.db")
@@ -37,7 +38,7 @@ def _fichero_db(d: Path) -> Path:
     if nueva.exists():
         return nueva
     if vieja.exists():
-        return vieja      # instalacion anterior al rename: se usa la suya
+        return vieja  # instalacion anterior al rename: se usa la suya
     return nueva
 
 
@@ -151,7 +152,8 @@ CREATE TABLE IF NOT EXISTS library_items (
 );
 """
 
-SCHEMA = """
+SCHEMA = (
+    """
 CREATE TABLE IF NOT EXISTS projects (
   id         INTEGER PRIMARY KEY,
   name       TEXT NOT NULL UNIQUE,
@@ -161,7 +163,9 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at TEXT NOT NULL
 );
 
-""" + WORKFLOWS_V4 + """
+"""
+    + WORKFLOWS_V4
+    + """
 CREATE TABLE IF NOT EXISTS mcp_servers (
   id         INTEGER PRIMARY KEY,
   name       TEXT NOT NULL UNIQUE,
@@ -229,7 +233,10 @@ CREATE TABLE IF NOT EXISTS ticket_history (
   note       TEXT,
   provenance TEXT
 );
-""" + AGENT_JOBS_V3 + RUNS_V3 + """
+"""
+    + AGENT_JOBS_V3
+    + RUNS_V3
+    + """
 CREATE TABLE IF NOT EXISTS ticket_deps (
   ticket_id  INTEGER NOT NULL REFERENCES tickets(id),
   depends_on INTEGER NOT NULL REFERENCES tickets(id),
@@ -404,7 +411,9 @@ CREATE TRIGGER IF NOT EXISTS decisions_fts2_au AFTER UPDATE OF title, context, d
 END;
 
 -- v11 (#850, Biblioteca): Spec v2 §1. v14 (#1279): la clase «informe».
-""" + LIBRARY_ITEMS_V14 + """
+"""
+    + LIBRARY_ITEMS_V14
+    + """
 CREATE TABLE IF NOT EXISTS library_links (
   item_id INTEGER NOT NULL REFERENCES library_items(id) ON DELETE CASCADE,
   ticket_id INTEGER,
@@ -413,6 +422,7 @@ CREATE TABLE IF NOT EXISTS library_links (
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS library_fts USING fts5(titulo, extracto);
 """
+)
 
 
 INDEXES = """
@@ -462,8 +472,7 @@ def _version_en_disco(path: Path) -> int | None:
         c.close()
 
 
-def connect(db_path: str | os.PathLike | None = None, *,
-            house_migration_ok: bool = False) -> sqlite3.Connection:
+def connect(db_path: str | os.PathLike | None = None, *, house_migration_ok: bool = False) -> sqlite3.Connection:
     """Abre (creando si hace falta) la base y garantiza el esquema v3.
     #157: la base de LA CASA solo la migra el daemon (house_migration_ok=True). El 2-sep una
     verificación la abrió con el db.py nuevo y la migró en vivo bajo el daemon viejo. El orden
@@ -476,7 +485,8 @@ def connect(db_path: str | os.PathLike | None = None, *,
             raise HouseMigrationRefused(
                 f"{path} es la base de la casa y está en el esquema {v}; este código es del "
                 f"{SCHEMA_VERSION}. Solo la migra el daemon al arrancar. Para probar, usa una "
-                "copia (sqlite3 backup API), no la base viva.")
+                "copia (sqlite3 backup API), no la base viva."
+            )
     if not in_memory:
         path.parent.mkdir(parents=True, exist_ok=True)
     # v11 (#866): la versión en disco se lee ANTES de abrir en escritura (sqlite3.connect crea el
@@ -561,7 +571,7 @@ _ADDED_COLUMNS = {
     # v8 (#499): la clave se puede entregar bajo demanda (solo la marca el dueño de la casa)
     "credentials": {
         "deliverable": "INTEGER NOT NULL DEFAULT 0",
-    },    # v9 (#657): desde qué superficie se decidió (desktop | mobile | mcp); vacía = no lo dijo, NUNCA escritorio
+    },  # v9 (#657): desde qué superficie se decidió (desktop | mobile | mcp); vacía = no lo dijo, NUNCA escritorio
     "decision_history": {
         "surface": "TEXT",
     },
@@ -628,7 +638,8 @@ def backup_before_migration(conn, path: Path) -> Path | None:
             pass
         raise BackupFallido(
             f"No se pudo hacer la copia previa a la migración en {dest}: {e}. "
-            f"La migración NO se ha aplicado; la base {path} sigue como estaba.") from e
+            f"La migración NO se ha aplicado; la base {path} sigue como estaba."
+        ) from e
     return dest
 
 
@@ -638,14 +649,17 @@ def _rebuild(conn, table: str, create_sql: str) -> None:
     vieja con FK on dispararía el borrado implícito de sus hijos.
     #471 (pasos 3 y 8 de sqlite.org/lang_altertable.html): el DROP se lleva los
     índices y triggers de la tabla; se apuntan antes y se recrean después."""
-    extras = [r["sql"] for r in conn.execute(
-        "SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index', 'trigger')"
-        " AND sql IS NOT NULL", (table,))]
+    extras = [
+        r["sql"]
+        for r in conn.execute(
+            "SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL",
+            (table,),
+        )
+    ]
     old_cols = list(_columns(conn, table))
     tmp = f"{table}__v3"
     conn.execute(f"DROP TABLE IF EXISTS {tmp}")
-    conn.execute(create_sql.replace(f"CREATE TABLE IF NOT EXISTS {table} ",
-                                    f"CREATE TABLE {tmp} ", 1))
+    conn.execute(create_sql.replace(f"CREATE TABLE IF NOT EXISTS {table} ", f"CREATE TABLE {tmp} ", 1))
     new_cols = list(_columns(conn, tmp))
     common = [c for c in old_cols if c in new_cols]
     cols_sql = ", ".join(common)
@@ -663,15 +677,18 @@ def _v10_rechazadas_sin_fecha(conn) -> None:
     now = datetime.now().isoformat(timespec="seconds")
     filas = conn.execute(
         "SELECT id, scheduled_at, duration_min, preferred_time FROM tickets WHERE status='rejected'"
-        " AND (scheduled_at IS NOT NULL OR duration_min IS NOT NULL OR preferred_time IS NOT NULL)").fetchall()
+        " AND (scheduled_at IS NOT NULL OR duration_min IS NOT NULL OR preferred_time IS NOT NULL)"
+    ).fetchall()
     for t in filas:
-        fecha = ", ".join(f"{k}={t[k]}" for k in ("scheduled_at", "duration_min", "preferred_time")
-                          if t[k] is not None)
-        conn.execute("INSERT INTO ticket_history (ticket_id, old_status, new_status, changed_by, changed_at, note)"
-                     " VALUES (?, 'rejected', 'rejected', 'faros', ?, ?)",
-                     (t["id"], now, f"#666, esquema 10: fecha vaciada (estaba rechazada con {fecha})"))
-        conn.execute("UPDATE tickets SET scheduled_at=NULL, duration_min=NULL, preferred_time=NULL"
-                     " WHERE id=?", (t["id"],))
+        fecha = ", ".join(f"{k}={t[k]}" for k in ("scheduled_at", "duration_min", "preferred_time") if t[k] is not None)
+        conn.execute(
+            "INSERT INTO ticket_history (ticket_id, old_status, new_status, changed_by, changed_at, note)"
+            " VALUES (?, 'rejected', 'rejected', 'faros', ?, ?)",
+            (t["id"], now, f"#666, esquema 10: fecha vaciada (estaba rechazada con {fecha})"),
+        )
+        conn.execute(
+            "UPDATE tickets SET scheduled_at=NULL, duration_min=NULL, preferred_time=NULL WHERE id=?", (t["id"],)
+        )
 
 
 def _v15_decisions_fts2(conn) -> None:
@@ -681,8 +698,10 @@ def _v15_decisions_fts2(conn) -> None:
     n = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
     if n_fts != n:
         conn.execute("DELETE FROM decisions_fts2")
-        conn.execute("INSERT INTO decisions_fts2 (rowid, title, context, decision, rationale) SELECT id, title,"
-                     " context, coalesce(decision, ''), coalesce(rationale, '') FROM decisions")
+        conn.execute(
+            "INSERT INTO decisions_fts2 (rowid, title, context, decision, rationale) SELECT id, title,"
+            " context, coalesce(decision, ''), coalesce(rationale, '') FROM decisions"
+        )
 
 
 def _v17_sin_fts_vieja(conn) -> None:
@@ -698,19 +717,22 @@ def _v6_claves(conn) -> None:
     marcadas en uso. Solo AÑADE filas (no toca los ajustes: un daemon anterior sigue
     leyéndolos igual). Idempotente: un tipo que ya tiene marcada no se toca."""
     import json
-    for kind, key, nombre in (("deepseek", "deepseek_api_key", "DeepSeek"),
-                              ("anthropic", "anthropic_api_key", "Anthropic"),
-                              ("telegram", "telegram_token", "Telegram")):
+
+    for kind, key, nombre in (
+        ("deepseek", "deepseek_api_key", "DeepSeek"),
+        ("anthropic", "anthropic_api_key", "Anthropic"),
+        ("telegram", "telegram_token", "Telegram"),
+    ):
         r = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         value = json.loads(r["value"]) if r and r["value"] is not None else ""
-        if not value or conn.execute("SELECT 1 FROM credentials WHERE kind = ? AND in_use = 1",
-                                     (kind,)).fetchone():
+        if not value or conn.execute("SELECT 1 FROM credentials WHERE kind = ? AND in_use = 1", (kind,)).fetchone():
             continue
         now = datetime.now().isoformat(timespec="seconds")
         conn.execute(
             "INSERT INTO credentials (name, kind, value, origin, in_use, created_by, created_at, updated_at)"
             " VALUES (?, ?, ?, 'estaba en los ajustes (esquema 6)', 1, 'faros', ?, ?)",
-            (nombre, kind, value, now, now))
+            (nombre, kind, value, now, now),
+        )
 
 
 def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = False) -> None:
@@ -721,8 +743,10 @@ def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = Fa
             _v10_rechazadas_sin_fecha(conn)
             _v15_decisions_fts2(conn)
             _v17_sin_fts_vieja(conn)
-            conn.execute("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
-                         (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")))
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")),
+            )
             conn.commit()
         return
     if path is not None and not copia_hecha:
@@ -742,28 +766,33 @@ def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = Fa
                 "UPDATE agent_jobs SET name = COALESCE("
                 " (SELECT title FROM tickets WHERE tickets.id = agent_jobs.ticket_id), ''),"
                 " status = CASE WHEN enabled = 1 THEN 'active' ELSE 'paused' END"
-                " WHERE name = ''")
+                " WHERE name = ''"
+            )
         if "archived_at" not in _columns(conn, "workflows"):
             # v4: cancelled/archived en el CHECK, archived_at, repo_root.
             _rebuild(conn, "workflows", WORKFLOWS_V4)
             _fill_repo_root(conn)
         if "verdict" not in _columns(conn, "runs") or _runs_sin_incierto(conn):
             _rebuild(conn, "runs", RUNS_V3)
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_running_per_job"
-                         " ON runs(job_id) WHERE status = 'running'")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS one_running_per_job ON runs(job_id) WHERE status = 'running'"
+            )
         if _biblioteca_sin_informe(conn):
             _rebuild(conn, "library_items", LIBRARY_ITEMS_V14)
         _v6_claves(conn)
         _v10_rechazadas_sin_fecha(conn)
         _v15_decisions_fts2(conn)
         _v17_sin_fts_vieja(conn)
-        conn.execute("INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
-                     (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")))
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
+            (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")),
+        )
         # Integridad referencial ANTES del COMMIT (#471, paso 10): si falla, ROLLBACK.
         bad = conn.execute("PRAGMA foreign_key_check").fetchall()
         if bad:
-            raise RuntimeError(f"migración v3: foreign_key_check devolvió {len(bad)} fila(s): "
-                               f"{[tuple(b) for b in bad[:5]]}")
+            raise RuntimeError(
+                f"migración v3: foreign_key_check devolvió {len(bad)} fila(s): {[tuple(b) for b in bad[:5]]}"
+            )
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

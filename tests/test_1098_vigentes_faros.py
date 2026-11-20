@@ -4,7 +4,8 @@ RETIRADAS, y si no hay nada relevante lo dice en vez de rellenar."""
 
 import pytest
 
-from faros import db, decisions as dec
+from faros import db
+from faros import decisions as dec
 from faros.service import HOUSE_OWNER
 
 OPTS = [{"label": "sí", "text": "sí, hacerlo"}, {"label": "no", "text": "no hacerlo"}]
@@ -33,11 +34,10 @@ def _tramos(conn, tema):
     return [r["id"] for r in dec._candidatas_faros(conn, tema, None, 30)]
 
 
-
 def test_la_respuesta_cuenta(conn):
     d = _decidida(conn, "Modelo del chat", respuesta="gpt-5.4-nano para el prototipo")
     _decidida(conn, "Otra cosa del chat", respuesta="sí")
-    assert _tramos(conn, "nano del chat")[0] == d   # arreglo: la de una palabra puede venir detrás
+    assert _tramos(conn, "nano del chat")[0] == d  # arreglo: la de una palabra puede venir detrás
 
 
 def test_el_motivo_cuenta(conn):
@@ -49,7 +49,7 @@ def test_todas_las_palabras_antes_que_alguna(conn):
     solo_una = _decidida(conn, "Claves de la tele")
     las_dos = _decidida(conn, "Claves que se guardan en la casa")
     ids = _tramos(conn, "claves en la casa")
-    assert ids[0] == las_dos and ids.index(solo_una) > ids.index(las_dos)   # arreglo: la mitad completa detrás
+    assert ids[0] == las_dos and ids.index(solo_una) > ids.index(las_dos)  # arreglo: la mitad completa detrás
 
 
 def test_las_palabras_vacias_no_casan_con_todo(conn):
@@ -94,16 +94,22 @@ def test_la_casa_v16_pierde_la_fts_vieja_temporal(tmp_path):
     c = db.connect(str(ruta))
     d = _decidida(c, "Modelo del chat")
     c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts USING fts5(title, context)")
-    c.execute("CREATE TRIGGER IF NOT EXISTS decisions_fts_ai AFTER INSERT ON decisions BEGIN"
-              " INSERT INTO decisions_fts (rowid, title, context) VALUES (new.id, new.title, new.context); END")
+    c.execute(
+        "CREATE TRIGGER IF NOT EXISTS decisions_fts_ai AFTER INSERT ON decisions BEGIN"
+        " INSERT INTO decisions_fts (rowid, title, context) VALUES (new.id, new.title, new.context); END"
+    )
     c.execute("DELETE FROM schema_version")
     c.execute("INSERT INTO schema_version (version, applied_at) VALUES (16, '2026-11-18T10:46:00')")
     c.commit()
     c.close()
     c = db.connect(str(ruta))
     assert db.schema_version(c) == 17
-    assert c.execute("SELECT name FROM sqlite_master WHERE name IN"
-                     " ('decisions_fts', 'decisions_fts_ai', 'decisions_fts_au')").fetchall() == []
+    assert (
+        c.execute(
+            "SELECT name FROM sqlite_master WHERE name IN ('decisions_fts', 'decisions_fts_ai', 'decisions_fts_au')"
+        ).fetchall()
+        == []
+    )
     assert _ids(dec.vigentes_faros(c, "modelo chat")) == [d]
     nueva = _decidida(c, "Otra del chat")
     assert nueva in _ids(dec.vigentes_faros(c, "chat"))
@@ -114,8 +120,8 @@ def test_arreglo_el_or_completa_lo_que_deja_el_and(conn):
     """#1098 (arreglo): si el AND trae pocas, el tramo OR completa hasta el tope con las que tienen al menos la
     mitad de las palabras; antes solo entraba con el AND vacío y una fila con 3 de 4 palabras se perdía."""
     todas = _decidida(conn, "Claves de FarOS: quién las pide y dónde se guardan")
-    casi = _decidida(conn, "Claves bajo demanda: quién las pide por MCP")      # 3 de 4: claves, quién, pide
-    poca = _decidida(conn, "Claves de la tele")                                # 1 de 4: no llega a la mitad
+    casi = _decidida(conn, "Claves bajo demanda: quién las pide por MCP")  # 3 de 4: claves, quién, pide
+    poca = _decidida(conn, "Claves de la tele")  # 1 de 4: no llega a la mitad
     ids = _tramos(conn, "claves quién pide guardan")
     assert ids[0] == todas and casi in ids and poca not in ids
 

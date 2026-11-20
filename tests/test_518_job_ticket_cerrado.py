@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from faros import db, service as s, jobs
+from faros import db, jobs
+from faros import service as s
 from faros.scheduler import due_jobs, skipped_jobs
 
 
@@ -17,17 +18,21 @@ def conn():
 
 
 def _job_colgado_de_tarea(conn):
-    t = s.propose_ticket(conn, "owner", "Racha de la revista", auto_accept=True,
-                         verification_level="peer")["ticket"]
-    j = jobs.create_job(conn, agent="owner", name="Revista diaria", prompt="haz la revista",
-                        schedule={"type": "recurring", "every_days": 1, "at": "11:00"},
-                        ticket_id=t["id"])
+    t = s.propose_ticket(conn, "owner", "Racha de la revista", auto_accept=True, verification_level="peer")["ticket"]
+    j = jobs.create_job(
+        conn,
+        agent="owner",
+        name="Revista diaria",
+        prompt="haz la revista",
+        schedule={"type": "recurring", "every_days": 1, "at": "11:00"},
+        ticket_id=t["id"],
+    )
     return t, j
 
 
 def test_get_job_dice_que_no_se_dispara_si_su_tarea_esta_cerrada(conn):
     t, j = _job_colgado_de_tarea(conn)
-    assert jobs.get_job(conn, j["id"])["next_fire"] is not None          # control: abierta, anuncia
+    assert jobs.get_job(conn, j["id"])["next_fire"] is not None  # control: abierta, anuncia
     s.reject_ticket(conn, "owner", t["id"], "ya no hace falta")
     d = jobs.get_job(conn, j["id"])
     assert d["next_fire"] is None
@@ -63,6 +68,7 @@ def test_desenlazar_el_job_lo_devuelve_al_calendario(conn):
 
 def test_mcp_update_job_clear_ticket_id_manda_null(monkeypatch):
     from faros import mcp_server as m
+
     sent = {}
     monkeypatch.setattr(m, "_call", lambda method, path, **kw: sent.update(method=method, path=path, **kw) or {"ok": 1})
     m.update_job("carol", 13, clear=["ticket_id"])

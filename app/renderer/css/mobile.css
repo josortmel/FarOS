@@ -291,6 +291,23 @@
   /* #499: en el móvil la hora va encima y el motivo sin sangría */
   .entrega time { width: auto; flex-basis: 100%; }
   .entrega__motivo { padding-left: 0; }
+
+  /* ---------- #1320 La lupa: pantalla completa, el campo a 16 px (iOS no hace zoom) ---------- */
+  .topbar__actions #btn-lupa { display: none; }   /* tiene su botón en la cabecera */
+  .lupa { padding: 0; align-items: stretch; }
+  .lupa__box {
+    width: 100%; max-height: none; height: 100%; border-radius: 0; box-shadow: none;
+    padding-top: env(safe-area-inset-top);
+  }
+  .lupa__field { padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4); }
+  .lupa__input { font-size: 16px; }
+  .lupa__close {
+    display: block; min-height: 44px; padding: 0 var(--sp-3); border: 0; background: none;
+    font: inherit; font-size: var(--text-body); font-weight: 500; color: var(--color-orange-deep);
+  }
+  .lupa__list { flex: 1; padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom)); }
+  .lupa__row { grid-template-columns: 3.4rem minmax(0, 1fr); }
+  .lupa__keys { display: none; }
 }
 
 /* Tableta táctil (iPad: 820 × 1180 en vertical, 1180 × 820 en horizontal; FarOS #773, 27-oct).

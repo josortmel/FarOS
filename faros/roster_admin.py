@@ -22,8 +22,7 @@ from __future__ import annotations
 
 from . import env as _env
 from . import roster
-from .service import (CLOSED_STATUSES, SYSTEM_AGENTS, WORKFLOW_AGENTS, TicketError,
-                      _append_history)
+from .service import CLOSED_STATUSES, SYSTEM_AGENTS, WORKFLOW_AGENTS, TicketError, _append_history
 
 MAX_LEN = 40
 RESERVED = {n.lower() for n in WORKFLOW_AGENTS | SYSTEM_AGENTS}
@@ -32,14 +31,15 @@ RESERVED = {n.lower() for n in WORKFLOW_AGENTS | SYSTEM_AGENTS}
 def _reserved() -> set[str]:
     """#1186: los agentes de workflow de roster.json también son nombres reservados."""
     return RESERVED | {n.lower() for n in roster.WORKFLOW_EXTRA}
+
+
 _ERROR = {403: "forbidden", 404: "not_found", 409: "conflict", 422: "invalid_request"}
 
 
 class RosterError(TicketError):
     """TicketError con estado HTTP propio y campos extra en el cuerpo (open_tickets)."""
 
-    def __init__(self, message: str, status: int, field: str | None = None,
-                 code: str | None = None, **extra):
+    def __init__(self, message: str, status: int, field: str | None = None, code: str | None = None, **extra):
         super().__init__(message, field=field, code=code)
         self.status = status
         self.error = _ERROR.get(status, "invalid_request")
@@ -54,19 +54,21 @@ def _counts(conn, name: str) -> tuple[int, int]:
     closed = tuple(CLOSED_STATUSES)
     row = conn.execute(
         f"SELECT COUNT(*) AS total, SUM(status NOT IN ({','.join('?' * len(closed))})) AS open"
-        " FROM tickets WHERE owner=?", (*closed, name)).fetchone()
+        " FROM tickets WHERE owner=?",
+        (*closed, name),
+    ).fetchone()
     return int(row["open"] or 0), int(row["total"] or 0)
 
 
 def listing(conn) -> dict:
-    out = {"owner": roster.HOUSE_OWNER, "source": roster.SOURCE,
-           "editable": roster.SOURCE != "env", "agents": []}
+    out = {"owner": roster.HOUSE_OWNER, "source": roster.SOURCE, "editable": roster.SOURCE != "env", "agents": []}
     if roster.SOURCE == "env":
         out["env_var"] = _env.which("AGENTS")
     for name in sorted(_all(), key=str.lower):
         open_n, total = _counts(conn, name)
-        out["agents"].append({"name": name, "suspended": name in roster.SUSPENDED,
-                              "open_tickets": open_n, "total_tickets": total})
+        out["agents"].append(
+            {"name": name, "suspended": name in roster.SUSPENDED, "open_tickets": open_n, "total_tickets": total}
+        )
     return out
 
 
@@ -81,11 +83,11 @@ def _clean(name) -> str:
     if not n:
         raise RosterError("el nombre no puede estar vacío", 422, field="name", code="roster.name_empty")
     if len(n) > MAX_LEN:
-        raise RosterError(f"el nombre no puede pasar de {MAX_LEN} caracteres", 422,
-                          field="name", code="roster.name_too_long")
+        raise RosterError(
+            f"el nombre no puede pasar de {MAX_LEN} caracteres", 422, field="name", code="roster.name_too_long"
+        )
     if n.lower() in _reserved():
-        raise RosterError(f"«{n}» es un nombre reservado del sistema", 422,
-                          field="name", code="roster.name_reserved")
+        raise RosterError(f"«{n}» es un nombre reservado del sistema", 422, field="name", code="roster.name_reserved")
     return n
 
 
@@ -133,8 +135,9 @@ def rename(conn, old: str, new) -> dict:
         return {"agent": n, "moved": 0}
     rows = conn.execute("SELECT id, status FROM tickets WHERE owner=?", (old,)).fetchall()
     for r in rows:
-        _append_history(conn, r["id"], r["status"], r["status"], roster.HOUSE_OWNER,
-                        f"roster: dueño {old} → {n} (renombrado)")
+        _append_history(
+            conn, r["id"], r["status"], r["status"], roster.HOUSE_OWNER, f"roster: dueño {old} → {n} (renombrado)"
+        )
     conn.execute("UPDATE tickets SET owner=? WHERE owner=?", (n, old))
     conn.execute("UPDATE workflows SET coordinator=? WHERE coordinator=?", (n, old))
     active, sus = set(roster.AGENTS), set(roster.SUSPENDED)
@@ -159,18 +162,29 @@ def set_suspended(conn, name: str, suspended: bool, reassign_to: str | None = No
     closed = tuple(CLOSED_STATUSES)
     rows = conn.execute(
         f"SELECT id, status FROM tickets WHERE owner=? AND status NOT IN ({','.join('?' * len(closed))})",
-        (name, *closed)).fetchall()
+        (name, *closed),
+    ).fetchall()
     if rows and not reassign_to:
         n = len(rows)
-        raise RosterError(f"«{name}» tiene {n} tarea{'s' if n != 1 else ''} abierta{'s' if n != 1 else ''}:"
-                          " di a quién pasan",
-                          409, code="roster.open_tickets", open_tickets=len(rows))
+        raise RosterError(
+            f"«{name}» tiene {n} tarea{'s' if n != 1 else ''} abierta{'s' if n != 1 else ''}: di a quién pasan",
+            409,
+            code="roster.open_tickets",
+            open_tickets=len(rows),
+        )
     if reassign_to is not None and (reassign_to == name or reassign_to not in roster.AGENTS):
-        raise RosterError("reassign_to tiene que ser otro agente activo", 422,
-                          field="reassign_to", code="roster.bad_reassign")
+        raise RosterError(
+            "reassign_to tiene que ser otro agente activo", 422, field="reassign_to", code="roster.bad_reassign"
+        )
     for r in rows:
-        _append_history(conn, r["id"], r["status"], r["status"], roster.HOUSE_OWNER,
-                        f"roster: dueño {name} → {reassign_to} ({name} suspendido)")
+        _append_history(
+            conn,
+            r["id"],
+            r["status"],
+            r["status"],
+            roster.HOUSE_OWNER,
+            f"roster: dueño {name} → {reassign_to} ({name} suspendido)",
+        )
         conn.execute("UPDATE tickets SET owner=? WHERE id=?", (reassign_to, r["id"]))
     active.discard(name)
     sus.add(name)
@@ -184,7 +198,8 @@ def delete(conn, name: str) -> dict:
     _existing(name)
     _, total = _counts(conn, name)
     if total:
-        raise RosterError(f"«{name}» tiene tareas: suspéndelo en vez de borrarlo", 409,
-                          code="roster.has_tickets", total_tickets=total)
+        raise RosterError(
+            f"«{name}» tiene tareas: suspéndelo en vez de borrarlo", 409, code="roster.has_tickets", total_tickets=total
+        )
     _commit(conn, roster.AGENTS - {name}, roster.SUSPENDED - {name})
     return {"agent": name, "removed": True, "reassigned": 0}

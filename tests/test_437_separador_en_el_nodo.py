@@ -18,7 +18,8 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location(
-    "buscar_etiqueta_pegada", RAIZ / "scripts" / "dev" / "buscar_etiqueta_pegada.py")
+    "buscar_etiqueta_pegada", RAIZ / "scripts" / "dev" / "buscar_etiqueta_pegada.py"
+)
 det = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(det)
 
@@ -46,7 +47,7 @@ def test_437_un_dato_condicional_no_es_un_hallazgo():
 
 def test_437_la_ficha_del_plan_pasa_cada_etiqueta_por_tr():
     src = io.open(RAIZ / "app" / "renderer" / "js" / "ui" / "panel.js", encoding="utf-8").read()
-    ficha = src[src.index("function renderPlanSections"):src.index(".join(' · ')")]
+    ficha = src[src.index("function renderPlanSections") : src.index(".join(' · ')")]
     etiquetas = re.findall(r"\$\{tr\('([^']+)'\)\} <b>", ficha)
     assert etiquetas == ["fase", "tamaño", "sugerido", "verificación"]
     assert not re.search(r"`[a-zñáéíóú]+ <b>", ficha), "queda una etiqueta sin tr() en la ficha"

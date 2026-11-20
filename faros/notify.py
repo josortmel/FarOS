@@ -53,13 +53,14 @@ def _mandar(token: str, chat_id: str, text: str) -> bool:
             return True
         log.warning("telegram HTTP %d: %s", r.status_code, r.text[:200])
         return False
-    except Exception as e:   # solo el tipo: el texto de una excepción de httpx puede llevar la URL, y la URL el token
+    except Exception as e:  # solo el tipo: el texto de una excepción de httpx puede llevar la URL, y la URL el token
         log.warning("telegram send failed (non-fatal): %s", type(e).__name__)
         return False
 
 
-def on_run_failed(conn: sqlite3.Connection, job_name: str, run_id: int,
-                  status: str, summary: str | None = None) -> bool:
+def on_run_failed(
+    conn: sqlite3.Connection, job_name: str, run_id: int, status: str, summary: str | None = None
+) -> bool:
     """Called by jobs.finish_run when status is error/timeout/cancelled."""
     lines = [
         f"⚠️ FarOS — run #{run_id} de «{job_name}» terminó {status}.",
@@ -69,8 +70,7 @@ def on_run_failed(conn: sqlite3.Connection, job_name: str, run_id: int,
     return telegram(conn, "\n".join(lines))
 
 
-def on_verdict_fail(conn: sqlite3.Connection, job_name: str, run_id: int,
-                    reason: str | None = None) -> bool:
+def on_verdict_fail(conn: sqlite3.Connection, job_name: str, run_id: int, reason: str | None = None) -> bool:
     """Called by jobs.set_verdict when verdict is fail."""
     lines = [
         f"❌ FarOS — run #{run_id} de «{job_name}» no pasó la verificación.",

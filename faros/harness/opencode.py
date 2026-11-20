@@ -16,19 +16,21 @@ import os
 import shutil
 import sqlite3
 import subprocess
-
-from ..procutil import run_hidden
 from pathlib import Path
 
-from .base import HarnessAdapter, Capabilities, ModelInfo, RunResult
+from ..procutil import run_hidden
+from .base import Capabilities, HarnessAdapter, ModelInfo, RunResult
 
-OPENCODE_DB = Path(
-    os.environ.get("LOCALAPPDATA", ""),
-    "..", ".local", "share", "opencode", "opencode.db"
-) if os.name == "nt" else Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+OPENCODE_DB = (
+    Path(os.environ.get("LOCALAPPDATA", ""), "..", ".local", "share", "opencode", "opencode.db")
+    if os.name == "nt"
+    else Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+)
 
 if os.name == "nt":
-    OPENCODE_DB = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".local" / "share" / "opencode" / "opencode.db"
+    OPENCODE_DB = (
+        Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".local" / "share" / "opencode" / "opencode.db"
+    )
 
 
 class OpenCodeAdapter(HarnessAdapter):
@@ -74,13 +76,13 @@ class OpenCodeAdapter(HarnessAdapter):
         try:
             out = run_hidden(
                 [exe, "models"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             lines = [l.strip() for l in (out.stdout or "").splitlines() if l.strip()]
             models = []
             for line in lines:
-                parts = line.split("/", 1)
-                provider = parts[0] if len(parts) == 2 else "unknown"
                 label = line
                 tier = None
                 if "free" in line:
@@ -107,9 +109,6 @@ class OpenCodeAdapter(HarnessAdapter):
         if job.get("permission_mode") == "dontAsk":
             cmd += ["--dangerously-skip-permissions"]
         return cmd
-
-    def stdin_payload(self, job: dict, prompt: str) -> bytes | None:
-        return prompt.encode("utf-8")
 
     def parse_output(self, stdout: str, exit_code: int) -> RunResult:
         events = _parse_events(stdout)
@@ -175,7 +174,9 @@ def _read_session_text(session_id: str) -> str:
         conn = sqlite3.connect(str(db_path), timeout=2)
         rows = conn.execute(
             "SELECT p.data FROM part p JOIN message m ON m.id = p.message_id"
-            " WHERE p.session_id=? ORDER BY p.time_created", (session_id,)).fetchall()
+            " WHERE p.session_id=? ORDER BY p.time_created",
+            (session_id,),
+        ).fetchall()
         conn.close()
     except sqlite3.Error:
         return ""

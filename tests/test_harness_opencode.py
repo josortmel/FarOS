@@ -1,10 +1,6 @@
 """Tests for the opencode adapter (T1.4)."""
 
-import json
-import pytest
-
 from faros.harness.opencode import OpenCodeAdapter, _parse_events
-
 
 FIXTURE_EVENTS = """{"type":"step_start","timestamp":1788349158681,"sessionID":"ses_test123","part":{"id":"prt_1","messageID":"msg_1","sessionID":"ses_test123","type":"step-start"}}
 {"type":"text","timestamp":1788349159276,"sessionID":"ses_test123","part":{"id":"prt_2","messageID":"msg_1","sessionID":"ses_test123","type":"text","text":"The capital of France is ","time":{"start":1788349159200,"end":1788349159270}}}
@@ -55,12 +51,19 @@ def test_parse_output_empty():
 def test_build_command():
     adapter = OpenCodeAdapter.__new__(OpenCodeAdapter)
     adapter.exe = "/usr/bin/opencode"
-    job = {"model": "deepseek/deepseek-v4-pro", "cwd": "/tmp/work",
-           "permission_mode": "dontAsk"}
+    job = {"model": "deepseek/deepseek-v4-pro", "cwd": "/tmp/work", "permission_mode": "dontAsk"}
     cmd = adapter.build_command(job)
-    assert cmd == ["/usr/bin/opencode", "run", "-m", "deepseek/deepseek-v4-pro",
-                   "--format", "json", "--dir", "/tmp/work",
-                   "--dangerously-skip-permissions"]
+    assert cmd == [
+        "/usr/bin/opencode",
+        "run",
+        "-m",
+        "deepseek/deepseek-v4-pro",
+        "--format",
+        "json",
+        "--dir",
+        "/tmp/work",
+        "--dangerously-skip-permissions",
+    ]
 
 
 def test_build_command_minimal():
@@ -68,8 +71,7 @@ def test_build_command_minimal():
     adapter.exe = "opencode"
     job = {"model": "opencode/mimo-v2.5-free"}
     cmd = adapter.build_command(job)
-    assert cmd == ["opencode", "run", "-m", "opencode/mimo-v2.5-free",
-                   "--format", "json"]
+    assert cmd == ["opencode", "run", "-m", "opencode/mimo-v2.5-free", "--format", "json"]
 
 
 def test_read_cost_billed():

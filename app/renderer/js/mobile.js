@@ -9,7 +9,7 @@
    ============================================================ */
 
 import { api } from './api.js';
-import { renderDecisionsPane } from './ui/decisions.js';
+import { renderDecisionsPane, resaltarPregunta } from './ui/decisions.js';
 import { toast, toastReject } from './ui/toast.js';
 import { getState } from './store.js';
 import { t as tr } from './i18n.js';
@@ -39,6 +39,7 @@ const ICON = {
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   lib: svg('<path d="M12 6.5C10 5 7.5 4.5 4 4.5v14c3.5 0 6 .5 8 2 2-1.5 4.5-2 8-2v-14c-3.5 0-6 .5-8 2zM12 6.5v14"/>'),
   more: svg('<circle cx="5.5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18.5" cy="12" r="1.3"/>'),
+  lupa: svg('<circle cx="10.5" cy="10.5" r="6.2"/><path d="M15.2 15.2 20 20"/>'),   // #1320
 };
 
 const TABS = [
@@ -71,7 +72,12 @@ function build() {
   document.addEventListener('click', e => {
     if (!e.target.closest('.topbar__actions')) { $('.topbar__actions').classList.remove('is-open'); more.setAttribute('aria-expanded', 'false'); }
   });
-  $('.topbar').append(plus, more);
+  /* #1320: la lupa, a la izquierda de «+»: abre la misma búsqueda que el escritorio, a pantalla completa */
+  const lupa = document.createElement('button');
+  lupa.className = 'mob-iconbtn mob-lupa mob-only'; lupa.type = 'button';
+  lupa.setAttribute('aria-label', tr('Buscar en FarOS')); lupa.setAttribute('aria-haspopup', 'dialog'); lupa.innerHTML = ICON.lupa;
+  lupa.addEventListener('click', e => { e.stopPropagation(); $('#btn-lupa').click(); });
+  $('.topbar').append(lupa, plus, more);
   /* #851: en el teléfono la Biblioteca vive en «Más»; en la tableta tiene su pestaña abajo */
   const lib = document.createElement('button');
   lib.className = 'btn btn--ghost mob-only'; lib.id = 'mob-lib'; lib.type = 'button'; lib.textContent = 'Biblioteca';
@@ -162,13 +168,17 @@ async function loadDecisions() {
   if (current === 'dec') renderDec();
 }
 
+let foco = null;   // #1320: la pregunta que se abrió desde la lupa
 function renderDec() {
   const pane = $('#mob-dec'); pane.innerHTML = '';
   const open = (decisions ?? []).filter(d => d.status !== 'decided');
   pane.insertAdjacentHTML('beforeend', `<div class="mob-dec__head"><h1>${tr('Preguntas')}</h1><span>${tr(`${open.length} sin contestar`)}</span></div>`);
   /* las decididas, solo las 5 últimas: en el móvil importa lo que falta */
   const done = (decisions ?? []).filter(d => d.status === 'decided').sort((a, b) => (b.decided_at ?? '').localeCompare(a.decided_at ?? '')).slice(0, 5);
-  renderDecisionsPane(pane, { wfDecisions: [...open, ...done], workflow: { name: tr('la casa') } }, {
+  const visto = (decisions ?? []).find(d => d.id === foco);
+  const lista = [...open, ...done];
+  if (visto && !lista.includes(visto)) lista.push(visto);
+  renderDecisionsPane(pane, { wfDecisions: lista, workflow: { name: tr('la casa') } }, {
     buscarVigentes: (tema, superadas) => api().decisionsVigentes(tema, superadas),   // #919
     onDecide: async (d, { option, decision, rationale, ...extra }) => {   // extra: #919
       try {
@@ -187,21 +197,37 @@ function renderDec() {
   });
 }
 
-function go(k) {
+/* la pestaña de abajo y Preguntas, sin tocar las superficies (la lupa ya las ha cambiado, #1320) */
+function marcar(k) {
   current = k;
   document.querySelectorAll('.mob-tabs button').forEach(b => b.dataset.k === k ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   const isDec = k === 'dec';
   $('#mob-dec').hidden = !isDec;
   document.body.classList.toggle('mob-dec-on', isDec);   /* las superficies del escritorio se apartan por CSS */
-  if (isDec) { renderDec(); return; }
+  $('#mob-states').hidden = k !== 'board';
+  $('#mob-lanes').hidden = k !== 'cal';
+}
+
+function go(k) {
+  marcar(k);
+  if (k === 'dec') { renderDec(); return; }
   const surface = { board: 'board', cal: 'board', wf: 'workflow', ag: 'agents', lib: 'library' }[k];
   document.querySelector(`#surface-tabs [data-surface="${surface}"]`)?.click();
   if (k === 'board' || k === 'cal') document.querySelector(`#mode-tabs [data-mode="${k === 'cal' ? 'calendar' : 'kanban'}"]`)?.click();
-  $('#mob-states').hidden = k !== 'board';
-  $('#mob-lanes').hidden = k !== 'cal';
   if (k === 'board') { syncStates(); firstUseful(); }
   if (k === 'cal') syncLanes();
 }
+
+/* #1320: lo que abre la lupa en el móvil */
+window.addEventListener('faros:superficie', e => { if (document.querySelector('.mob-tabs')) marcar(e.detail.k); });
+window.addEventListener('faros:pregunta', async e => {
+  if (!document.querySelector('.mob-tabs')) return;
+  foco = e.detail.id;
+  if (!decisions?.some(d => d.id === foco)) await loadDecisions();
+  go('dec');
+  const id = foco; foco = null;
+  requestAnimationFrame(() => resaltarPregunta($('#mob-dec'), id));
+});
 
 /* al entrar al tablero, la primera columna con algo: En curso si tiene, si no la primera llena */
 function firstUseful() {

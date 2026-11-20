@@ -72,8 +72,9 @@ select:focus-visible, textarea:focus-visible {
   /* #851: con cinco secciones, a 1440 (la ventana por defecto) la rejilla simétrica metía las
      acciones encima de la última pestaña. La columna derecha reserva su ancho (481 px en español):
      las secciones van centradas si hay sitio, a 1440 quedan 47 px a la izquierda, y no se mueven
-     al esconderse botones. Medido por sección a 1440 y 1700 en los dos idiomas. */
-  grid-template-columns: minmax(0, 1fr) auto minmax(484px, 1fr);
+     al esconderse botones. Medido por sección a 1440 y 1700 en los dos idiomas.
+     #1320: con la lupa son 530 px en español (516 en inglés): se reservan 532. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(532px, 1fr);
   align-items: center;
   gap: var(--sp-4);
   padding: var(--sp-3) var(--sp-5);
@@ -2868,3 +2869,112 @@ body.is-dragging-cal, body.is-dragging-cal .day__ev, body.is-dragging-cal .day__
   .lib[data-leyendo] .lib__bar, .lib[data-leyendo] .lib__list { display: none; }
   .lib[data-leyendo] .lib__read { display: flex; }
 }
+
+/* ================= #1320 La lupa: buscar en todo FarOS ================= */
+.lupabtn { display: inline-grid; place-items: center; padding: 0.55rem 0.7rem; }
+.lupabtn svg { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+body.lupa-on { overflow: hidden; }
+.lupa {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 12vh var(--sp-4) var(--sp-4);
+}
+.lupa[hidden] { display: none; }
+.lupa__scrim { position: absolute; inset: 0; background: oklch(18% 0.01 50 / 0.28); }
+:root[data-theme="dark"] .lupa__scrim { background: oklch(0% 0 0 / 0.5); }
+.lupa__box {
+  position: relative; width: min(40rem, 100%); max-height: min(72vh, 42rem);
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--color-card); color: var(--color-text);
+  border-radius: var(--radius-panel); box-shadow: var(--shadow-panel);
+  animation: lupa-in var(--t-med) var(--ease-out);
+}
+@keyframes lupa-in { from { opacity: 0; transform: translateY(-8px) scale(0.985); } }
+.lupa__field {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--color-rule);
+}
+.lupa__field > svg { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--color-text-mute); stroke-width: 1.9; stroke-linecap: round; }
+.lupa__input {
+  flex: 1; min-width: 0; padding: var(--sp-2) 0; border: 0; outline: 0; background: transparent;
+  font: inherit; font-size: 1.0625rem; color: var(--color-text); caret-color: var(--color-orange-deep);
+}
+.lupa__input::placeholder { color: var(--color-text-mute); }
+.lupa__input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.lupa__spin {
+  width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid var(--color-rule); border-top-color: var(--color-orange-deep);
+  opacity: 0; transition: opacity var(--t-fast) var(--ease-out);
+}
+.lupa.is-busy .lupa__spin { opacity: 1; animation: lupa-spin 0.7s linear infinite; }
+@keyframes lupa-spin { to { transform: rotate(1turn); } }
+.lupa__close { display: none; }
+.lupa__state { margin: 0; padding: var(--sp-4); font-size: var(--text-body); line-height: var(--lh-body); color: var(--color-text-soft); }
+.lupa__state[hidden] { display: none; }
+.lupa__state[data-tipo="error"] { color: var(--color-danger); }
+.lupa__list { overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-2) 0; }
+.lupa__list:empty { display: none; }
+.lupa__group + .lupa__group { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--color-rule); }
+.lupa__gh {
+  display: flex; align-items: baseline; gap: var(--sp-2); margin: 0;
+  padding: var(--sp-2) var(--sp-4) var(--sp-1);
+  font-size: var(--text-small); font-weight: 600; color: var(--color-text-soft);
+}
+.lupa__n { font-weight: 400; color: var(--color-text-mute); font-variant-numeric: tabular-nums; }
+.lupa__more { margin-left: auto; font-weight: 400; color: var(--color-text-mute); }
+.lupa__row {
+  display: grid; grid-template-columns: 4rem minmax(0, 1fr); align-items: baseline; gap: var(--sp-3);
+  width: 100%; min-height: 44px; padding: var(--sp-2) var(--sp-4);
+  border: 0; background: transparent; color: inherit; text-align: left; font: inherit; cursor: pointer;
+}
+.lupa__row[aria-selected="true"] { background: var(--color-orange-wash); }
+.lupa__id { font-family: var(--font-mono); font-size: var(--text-small); color: var(--color-text-mute); font-variant-numeric: tabular-nums; }
+.lupa__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lupa__title {
+  font-size: var(--text-body); line-height: var(--lh-snug); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.lupa__foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.lupa__meta { font-size: var(--text-small); color: var(--color-text-mute);  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lupa__st { font-size: var(--text-small); color: var(--color-text-mute); white-space: nowrap; }
+.lupa__st.is-live { color: var(--color-orange-deep); font-weight: 500; }
+.lupa mark {
+  background: transparent; color: inherit; font-weight: 600;
+  text-decoration: underline 2px var(--color-orange-deep); text-underline-offset: 3px; text-decoration-skip-ink: none;
+}
+.lupa__keys {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin: 0;
+  padding: var(--sp-2) var(--sp-4); border-top: 1px solid var(--color-rule);
+  font-size: var(--text-small); color: var(--color-text-mute);
+}
+.lupa kbd {
+  padding: 0 0.4em; border: 1px solid var(--color-rule-strong); border-radius: 4px;
+  font-family: var(--font-mono); font-size: var(--text-small); color: var(--color-text-soft); background: var(--color-bg-warm);
+}
+.lupa__keys kbd + kbd { margin-left: -0.25rem; }
+@media (prefers-reduced-motion: reduce) {
+  .lupa__box { animation: none; }
+  .lupa.is-busy .lupa__spin { animation: none; }
+}
+.lupa__input:focus-visible { outline: none; }   /* el cuadro entero es el foco; el cursor naranja lo marca */
+
+/* ================= #1348 «Tiempo libre» en la ficha: un interruptor que se aplica al tocarlo ================= */
+.libre { display: flex; align-items: flex-start; gap: var(--sp-3); min-height: 44px; padding-top: var(--sp-1); margin: 0 0 var(--sp-2); cursor: pointer; }
+.libre__check {
+  -webkit-appearance: none; appearance: none; position: relative; flex: none; margin: -2px 0 0;
+  width: 40px; height: 24px; border-radius: var(--radius-pill);
+  background: var(--color-text-mute); cursor: pointer;
+  transition: background var(--t-fast) var(--ease-out);
+}
+.libre__check::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--color-card); box-shadow: 0 1px 2px oklch(18% 0.01 50 / 0.3);
+  transition: transform var(--t-med) var(--ease-out);
+}
+.libre__check:checked { background: var(--color-ok); }
+.libre__check:checked::after { transform: translateX(16px); }
+.libre__check:focus-visible { outline: 2px solid var(--color-orange-deep); outline-offset: 2px; }
+.libre__check:disabled { opacity: 0.45; cursor: not-allowed; }
+.libre__txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.libre__name { font-size: var(--text-small); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .libre__check, .libre__check::after { transition: none; } }

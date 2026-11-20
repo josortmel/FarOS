@@ -51,9 +51,9 @@ def test_tras_un_run_bueno_vuelve_a_avisar(conn, sent):
 
 def test_un_fail_del_verificador_tambien_es_racha(conn, sent):
     j = jobs.create_job(conn, "owner", "Revista", "x")
-    _run(conn, j["id"], "ok", verdict="fail")   # aviso: no pasó la verificación
-    _run(conn, j["id"], "error")                # sigue la racha: sin aviso
-    _run(conn, j["id"], "ok", verdict="fail")   # sigue: sin aviso
+    _run(conn, j["id"], "ok", verdict="fail")  # aviso: no pasó la verificación
+    _run(conn, j["id"], "error")  # sigue la racha: sin aviso
+    _run(conn, j["id"], "ok", verdict="fail")  # sigue: sin aviso
     assert len(sent) == 1 and "verificación" in sent[0]
 
 

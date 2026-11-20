@@ -13,8 +13,9 @@ La unica defensa que sobrevive a un dia malo es que la afirmacion se CALCULE.
 No comprueba que la cifra sea bonita: comprueba que el documento y el objeto dicen lo
 mismo. Si alguien anade un test, este falla y le dice el numero nuevo.
 """
-import re
+
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -30,10 +31,11 @@ def _cuantos_tests_hay():
     """Se le pregunta a pytest, que es el objeto. No se cuenta a mano ni se hereda."""
     r = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q"],
-        cwd=RAIZ, capture_output=True, text=True,
+        cwd=RAIZ,
+        capture_output=True,
+        text=True,
     )
-    m = re.search(r"(\d+)\s*/\s*\d+\s+tests collected", r.stdout) \
-        or re.search(r"(\d+)\s+tests? collected", r.stdout)
+    m = re.search(r"(\d+)\s*/\s*\d+\s+tests collected", r.stdout) or re.search(r"(\d+)\s+tests? collected", r.stdout)
     assert m, f"no supe leer el recuento de pytest:\n{r.stdout[-500:]}"
     return int(m.group(1))
 

@@ -36,13 +36,38 @@ Uso: python urls_deterministas.py <nota.md>
   host, y el host no puede resolver a una IP privada, de loopback, link-local, reservada o multicast; lo mismo en
   cada redirección. Cada secundaria tiene su timeout (TIMEOUT_SECUNDARIA) para que un blog lento no pare la nota.
 """
-import html, ipaddress, json, re, socket, sys, urllib.error, urllib.request
+
+import html
+import ipaddress
+import json
+import re
+import socket
+import sys
+import urllib.error
+import urllib.request
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
 INDICES = {"/blog", "/news", "/papers", "/new", "/ai", "/ai/", "/topic/artificial-intelligence/", "/news/"}
-VACIAS = {"the", "and", "for", "with", "from", "into", "that", "this", "como", "para", "with", "your", "you", "are", "los", "las", "del"}
+VACIAS = {
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "into",
+    "that",
+    "this",
+    "como",
+    "para",
+    "your",
+    "you",
+    "are",
+    "los",
+    "las",
+    "del",
+}
 TIMEOUT_PRINCIPAL = 25
 TIMEOUT_SECUNDARIA = 15
 MAX_URL = 2048
@@ -51,7 +76,11 @@ MAX_URL = 2048
 def es_portada(url):
     u = urlparse(url)
     ruta = u.path or "/"
-    return ruta == "/" or ruta.rstrip("/") in {i.rstrip("/") for i in INDICES} or bool(re.fullmatch(r"/list/[^/]+/new/?", ruta))
+    return (
+        ruta == "/"
+        or ruta.rstrip("/") in {i.rstrip("/") for i in INDICES}
+        or bool(re.fullmatch(r"/list/[^/]+/new/?", ruta))
+    )
 
 
 def forma_valida(url):
@@ -77,8 +106,15 @@ def forma_valida(url):
 
 
 def _ip_prohibida(ip):
-    return (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
-            or ip.is_unspecified or getattr(ip, "is_site_local", False))
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+        or getattr(ip, "is_site_local", False)
+    )
 
 
 def url_segura(url, resolver=None):
@@ -179,8 +215,20 @@ def cifra_en(n, visible):
     return any(re.search(r"(?<![\d.,])" + re.escape(v) + r"(?![\d])", visible) for v in variantes)
 
 
-MESES = {"ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6, "jul": 7, "ago": 8, "sep": 9, "oct": 10,
-         "nov": 11, "dic": 12}
+MESES = {
+    "ene": 1,
+    "feb": 2,
+    "mar": 3,
+    "abr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "ago": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dic": 12,
+}
 
 
 def fecha_de_listado(resto, fecha_item):
@@ -189,7 +237,7 @@ def fecha_de_listado(resto, fecha_item):
     if not m or fecha_item is None or m.group(2).lower() not in MESES:
         return None
     mes, anio = MESES[m.group(2).lower()], fecha_item.year
-    if mes < fecha_item.month:   # enviado en diciembre, listado en enero
+    if mes < fecha_item.month:  # enviado en diciembre, listado en enero
         anio += 1
     try:
         return date(anio, mes, int(m.group(1)))
@@ -206,9 +254,13 @@ def _url_normal(url, titulo=""):
 
 def urls_de_nota(texto):
     """Las URL de los ítems de una nota, para comparar con la siguiente (sin abrir nada)."""
-    return {_url_normal(m.group(2), m.group(1)) for m in
-            (re.match(r"^(?:\d+\.\s*)?(?:\[[^\]]+\]\s*)?(.+?)\s+—\s+(https?://\S+)\s+—", l) for l in texto.splitlines())
-            if m}
+    return {
+        _url_normal(m.group(2), m.group(1))
+        for m in (
+            re.match(r"^(?:\d+\.\s*)?(?:\[[^\]]+\]\s*)?(.+?)\s+—\s+(https?://\S+)\s+—", l) for l in texto.splitlines()
+        )
+        if m
+    }
 
 
 def comprobar_linea(linea, hoy=None, abrir_url=None, desde=None, urls_previas=None):
@@ -222,7 +274,7 @@ def comprobar_linea(linea, hoy=None, abrir_url=None, desde=None, urls_previas=No
         return None
     titulo, url = m.group(1).strip(), m.group(2).strip()
     r = {"titulo": titulo, "url": url}
-    resto = linea[m.end():]
+    resto = linea[m.end() :]
     semanal = re.match(r"(?i)\s*señal:", resto)
     # #835: «2026-10-27 (listado del 28 oct) —», la forma que pide el prompt de la revista, también es fecha
     # #921: y con «enviado» o «enviado el» delante (run 67, 2-nov, tiró un paper listado dentro de la ventana)
@@ -236,18 +288,20 @@ def comprobar_linea(linea, hoy=None, abrir_url=None, desde=None, urls_previas=No
     texto = re.split(r"(?i)qu[eé] cambia para nosotros:|por qu[eé] importa:", resto, maxsplit=1)
     texto = texto[1] if len(texto) == 2 else ""
     if semanal:
-        texto = re.split(r"(?i)fuente que nos falta:", resto[semanal.end():], maxsplit=1)[0]
+        texto = re.split(r"(?i)fuente que nos falta:", resto[semanal.end() :], maxsplit=1)[0]
         # un código HTTP citado en la señal («devolvió 404», «HTTP 403») no es una cifra de la página
         texto = re.sub(r"(?i)\b(?:HTTP|error|devolvi[óo]|dio|da)\s+[45]\d\d\b", "", texto)
     if fecha_item is None and not semanal:
         r.update(resultado="no_hecho", motivo="el ítem no lleva fecha de publicación AAAA-MM-DD")
     elif fecha_item is not None and fecha_item > hoy:
         r.update(resultado="no_hecho", motivo=f"la fecha del ítem ({fecha_item}) es futura")
-    elif desde is not None and fecha_item is not None and \
-            (fecha_de_listado(resto, fecha_item) or fecha_item) < desde:
+    elif desde is not None and fecha_item is not None and (fecha_de_listado(resto, fecha_item) or fecha_item) < desde:
         cuenta = fecha_de_listado(resto, fecha_item) or fecha_item
-        r.update(resultado="no_hecho", fuera_de_ventana=True,
-                 motivo=f"publicado el {cuenta}, antes de la nota anterior ({desde})")
+        r.update(
+            resultado="no_hecho",
+            fuera_de_ventana=True,
+            motivo=f"publicado el {cuenta}, antes de la nota anterior ({desde})",
+        )
     elif urls_previas and _url_normal(url, titulo) in urls_previas:
         r.update(resultado="no_hecho", motivo="la URL ya salió en la nota anterior")
     elif es_portada(url):
@@ -264,8 +318,10 @@ def comprobar_linea(linea, hoy=None, abrir_url=None, desde=None, urls_previas=No
             elif not t and version:
                 # ficheros de texto sin <title> (changelog en raw): la versión del ítem tiene que estar en el texto
                 ok = re.search(r"(?m)^#+\s*v?" + re.escape(version.group(1)) + r"\b", cuerpo)
-                r.update(resultado="hecho" if ok else "no_hecho",
-                         motivo=None if ok else f"la versión {version.group(1)} no aparece como entrada del fichero")
+                r.update(
+                    resultado="hecho" if ok else "no_hecho",
+                    motivo=None if ok else f"la versión {version.group(1)} no aparece como entrada del fichero",
+                )
             else:
                 fp = fecha_de_pagina(cuerpo)
                 visible = texto_visible(cuerpo)
@@ -273,12 +329,24 @@ def comprobar_linea(linea, hoy=None, abrir_url=None, desde=None, urls_previas=No
                 if fp is not None:
                     r.update(fecha_pagina=str(fp))
                 # el ítem puede ir hasta 3 días por DETRÁS de la página (arXiv: enviado el 7, listado el 9), nunca antes
-                if fp is not None and fecha_item is not None and not (fp - timedelta(days=1) <= fecha_item <= fp + timedelta(days=3)):
-                    r.update(resultado="no_hecho", motivo=f"la fecha del ítem ({fecha_item}) no coincide con la de la página ({fp})")
+                if (
+                    fp is not None
+                    and fecha_item is not None
+                    and not (fp - timedelta(days=1) <= fecha_item <= fp + timedelta(days=3))
+                ):
+                    r.update(
+                        resultado="no_hecho",
+                        motivo=f"la fecha del ítem ({fecha_item}) no coincide con la de la página ({fp})",
+                    )
                 elif faltan:
-                    r.update(resultado="no_hecho", motivo="cifras del ítem que no están en la página: " + ", ".join(faltan))
+                    r.update(
+                        resultado="no_hecho", motivo="cifras del ítem que no están en la página: " + ", ".join(faltan)
+                    )
                 elif not (palabras(titulo) & palabras(t)):
-                    r.update(resultado="incierto", motivo="ninguna palabra del título del ítem está en el <title> de la página")
+                    r.update(
+                        resultado="incierto",
+                        motivo="ninguna palabra del título del ítem está en el <title> de la página",
+                    )
                 else:
                     r.update(resultado="hecho")
         except urllib.error.HTTPError as e:
@@ -303,7 +371,7 @@ def urls_secundarias(linea):
         return []
     principal = m.group(2).strip().rstrip("/").lower()
     vistas, out = {principal}, []
-    for u in _URL_EN_TEXTO.findall(linea[m.end():]):
+    for u in _URL_EN_TEXTO.findall(linea[m.end() :]):
         u = u.rstrip(".:'\"")
         if not u.lower().startswith(("http://", "https://")):
             u = "https://" + u
@@ -337,8 +405,8 @@ def comprobar_secundaria(url, padre, titulo, abrir_url=None):
     return r
 
 
-PARALELAS = 6            # #1207: líneas a la vez (pocas, para no castigar a ningún servidor)
-PRESUPUESTO_S = 240      # #1207: tope de toda la nota; el 13-nov, 60 URL en serie con la red lenta pasaron de 600 s
+PARALELAS = 6  # #1207: líneas a la vez (pocas, para no castigar a ningún servidor)
+PRESUPUESTO_S = 240  # #1207: tope de toda la nota; el 13-nov, 60 URL en serie con la red lenta pasaron de 600 s
 A_TIEMPO = "no se pudo abrir a tiempo"
 
 
@@ -350,19 +418,29 @@ def _una_linea(l, hoy, abrir_url, desde, urls_previas, abrir_secundaria):
     r = comprobar_linea(l, hoy, abrir_url, desde, urls_previas)
     if r is None:
         return []
-    return [r] + [comprobar_secundaria(u, r["url"], r["titulo"], abrir_secundaria or abrir_url)
-                  for u in urls_secundarias(l)]
+    return [r] + [
+        comprobar_secundaria(u, r["url"], r["titulo"], abrir_secundaria or abrir_url) for u in urls_secundarias(l)
+    ]
 
 
-def comprobar_nota(texto, hoy=None, abrir_url=None, desde=None, urls_previas=None, abrir_secundaria=None,
-                   paralelas=None, presupuesto_s=None):
+def comprobar_nota(
+    texto,
+    hoy=None,
+    abrir_url=None,
+    desde=None,
+    urls_previas=None,
+    abrir_secundaria=None,
+    paralelas=None,
+    presupuesto_s=None,
+):
     """Lista de resultados: una por línea de ítem de la nota y, detrás de cada una, una fila hija por URL secundaria.
     #1207: las líneas se comprueban `paralelas` a la vez y la nota entera tiene `presupuesto_s`. Una línea que no ha
     acabado a tiempo se vuelve a mirar SIN red: lo que se decide sin abrir nada (fecha, portada, repetida) sale igual,
     y lo que necesitaba abrir la URL sale «incierto: no se pudo abrir a tiempo», nunca hecho ni no_hecho.
     El orden de la salida es el de la nota."""
     from concurrent.futures import ThreadPoolExecutor, wait
-    paralelas = PARALELAS if paralelas is None else paralelas            # se leen al llamar, no al definir
+
+    paralelas = PARALELAS if paralelas is None else paralelas  # se leen al llamar, no al definir
     presupuesto_s = PRESUPUESTO_S if presupuesto_s is None else presupuesto_s
     lineas = texto.splitlines()
     pool = ThreadPoolExecutor(max_workers=max(1, paralelas), thread_name_prefix="urls")
@@ -372,12 +450,12 @@ def comprobar_nota(texto, hoy=None, abrir_url=None, desde=None, urls_previas=Non
         out = []
         for l, f in zip(lineas, futuros):
             if f.done() and not f.cancelled():
-                out.extend(f.result())        # un fallo de código sube, como cuando iba en serie
+                out.extend(f.result())  # un fallo de código sube, como cuando iba en serie
             else:
                 out.extend(_una_linea(l, hoy, _sin_tiempo, desde, urls_previas, _sin_tiempo))
         return out
     finally:
-        pool.shutdown(wait=False, cancel_futures=True)   # lo que siga abriendo acaba solo (su timeout es de 25 s)
+        pool.shutdown(wait=False, cancel_futures=True)  # lo que siga abriendo acaba solo (su timeout es de 25 s)
 
 
 def recuento(resultados):
@@ -392,7 +470,7 @@ def main(argv=None):
         # #483: la nota anterior se llama AAAA-MM-DD.md; de ella salen la fecha de la ventana y las URL ya publicadas
         i = argv.index("--anterior")
         previa = Path(argv[i + 1])
-        argv = argv[:i] + argv[i + 2:]
+        argv = argv[:i] + argv[i + 2 :]
         m = re.search(r"(\d{4})-(\d{2})-(\d{2})", previa.name)
         desde = date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
         urls_previas = urls_de_nota(previa.read_text(encoding="utf-8"))
@@ -400,7 +478,12 @@ def main(argv=None):
     out = comprobar_nota(nota, desde=desde, urls_previas=urls_previas)
     for r in out:
         if breve:
-            r = {"titulo": r["titulo"][:50], "url": r["url"], "resultado": r["resultado"], **({"motivo": r["motivo"][:80]} if r.get("motivo") else {})}
+            r = {
+                "titulo": r["titulo"][:50],
+                "url": r["url"],
+                "resultado": r["resultado"],
+                **({"motivo": r["motivo"][:80]} if r.get("motivo") else {}),
+            }
         print(json.dumps(r, ensure_ascii=False))
     print(json.dumps(recuento(out)))
 

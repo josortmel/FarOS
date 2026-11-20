@@ -19,8 +19,9 @@ class _Proc:
 
     async def communicate(self, data):
         _Proc.prompt = data.decode("utf-8")
-        return json.dumps({"type": "result", "is_error": False,
-                           "structured_output": {"verdict": "pass", "reason": "visto en a.md:1"}}).encode(), b""
+        return json.dumps(
+            {"type": "result", "is_error": False, "structured_output": {"verdict": "pass", "reason": "visto en a.md:1"}}
+        ).encode(), b""
 
 
 @pytest.fixture
@@ -51,10 +52,10 @@ def test_con_ficheros_nombrados_solo_se_abren_esos(lanzado, tmp_path):
     asyncio.run(verifier._judge("juzga", read_dirs=[str(tmp_path)], read_files=[str(a), str(b)]))
 
     cmd = lanzado["cmd"]
-    assert cmd[cmd.index("--tools") + 1] == "Read"            # sin Grep ni Glob
+    assert cmd[cmd.index("--tools") + 1] == "Read"  # sin Grep ni Glob
     assert cmd[cmd.index("--allowedTools") + 1] == f"{_regla(a)},{_regla(b)}"
     assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
-    assert lanzado["cwd"] == str(tmp_path)                    # el repo sigue de cwd
+    assert lanzado["cwd"] == str(tmp_path)  # el repo sigue de cwd
     assert "No tienes Grep ni Glob" in _Proc.prompt
     assert not any(t in ",".join(cmd) for t in ("Write", "Edit", "Bash"))
 
@@ -89,8 +90,7 @@ def test_los_ficheros_de_la_evidencia_son_solo_los_que_existen(tmp_path):
     hay = tmp_path / "hay.md"
     hay.write_text("x", encoding="utf-8")
     falta = tmp_path / "no_existe.md"
-    t = {"evidence_type": "proof",
-         "evidence": json.dumps({"repo": str(tmp_path), "ficheros": [str(hay), str(falta)]})}
+    t = {"evidence_type": "proof", "evidence": json.dumps({"repo": str(tmp_path), "ficheros": [str(hay), str(falta)]})}
     assert verifier._ficheros_de_la_evidencia(t) == [str(hay)]
 
 

@@ -17,8 +17,13 @@ from faros import mcp_server
 
 def _decision(i, status, ctx_len=2000):
     return {
-        "id": i, "title": f"Decisión {i}", "status": status, "project_id": 10,
-        "workflow_id": None, "asked_by": "Prima", "created_at": f"2026-11-0{i % 9 + 1}T10:00:00",
+        "id": i,
+        "title": f"Decisión {i}",
+        "status": status,
+        "project_id": 10,
+        "workflow_id": None,
+        "asked_by": "Prima",
+        "created_at": f"2026-11-0{i % 9 + 1}T10:00:00",
         "context": "x" * ctx_len,
         "options": [{"label": "A", "text": "y" * 500}, {"label": "B", "text": "z" * 500}],
         "decision": "A" if status == "decided" else None,
@@ -32,8 +37,11 @@ def _decision(i, status, ctx_len=2000):
 
 @pytest.fixture
 def servidor(monkeypatch):
-    todas = ([_decision(i, "decided") for i in range(1, 90)]
-             + [_decision(90, "pending"), _decision(91, "deferred"), _decision(92, "pending")])
+    todas = [_decision(i, "decided") for i in range(1, 90)] + [
+        _decision(90, "pending"),
+        _decision(91, "deferred"),
+        _decision(92, "pending"),
+    ]
     pedidas = []
 
     def falso(method, path, **kw):

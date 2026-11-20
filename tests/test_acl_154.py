@@ -26,8 +26,7 @@ def test_harden_dir_drops_inherited_principals_from_dir_and_children(tmp_path):
     (home / "token").write_text("x")
     (home / "backups" / "copia.db").write_text("y")
     # un principal de más en el padre, heredado hacia abajo (como los SID huérfanos)
-    subprocess.run(["icacls", str(parent), "/grant", f"*{USERS}:(OI)(CI)M"],
-                   capture_output=True, check=True)
+    subprocess.run(["icacls", str(parent), "/grant", f"*{USERS}:(OI)(CI)M"], capture_output=True, check=True)
     assert "BUILTIN\\Users" in _sids(home / "token")
 
     assert acl.harden_dir(home) is True

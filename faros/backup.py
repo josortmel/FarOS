@@ -9,16 +9,15 @@ Retention: 14 days by default; older files are pruned on each tick.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-log = logging.getLogger("faros.backup")
-
-from .db import DATA_DIR
 from . import env as _env
+from .db import DATA_DIR
+
+log = logging.getLogger("faros.backup")
 
 DEFAULT_BACKUP_DIR = DATA_DIR / "backups"
 
@@ -30,8 +29,7 @@ RETENTION_DAYS = 14
 # que el de la base de datos, en el sitio donde mas duele, que es el backup.
 FILENAME_RE = re.compile(r"^(?:faros|agenticos)_(\d{4}-\d{2}-\d{2})\.db$")
 ROLLBACK_KEEP = 3
-ROLLBACK_RES = (re.compile(r"^pre_\d+_\d{8}_\d{6}\.db$"),
-                re.compile(r"^(?:faros|agenticos)_pre_migration_[\d_]+\.db$"))
+ROLLBACK_RES = (re.compile(r"^pre_\d+_\d{8}_\d{6}\.db$"), re.compile(r"^(?:faros|agenticos)_pre_migration_[\d_]+\.db$"))
 
 
 def backup_dir() -> Path:
@@ -48,18 +46,18 @@ def _scrub_secrets(dest: Path) -> int:
     """Blank secret=1 settings in a backup copy. Returns count scrubbed."""
     bk = sqlite3.connect(str(dest))
     try:
-        n = bk.execute(
-            "UPDATE settings SET value = '\"\"' WHERE secret = 1 AND value != '\"\"'"
-        ).rowcount
+        n = bk.execute("UPDATE settings SET value = '\"\"' WHERE secret = 1 AND value != '\"\"'").rowcount
         # v3.1 (T5.6): los secretos del registro MCP (env/headers) tampoco viajan en el backup.
         try:
             import json as _json
+
             for r in bk.execute("SELECT id, env, headers FROM mcp_servers").fetchall():
                 env = {k: "" for k in _json.loads(r[1] or "{}")}
                 hdr = {k: "" for k in _json.loads(r[2] or "{}")}
                 if env or hdr:
-                    bk.execute("UPDATE mcp_servers SET env=?, headers=? WHERE id=?",
-                               (_json.dumps(env), _json.dumps(hdr), r[0]))
+                    bk.execute(
+                        "UPDATE mcp_servers SET env=?, headers=? WHERE id=?", (_json.dumps(env), _json.dumps(hdr), r[0])
+                    )
                     n += 1
         except Exception:
             pass  # base anterior a v4: no hay tabla
@@ -168,18 +166,16 @@ def verify_backup(backup_path: str | Path, production_conn: sqlite3.Connection) 
     finally:
         bk.close()
 
-    prod_tickets = production_conn.execute(
-        "SELECT COUNT(*) FROM tickets"
-    ).fetchone()[0]
+    prod_tickets = production_conn.execute("SELECT COUNT(*) FROM tickets").fetchone()[0]
 
     bk2 = sqlite3.connect(str(backup_path))
     try:
-        blanked = [r[0] for r in bk2.execute(
-            "SELECT key FROM settings WHERE secret = 1 AND value = '\"\"'"
-        ).fetchall()]
-        try:   # #460: las de la lista de Claves, por su nombre
-            blanked += [f"Claves › {r[0]}" for r in bk2.execute(
-                "SELECT name FROM credentials WHERE value = '' ORDER BY name").fetchall()]
+        blanked = [r[0] for r in bk2.execute("SELECT key FROM settings WHERE secret = 1 AND value = '\"\"'").fetchall()]
+        try:  # #460: las de la lista de Claves, por su nombre
+            blanked += [
+                f"Claves › {r[0]}"
+                for r in bk2.execute("SELECT name FROM credentials WHERE value = '' ORDER BY name").fetchall()
+            ]
         except sqlite3.OperationalError:
             pass
     finally:
@@ -196,7 +192,6 @@ def verify_backup(backup_path: str | Path, production_conn: sqlite3.Connection) 
     if blanked:
         result["secrets_blanked"] = blanked
         result["restore_warning"] = (
-            "This backup has secrets scrubbed. After restoring, "
-            "re-enter these keys in Settings: " + ", ".join(blanked)
+            "This backup has secrets scrubbed. After restoring, re-enter these keys in Settings: " + ", ".join(blanked)
         )
     return result

@@ -6,11 +6,13 @@
     y nota obligatoria. La pausa la hace la dueña de la tarea o el dueño de la casa.
 """
 
-import pytest
-from fastapi.testclient import TestClient
 import sqlite3
 
-from faros import api, db, service as s
+import pytest
+from fastapi.testclient import TestClient
+
+from faros import api, db
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -22,8 +24,9 @@ def conn():
 
 
 def _tarea(conn, owner="alice"):
-    t = s.propose_ticket(conn, "owner", "Manual v2", owner=owner, verification_level="peer",
-                         scheduled_at="2031-03-05T10:00")["ticket"]
+    t = s.propose_ticket(
+        conn, "owner", "Manual v2", owner=owner, verification_level="peer", scheduled_at="2031-03-05T10:00"
+    )["ticket"]
     s.accept_ticket(conn, owner, t["id"])
     return t["id"]
 
@@ -33,6 +36,7 @@ def _ultima(conn, tid):
 
 
 # ------------------------------------------------------------------ (1) el motivo del bloqueo
+
 
 def test_reescribir_el_motivo_no_desbloquea(conn):
     tid = _tarea(conn)
@@ -61,6 +65,7 @@ def test_sin_motivo_sigue_sin_poderse(conn):
 
 
 # ------------------------------------------------------------------ (2) en curso → aceptada
+
 
 def test_pausar_devuelve_a_aceptada_con_nota(conn):
     tid = _tarea(conn)
@@ -108,6 +113,7 @@ def test_en_el_tablero_sale_en_aceptadas(conn):
 
 # ------------------------------------------------------------------ por la API (como lo usa el MCP)
 
+
 def test_por_la_api(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "load_token", lambda: "t-482")
     db.connect(tmp_path / "t.db").close()
@@ -128,6 +134,7 @@ def test_por_la_api(tmp_path, monkeypatch):
 
 
 # ------------------------------------------------------------------ backlog no es una puerta trasera
+
 
 def test_backlog_tiene_las_mismas_reglas_que_pausar(conn):
     """Lo vio Lienzo el 16-oct: `backlog` hacía lo mismo que `pause` (en curso → aceptada) sin nota y a

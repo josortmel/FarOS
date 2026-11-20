@@ -39,6 +39,7 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 # ── ctypes structures ────────────────────────────────────────────────────────
 
+
 class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
     _fields_ = [
         ("PerProcessUserTimeLimit", ctypes.c_int64),
@@ -52,6 +53,7 @@ class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
         ("SchedulingClass", ctypes.c_uint32),
     ]
 
+
 class _IO_COUNTERS(ctypes.Structure):
     _fields_ = [
         ("ReadOperationCount", ctypes.c_uint64),
@@ -61,6 +63,7 @@ class _IO_COUNTERS(ctypes.Structure):
         ("WriteTransferCount", ctypes.c_uint64),
         ("OtherTransferCount", ctypes.c_uint64),
     ]
+
 
 class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
     _fields_ = [
@@ -72,12 +75,14 @@ class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
         ("PeakJobMemoryUsed", ctypes.c_size_t),
     ]
 
+
 _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 _JobObjectExtendedLimitInformation = 9
 _PROCESS_SET_QUOTA = 0x0100
 _PROCESS_TERMINATE = 0x0001
 
 # ── Public API ───────────────────────────────────────────────────────────────
+
 
 class JobObject:
     """Context manager that creates a Windows Job Object with KILL_ON_JOB_CLOSE.
@@ -94,8 +99,10 @@ class JobObject:
         info = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
         info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         ok = kernel32.SetInformationJobObject(
-            self._handle, _JobObjectExtendedLimitInformation,
-            ctypes.byref(info), ctypes.sizeof(info),
+            self._handle,
+            _JobObjectExtendedLimitInformation,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
         )
         if not ok:
             kernel32.CloseHandle(self._handle)

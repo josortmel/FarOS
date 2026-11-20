@@ -7,7 +7,8 @@ from datetime import date, timedelta
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 
 
 @pytest.fixture
@@ -30,8 +31,9 @@ def test_una_propuesta_de_dentro_de_dos_semanas_sale_en_todas_las_vistas(conn):
 
 def test_una_propuesta_sin_fecha_y_una_de_ayer_tambien(conn):
     sin = s.propose_ticket(conn, "alice", "Sin fecha")["ticket"]
-    ayer = s.propose_ticket(conn, "alice", "De ayer",
-                            scheduled_at=(date.today() - timedelta(days=1)).isoformat() + "T10:00")["ticket"]
+    ayer = s.propose_ticket(
+        conn, "alice", "De ayer", scheduled_at=(date.today() - timedelta(days=1)).isoformat() + "T10:00"
+    )["ticket"]
     for view in ("today", "week", "future"):
         assert {sin["id"], ayer["id"]} <= _ids(s.board(conn, view=view)), view
 

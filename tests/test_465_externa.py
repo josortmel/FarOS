@@ -12,7 +12,8 @@ import asyncio
 
 import pytest
 
-from faros import db, jobs, service as s, settings, verifier
+from faros import db, jobs, settings, verifier
+from faros import service as s
 
 
 @pytest.fixture
@@ -27,8 +28,9 @@ _GET = settings.get
 
 def _ajustes(monkeypatch, **valores):
     """settings.get con estos valores delante; lo demás, como siempre (y sin la clave del entorno)."""
-    monkeypatch.setattr(settings, "get",
-                        lambda c, k: valores[k] if k in valores else ("" if k == "deepseek_api_key" else _GET(c, k)))
+    monkeypatch.setattr(
+        settings, "get", lambda c, k: valores[k] if k in valores else ("" if k == "deepseek_api_key" else _GET(c, k))
+    )
 
 
 @pytest.fixture
@@ -41,6 +43,7 @@ def _juez(veredictos, llamadas):
     async def judge(prompt, model=None, env=None, read_dirs=None, read_files=None):
         llamadas.append(("haiku", model))
         return veredictos.pop(0)
+
     return judge
 
 
@@ -48,6 +51,7 @@ def _externo(veredictos, llamadas):
     async def judge_externo(conn, prompt, read_dirs=None, read_files=None):
         llamadas.append(("deepseek", None))
         return veredictos.pop(0)
+
     return judge_externo
 
 
@@ -56,8 +60,15 @@ def _v(verdict, reason="motivo"):
 
 
 def _hecho(conn, level):
-    t = s.propose_ticket(conn, "owner", "Informe", owner="alice", auto_accept=True,
-                         verification_level=level, verify_criteria="cifras contra la fuente")["ticket"]
+    t = s.propose_ticket(
+        conn,
+        "owner",
+        "Informe",
+        owner="alice",
+        auto_accept=True,
+        verification_level=level,
+        verify_criteria="cifras contra la fuente",
+    )["ticket"]
     s.complete_ticket(conn, "alice", t["id"], "command_output", "3 cifras citadas")
     return t["id"]
 
@@ -75,6 +86,7 @@ def _parchear(monkeypatch, haiku, deepseek):
 
 # ------------------------------------------------------------------ el nivel
 
+
 def test_external_es_un_nivel_valido(conn):
     assert "external" in s.VERIFICATION_LEVELS
     assert s._get(conn, _hecho(conn, "external"))["status"] == "done"
@@ -91,12 +103,13 @@ def test_un_claude_no_sella_una_externa_y_pepe_si(conn):
 
 # ------------------------------------------------------------------ nivel external: DeepSeek ×3
 
+
 def test_externa_mayoria_pasa(con_clave, monkeypatch):
     tid = _hecho(con_clave, "external")
     llamadas = _parchear(monkeypatch, [], [_v("pass", "a"), _v("fail", "b"), _v("pass", "c")])
     res = asyncio.run(verifier.sweep(con_clave))
     assert [v["ticket_id"] for v in res["verified"]] == [tid]
-    assert llamadas == [("deepseek", None)] * 3                       # Haiku no la toca
+    assert llamadas == [("deepseek", None)] * 3  # Haiku no la toca
     fila = _ultima(con_clave, tid)
     assert fila["provenance"] == "external:deepseek-flash"
     assert "pass, fail, pass" in fila["note"] and "a" in fila["note"] and "c" in fila["note"]
@@ -119,7 +132,7 @@ def test_externa_sin_mayoria_la_decide_una_persona(con_clave, monkeypatch):
     t = s._get(con_clave, tid)
     assert t["status"] == "done" and t["verification_level"] == "external"
     assert "sin mayoría" in _ultima(con_clave, tid)["note"]
-    assert asyncio.run(verifier.sweep(con_clave))["swept"] == 0       # no se rejuzga en bucle
+    assert asyncio.run(verifier.sweep(con_clave))["swept"] == 0  # no se rejuzga en bucle
 
 
 def test_tres_inciertos_dicen_incierto_y_no_sin_mayoria(con_clave, monkeypatch):
@@ -135,9 +148,9 @@ def test_sin_saldo_es_como_sin_clave(con_clave, monkeypatch):
     ext, auto = _hecho(con_clave, "external"), _hecho(con_clave, "auto")
     llamadas = _parchear(monkeypatch, [_v("uncertain")], [])
     res = asyncio.run(verifier.sweep(con_clave))
-    assert [c[0] for c in llamadas] == ["haiku"]                      # DeepSeek no se llama
+    assert [c[0] for c in llamadas] == ["haiku"]  # DeepSeek no se llama
     assert s._get(con_clave, ext)["status"] == "done" and "saldo" in res["errors"][0]["error"]
-    assert s._get(con_clave, auto)["verification_level"] == "peer"    # el incierto, a una persona
+    assert s._get(con_clave, auto)["verification_level"] == "peer"  # el incierto, a una persona
 
 
 def test_el_saldo_se_mira_una_vez_por_barrido(con_clave, monkeypatch):
@@ -161,6 +174,7 @@ def test_externa_sin_clave_no_se_juzga_y_lo_dice(conn, monkeypatch):
 
 # ------------------------------------------------------------------ nivel auto: Haiku, y el incierto sube
 
+
 def test_auto_pasa_con_haiku_y_no_llama_a_deepseek(con_clave, monkeypatch):
     tid = _hecho(con_clave, "auto")
     llamadas = _parchear(monkeypatch, [_v("pass")], [])
@@ -171,14 +185,15 @@ def test_auto_pasa_con_haiku_y_no_llama_a_deepseek(con_clave, monkeypatch):
 
 def test_auto_incierto_sube_a_deepseek(con_clave, monkeypatch):
     tid = _hecho(con_clave, "auto")
-    llamadas = _parchear(monkeypatch, [_v("uncertain", "no puedo abrir la fuente")],
-                         [_v("pass"), _v("pass"), _v("fail")])
+    llamadas = _parchear(
+        monkeypatch, [_v("uncertain", "no puedo abrir la fuente")], [_v("pass"), _v("pass"), _v("fail")]
+    )
     res = asyncio.run(verifier.sweep(con_clave))
     assert [c[0] for c in llamadas] == ["haiku", "deepseek", "deepseek", "deepseek"]
     assert [v["ticket_id"] for v in res["verified"]] == [tid]
     fila = _ultima(con_clave, tid)
     assert fila["provenance"] == "external:deepseek-flash"
-    assert "no puedo abrir la fuente" in fila["note"]                 # el motivo de Haiku se conserva
+    assert "no puedo abrir la fuente" in fila["note"]  # el motivo de Haiku se conserva
 
 
 def test_auto_incierto_sin_mayoria_externa_pasa_a_persona(con_clave, monkeypatch):
@@ -200,9 +215,9 @@ def test_auto_incierto_sin_clave_hace_lo_de_antes(conn, monkeypatch):
 
 # ------------------------------------------------------------------ veredicto por run
 
+
 def test_run_incierto_sube_a_deepseek_y_completa_su_tarea(con_clave, monkeypatch):
-    t = s.propose_ticket(con_clave, "owner", "Job con tarea", auto_accept=True,
-                         verification_level="auto")["ticket"]
+    t = s.propose_ticket(con_clave, "owner", "Job con tarea", auto_accept=True, verification_level="auto")["ticket"]
     j = jobs.create_job(con_clave, "owner", "j", "haz x", ticket_id=t["id"], verify_level="auto")
     r = jobs.create_run(con_clave, j["id"])
     jobs.finish_run(con_clave, r["id"], "ok", result_summary="hecho x")
@@ -214,6 +229,7 @@ def test_run_incierto_sube_a_deepseek_y_completa_su_tarea(con_clave, monkeypatch
 
 
 # ------------------------------------------------------------------ el juez externo de verdad (sin red)
+
 
 def test_juez_externo_va_a_deepseek_con_entorno_limpio_y_sin_la_clave_en_el_comando(con_clave, monkeypatch):
     visto = {}
@@ -236,8 +252,9 @@ def test_juez_externo_va_a_deepseek_con_entorno_limpio_y_sin_la_clave_en_el_coma
     assert "sk-prueba-465" not in " ".join(visto["cmd"])
     # #1109: el juez recibe el reenvío del daemon y un token de un solo uso, nunca la clave.
     from faros import deepseek_proxy
+
     assert visto["env"]["ANTHROPIC_AUTH_TOKEN"].startswith(deepseek_proxy.PREFIJO_TOKEN)
-    assert not deepseek_proxy.vigente(visto["env"]["ANTHROPIC_AUTH_TOKEN"])   # caducó al acabar
+    assert not deepseek_proxy.vigente(visto["env"]["ANTHROPIC_AUTH_TOKEN"])  # caducó al acabar
     assert not any("sk-prueba-465" in v for v in visto["env"].values())
     assert visto["env"]["ANTHROPIC_BASE_URL"] == deepseek_proxy.url_local()
     assert "GITHUB_TOKEN" not in visto["env"] and "ANTHROPIC_API_KEY" not in visto["env"]

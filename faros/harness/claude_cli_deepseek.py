@@ -13,6 +13,7 @@ Falla cerrado: sin clave, el hijo apunta igual a DeepSeek con un token de
 relleno. Así recibe un 401 en vez de caer a la suscripción de Anthropic o de
 mandar el token OAuth de Anthropic a otra empresa.
 """
+
 from __future__ import annotations
 
 from .base import Capabilities, ModelInfo
@@ -38,15 +39,27 @@ class ClaudeCliDeepSeekAdapter(ClaudeCliAdapter):
     required_settings = ["deepseek_api_key"]
     # effort y fallback_model, no: el primero no está medido contra DeepSeek, y el
     # fallback sería un modelo de Anthropic que este endpoint no sirve.
-    capabilities = Capabilities(mcp=True, allowed_tools=True, permission_mode=True,
-                                json_schema=True, effort=False, fallback_model=False,
-                                system_prompt=True, add_dir=True, budget=False,
-                                inherit_mcp=True)
+    capabilities = Capabilities(
+        mcp=True,
+        allowed_tools=True,
+        permission_mode=True,
+        json_schema=True,
+        effort=False,
+        fallback_model=False,
+        system_prompt=True,
+        add_dir=True,
+        budget=False,
+        inherit_mcp=True,
+    )
 
     def fetch_models(self, settings=None):
-        return ([ModelInfo(m, m, "seed", None, "deepseek", None, None, None,
-                           "API de DeepSeek compatible con Anthropic") for m in MODELS],
-                "seed")
+        return (
+            [
+                ModelInfo(m, m, "seed", None, "deepseek", None, None, None, "API de DeepSeek compatible con Anthropic")
+                for m in MODELS
+            ],
+            "seed",
+        )
 
     def validate_model(self, model: str) -> bool:
         return model in MODELS

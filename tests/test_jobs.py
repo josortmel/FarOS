@@ -4,9 +4,10 @@ from datetime import datetime
 
 import pytest
 
-from faros import db, service as s, jobs
-from faros.service import TicketError
+from faros import db, jobs
+from faros import service as s
 from faros.scheduler import due_jobs
+from faros.service import TicketError
 
 
 @pytest.fixture
@@ -23,8 +24,7 @@ def _job(conn, **kw):
 
 
 def _manual(conn, **kw):
-    args = dict(agent="owner", title="Leer el correo de la mañana", auto_accept=True,
-                verification_level="peer")
+    args = dict(agent="owner", title="Leer el correo de la mañana", auto_accept=True, verification_level="peer")
     args.update(kw)
     return s.propose_ticket(conn, **args)["ticket"]
 
@@ -118,8 +118,15 @@ def test_pause_resume_archive(conn):
 
 def test_duplicate_copies_config_not_runs(conn):
     t = _manual(conn)
-    j = _job(conn, ticket_id=t["id"], model="sonnet", inherit_mcp=["agenticos"],
-             add_dirs=["C:/data"], effort="high", json_schema={"type": "object"})
+    j = _job(
+        conn,
+        ticket_id=t["id"],
+        model="sonnet",
+        inherit_mcp=["agenticos"],
+        add_dirs=["C:/data"],
+        effort="high",
+        json_schema={"type": "object"},
+    )
     run = jobs.create_run(conn, j["id"])
     jobs.finish_run(conn, run["id"], "ok")
     d = jobs.duplicate_job(conn, "owner", j["id"])
@@ -137,8 +144,7 @@ def test_budget_ignored_on_subscription_with_warning(conn):
 def test_update_and_next_fire(conn):
     j = _job(conn)
     assert j["next_fire"] is None
-    u = jobs.update_job(conn, "owner", j["id"],
-                        schedule={"type": "recurring", "every_days": 1, "at": "23:59"})
+    u = jobs.update_job(conn, "owner", j["id"], schedule={"type": "recurring", "every_days": 1, "at": "23:59"})
     assert u["next_fire"] is not None and u["next_fire"].endswith("23:59")
     with pytest.raises(TicketError, match="no editables"):
         jobs.update_job(conn, "owner", j["id"], billing_mode="api")
@@ -166,10 +172,14 @@ def test_budget_ignored_when_the_harness_cannot_enforce_it(conn, monkeypatch):
     (su parse_output anula el coste: el de Claude Code es falso con DeepSeek). Un tope que nunca salta es
     una promesa falsa: se ignora con aviso, igual que en suscripción. opencode (api + budget) lo conserva."""
     from types import SimpleNamespace
+
     from faros import harness as hz
+
     real = hz.get
-    falsos = {"claude-cli-deepseek": SimpleNamespace(billing="api", capabilities=SimpleNamespace(budget=False)),
-              "opencode": SimpleNamespace(billing="api", capabilities=SimpleNamespace(budget=True))}
+    falsos = {
+        "claude-cli-deepseek": SimpleNamespace(billing="api", capabilities=SimpleNamespace(budget=False)),
+        "opencode": SimpleNamespace(billing="api", capabilities=SimpleNamespace(budget=True)),
+    }
     monkeypatch.setattr(hz, "get", lambda n: falsos.get(n) or real(n))
     j = _job(conn, harness_name="claude-cli-deepseek", max_budget_usd=5)
     assert j["max_budget_usd"] is None and "no puede aplicar" in j["warning"]

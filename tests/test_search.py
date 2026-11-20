@@ -2,7 +2,9 @@
 
 import pytest
 
-from faros import db, service as s, jobs, decisions as dec, search
+from faros import db, jobs, search
+from faros import decisions as dec
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -33,15 +35,19 @@ def test_search_across_tickets_jobs_decisions(conn):
 
 def test_reindex_rebuilds(conn):
     jobs.create_job(conn, "owner", "Uno", "x")
-    conn.execute("DELETE FROM jobs_fts"); conn.commit()
+    conn.execute("DELETE FROM jobs_fts")
+    conn.commit()
     assert search.search(conn, "Uno")["jobs"] == []
     assert search.reindex(conn) == {"jobs": 1, "decisions": 0}
     assert search.search(conn, "Uno")["jobs"]
 
 
 def _workflow(conn, nombre, status="active"):
-    cur = conn.execute("INSERT INTO workflows (name, kind, phases, coordinator, status, created_at)"
-                       " VALUES (?, 'construccion', '[]', 'owner', ?, '2026-11-19T10:00:00')", (nombre, status))
+    cur = conn.execute(
+        "INSERT INTO workflows (name, kind, phases, coordinator, status, created_at)"
+        " VALUES (?, 'construccion', '[]', 'owner', ?, '2026-11-19T10:00:00')",
+        (nombre, status),
+    )
     conn.commit()
     return cur.lastrowid
 
@@ -55,5 +61,5 @@ def test_1320_la_busqueda_tambien_encuentra_workflows(conn):
     assert [x["id"] for x in res["workflows"]] == [w]
     assert res["workflows"][0]["section"] == "oficina" and res["workflows"][0]["name"].startswith("Rediseño")
     assert res["total"] == 1
-    assert search.search(conn, "salón cosa")["workflows"].__len__() == 2      # cualquier palabra, como el resto
+    assert search.search(conn, "salón cosa")["workflows"].__len__() == 2  # cualquier palabra, como el resto
     assert search.search(conn, "nada")["workflows"] == []

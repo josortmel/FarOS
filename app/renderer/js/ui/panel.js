@@ -12,7 +12,7 @@ import { t as tr, applyI18n } from '../i18n.js';  // #314
 import { api } from '../api.js';
 import { notaHTML, avisosDe } from './criterio_avisos.js';   // #1136
 
-let handlers = null; // { onTransition(t, target, action), onOpenJob(jobId), onPatchTime(t, patch), onPatchFields(t, patch), onClose }
+let handlers = null; // { onTransition(t, target, action), onOpenJob(jobId), onPatchTime(t, patch), onPatchFields(t, patch), onTiempoLibre(t, libre), onClose }
 
 /* ---------- T2.3: ficha editable (el dueño: «no tengo capacidad de cambiar nada») ---------- */
 
@@ -96,6 +96,11 @@ function renderTimeSection(t) {
   s.innerHTML = `
     <div class="panel__section-title">Tiempo</div>
     ${fmtWhenScheduled(t) ? `<div class="time__now">${recurring && !t.scheduled_at ? '↻' : '📅'} ${esc(fmtWhenScheduled(t))}</div>` : ''}
+    <label class="libre">
+      <input type="checkbox" class="libre__check" id="tm-libre" role="switch" disabled${closed ? ' data-cerrada="1"' : ''}>
+      <span class="libre__txt"><span class="libre__name">Tiempo libre</span>
+        <span class="hint">su timbre suena como invitación, no como aviso de trabajo</span></span>
+    </label>
     <form class="time-form" id="time-form">
       <div class="field-row-3">
         <div class="field">
@@ -142,7 +147,27 @@ function renderTimeSection(t) {
     }
     handlers.onPatchTime(t, patch);
   });
+  pintarLibre(s, t);
   return s;
+}
+
+/* #1348: «Tiempo libre» se lee de los ajustes (timbre_tiempo_libre.tareas) y se aplica al tocarlo. Si el motor dice que
+   no (400 timbre.solo_las_suyas), la casilla vuelve a como estaba y app.js lo dice en una frase. */
+async function pintarLibre(s, t) {
+  const box = s.querySelector('#tm-libre');
+  let libre = false;
+  try {
+    const tareas = (await api().settings())?.timbre_tiempo_libre?.tareas ?? [];
+    libre = tareas.map(Number).includes(Number(t.id));
+  } catch { return; }   // sin ajustes no se ofrece: mejor deshabilitada que mintiendo
+  box.checked = libre;
+  box.disabled = Boolean(box.dataset.cerrada);
+  box.addEventListener('change', async () => {
+    box.disabled = true;
+    const ok = await handlers.onTiempoLibre?.(t, box.checked);
+    if (!ok) box.checked = !box.checked;
+    box.disabled = Boolean(box.dataset.cerrada);
+  });
 }
 
 export function initPanel(h) {

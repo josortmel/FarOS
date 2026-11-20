@@ -2,12 +2,15 @@
 T1.1 weekday (recurrente semanal anclada a un día) · T1.3 rework ancla hoy ·
 T1.4 cerradas con hora en la agenda · T1.5 TicketError.field → 400 {field}.
 """
+
 from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
-from faros import db, service as s, agenda as cal, api
+from faros import agenda as cal
+from faros import api, db
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -19,8 +22,15 @@ def conn():
 
 
 def _recurrente(conn, last_done=None, cadence=7, **kw):
-    t = s.propose_ticket(conn, "owner", kw.pop("title", "Revision de un pasaje"), owner="carol",
-                         cadence_days=cadence, auto_accept=True, **kw)["ticket"]
+    t = s.propose_ticket(
+        conn,
+        "owner",
+        kw.pop("title", "Revision de un pasaje"),
+        owner="carol",
+        cadence_days=cadence,
+        auto_accept=True,
+        **kw,
+    )["ticket"]
     if last_done:
         conn.execute("UPDATE tickets SET last_done_at=? WHERE id=?", (last_done, t["id"]))
         conn.commit()
@@ -28,6 +38,7 @@ def _recurrente(conn, last_done=None, cadence=7, **kw):
 
 
 # ------------------------------------------------------------------ T1.1 weekday
+
 
 def test_weekday_next_due_lands_on_that_weekday():
     # last_done lunes 2026-08-31 → semanal del viernes: el viernes de ESA semana (4-sep)
@@ -56,8 +67,7 @@ def test_weekday_without_last_done_is_first_occurrence_from_today():
 
 
 def test_weekday_override_still_wins():
-    d = {"cadence_days": 7, "weekday": 4, "last_done_at": "2026-08-31T10:00:00",
-         "next_due_override": "2026-09-30"}
+    d = {"cadence_days": 7, "weekday": 4, "last_done_at": "2026-08-31T10:00:00", "next_due_override": "2026-09-30"}
     assert s.next_due_date(d) == "2026-09-30"
 
 
@@ -85,8 +95,7 @@ def test_weekday_validation(conn):
 def test_weekday_agenda_projects_on_its_day_and_overdue_in_its_day(conn):
     # semanal del viernes, estampada por última vez el 21-ago → vencida (28-ago) al
     # mirar la semana 7-11 sep: se ve el VIERNES 11 como real vencida, no el lunes 7.
-    t = _recurrente(conn, "2026-08-21T09:00:00", 7, weekday=4, preferred_time="09:00",
-                    duration_min=60)
+    t = _recurrente(conn, "2026-08-21T09:00:00", 7, weekday=4, preferred_time="09:00", duration_min=60)
     assert t["next_due"] == "2026-08-28"
     res = cal.occurrences(conn, "2026-09-07", "2026-09-11")
     mine = [i for i in res["items"] if i["ticket_id"] == t["id"]]
@@ -95,8 +104,7 @@ def test_weekday_agenda_projects_on_its_day_and_overdue_in_its_day(conn):
     assert mine[0]["start"] == "09:00"
     # quincenal del lunes vencida (finding bob T4.1): last_done viernes 21-ago → next_due
     # lunes 31-ago; el paso de 14 cae el 14-sep, fuera de la semana 7-13 → se ve el LUNES 7
-    q = _recurrente(conn, "2026-08-21T10:00:00", 14, title="Graph health", weekday=0,
-                    preferred_time="10:00")
+    q = _recurrente(conn, "2026-08-21T10:00:00", 14, title="Graph health", weekday=0, preferred_time="10:00")
     assert q["next_due"] == "2026-08-31"
     res = cal.occurrences(conn, "2026-09-07", "2026-09-13")
     qs = [i for i in res["items"] if i["ticket_id"] == q["id"]]
@@ -114,9 +122,11 @@ def test_weekday_agenda_projects_on_its_day_and_overdue_in_its_day(conn):
 
 # ------------------------------------------------------------------ T1.3 rework ancla
 
+
 def _done_ticket(conn, **kw):
-    t = s.propose_ticket(conn, "owner", "tarea de carol", owner="carol", verification_level="peer",
-                         auto_accept=True, **kw)["ticket"]
+    t = s.propose_ticket(
+        conn, "owner", "tarea de carol", owner="carol", verification_level="peer", auto_accept=True, **kw
+    )["ticket"]
     s.start_ticket(conn, "carol", t["id"])
     s.complete_ticket(conn, "carol", t["id"], "file_path", "x.md")
     return t["id"]
@@ -126,7 +136,8 @@ def test_rework_dateless_ticket_goes_to_its_owner_to_place(conn):
     """#364 (Pepe, 30-sep): una devuelta sin fecha NO se ancla sola a hoy; tampoco
     desaparece (T1.3): sale en «por ubicar» de su dueño, que es quien la recoloca."""
     tid = _done_ticket(conn)
-    conn.execute("UPDATE tickets SET scheduled_at=NULL, due_at=NULL WHERE id=?", (tid,)); conn.commit()
+    conn.execute("UPDATE tickets SET scheduled_at=NULL, due_at=NULL WHERE id=?", (tid,))
+    conn.commit()
     res = s.rework_ticket(conn, "owner", tid, "accepted", "falta la captura de la vista Día")
     assert res["status"] == "accepted" and res["anchored"] is False and res["due_at"] is None
     h = s.ticket_history(conn, tid)["history"]
@@ -145,11 +156,13 @@ def test_rework_keeps_existing_dates(conn):
 
 # ------------------------------------------------------------------ T1.4 cerradas con hora
 
+
 def test_closed_items_have_start(conn):
     today = date.today().isoformat()
     # (1) manual verificada sin ninguna hora → hora del cierre
     tid = _done_ticket(conn)
-    conn.execute("UPDATE tickets SET scheduled_at=NULL WHERE id=?", (tid,)); conn.commit()
+    conn.execute("UPDATE tickets SET scheduled_at=NULL WHERE id=?", (tid,))
+    conn.commit()
     s.verify_ticket(conn, "bob", tid, verdict="pass")
     t = s._as_dict(conn, s._get(conn, tid))
     res = cal.occurrences(conn, today, today)
@@ -173,8 +186,10 @@ def test_closed_items_have_start(conn):
 
 # ------------------------------------------------------------------ T1.5 field en el 400
 
+
 def test_create_ticket_error_field(tmp_path, monkeypatch):
     import sqlite3
+
     monkeypatch.setattr(api, "load_token", lambda: "t-test")  # sin tocar el token real
     db.connect(tmp_path / "t.db").close()  # crea el esquema
     conn = sqlite3.connect(str(tmp_path / "t.db"), check_same_thread=False)  # TestClient = otro hilo
@@ -193,8 +208,18 @@ def test_create_ticket_error_field(tmp_path, monkeypatch):
     r = client.post("/api/tickets", json={"agent": "owner", "title": "ok", "owner": "owner"}, headers=h)
     assert r.status_code == 200 and r.json()["ticket"]["scheduled_at"] is None
     # finding #27 (dave): la carga de la UI con opcionales a null no puede dar 500
-    r = client.post("/api/tickets", json={"agent": "owner", "title": "nulos", "description": None,
-                                          "owner": None, "verify_criteria": None, "due_at": None}, headers=h)
+    r = client.post(
+        "/api/tickets",
+        json={
+            "agent": "owner",
+            "title": "nulos",
+            "description": None,
+            "owner": None,
+            "verify_criteria": None,
+            "due_at": None,
+        },
+        headers=h,
+    )
     assert r.status_code == 200 and r.json()["ticket"]["description"] == ""
     # T2.5 (dave): /api/meta trae docs_dir absoluto.
     # El test CONSTRUYE su propia raíz en vez de depender del docs/ que haya al
@@ -203,7 +228,9 @@ def test_create_ticket_error_field(tmp_path, monkeypatch):
     # ningún defecto. Un test no puede depender de ficheros ambientales que no
     # controla; lo que se prueba es la RESOLUCIÓN, no el arbol de quien lo corre.
     from pathlib import Path as _P
+
     from faros import settings as _st
+
     fake_root = tmp_path / "repo"
     (fake_root / "docs").mkdir(parents=True)
     (fake_root / "docs" / "gmail_oauth.md").write_text("# guia", encoding="utf-8")
@@ -232,14 +259,16 @@ def test_health_dice_la_casa_y_no_dice_quien_eres(tmp_path, monkeypatch):
     autenticar, asi que lo lee cualquiera que alcance el puerto, y la ruta
     entera lleva el nombre de usuario dentro.
     """
-    import os, sqlite3
+    import os
+    import sqlite3
+
     monkeypatch.setattr(api, "load_token", lambda: "t-test")
     db.connect(tmp_path / "t.db").close()
     conn = sqlite3.connect(str(tmp_path / "t.db"), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     client = TestClient(api.create_app(conn))
 
-    r = client.get("/api/health")          # sin token a proposito: es el unico que no lo pide
+    r = client.get("/api/health")  # sin token a proposito: es el unico que no lo pide
     assert r.status_code == 200, r.text
     cuerpo = r.json()
     assert cuerpo["ok"] is True
@@ -255,8 +284,7 @@ def test_health_dice_la_casa_y_no_dice_quien_eres(tmp_path, monkeypatch):
     # Se comprueba contra el perfil REAL, que es el que se filtraria.
     perfil = os.environ.get("USERPROFILE") or os.environ.get("HOME") or ""
     if perfil:
-        assert perfil not in cuerpo["home"], (
-            f"health filtra la ruta del usuario sin redactar: {cuerpo['home']}")
+        assert perfil not in cuerpo["home"], f"health filtra la ruta del usuario sin redactar: {cuerpo['home']}"
 
 
 def test_un_campo_mal_escrito_no_es_un_500(tmp_path, monkeypatch):
@@ -285,14 +313,17 @@ def test_un_campo_mal_escrito_no_es_un_500(tmp_path, monkeypatch):
     errores de usuario, y los esconderia justo donde mas duelen.
     """
     import sqlite3
+
     monkeypatch.setattr(api, "load_token", lambda: "t-test")
     db.connect(tmp_path / "t.db").close()
     conn = sqlite3.connect(str(tmp_path / "t.db"), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     cli = TestClient(api.create_app(conn), raise_server_exceptions=False)
     h = {"X-FarOS-Token": "t-test"}
-    opts = [{"label": "opcion primera entera", "text": "opcion primera entera"},
-            {"label": "opcion segunda entera", "text": "opcion segunda entera"}]
+    opts = [
+        {"label": "opcion primera entera", "text": "opcion primera entera"},
+        {"label": "opcion segunda entera", "text": "opcion segunda entera"},
+    ]
 
     # sobra un campo
     r = cli.post("/api/tickets", json={"agent": "owner", "title": "x", "inventado": 1}, headers=h)
@@ -310,7 +341,7 @@ def test_un_campo_mal_escrito_no_es_un_500(tmp_path, monkeypatch):
     # rechaza todo tambien dejaria estos dos casos en 400 y el test pasaria.
     r = cli.post("/api/tickets", json={"agent": "owner", "title": "una tarea de verdad"}, headers=h)
     assert r.status_code == 200, r.text
-    r = cli.post("/api/decisions",
-                 json={"agent": "owner", "title": "una pregunta de verdad", "options": opts}, headers=h)
+    r = cli.post(
+        "/api/decisions", json={"agent": "owner", "title": "una pregunta de verdad", "options": opts}, headers=h
+    )
     assert r.status_code == 200, r.text
-

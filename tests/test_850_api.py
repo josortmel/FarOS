@@ -1,20 +1,22 @@
 """#869 (Biblioteca, tarea 4): /api/library/* y library_* del MCP (Spec v2 §4 y §6; contrato con el renderer, 4-nov)."""
 
 import asyncio
-import json
 import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
+from test_850_library import _filas, _w, mundo  # noqa: F401  (el mismo árbol temporal)
 
-from faros import api, library as L, mcp_server
-from test_850_library import mundo, _w, _filas  # noqa: F401  (el mismo árbol temporal)
+from faros import api, mcp_server
+from faros import library as L
 
 TOKEN = "t-850"
 H = {"X-FarOS-Token": TOKEN}
 BASE = "https://host.example.test/biblioteca/"
-CSP = ("sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src data:; "
-       "font-src data:; style-src 'unsafe-inline'")
+CSP = (
+    "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src data:; "
+    "font-src data:; style-src 'unsafe-inline'"
+)
 
 
 @pytest.fixture
@@ -36,9 +38,17 @@ def _id(cl, **filtro):
 
 # --------------------------------------------------------------- auth y forma
 
-@pytest.mark.parametrize("metodo,ruta", [("get", "/api/library/items"), ("get", "/api/library/items/1"),
-                                         ("get", "/api/library/items/1/content"), ("post", "/api/library/items"),
-                                         ("get", "/api/library/revista/2026-10-29")])
+
+@pytest.mark.parametrize(
+    "metodo,ruta",
+    [
+        ("get", "/api/library/items"),
+        ("get", "/api/library/items/1"),
+        ("get", "/api/library/items/1/content"),
+        ("post", "/api/library/items"),
+        ("get", "/api/library/revista/2026-10-29"),
+    ],
+)
 def test_sin_token_401(cl, metodo, ruta):
     r = getattr(cl, metodo)(ruta)
     assert r.status_code == 401 and r.json()["code"] == "auth.invalid_token"
@@ -66,9 +76,14 @@ def test_busqueda_filtros_y_errores_400(cl):
     assert [f["titulo"] for f in ok] == ["Informe uno"]
     assert cl.get("/api/library/items", headers=H, params={"q": 'a"b'}).status_code == 200
     assert len(cl.get("/api/library/items", headers=H, params={"clase": "revista", "desde": "2026-10-29"}).json()) == 1
-    for params, campo in (({"q": "a"}, "q"), ({"clase": "inventada"}, "clase"), ({"desde": "ayer"}, "desde"),
-                          ({"hasta": "2026-1-1"}, "hasta"), ({"desde": "٢٠٢٦-١٠-٢٩"}, "desde"),
-                          ({"desde": "2026-10-29\n"}, "desde")):
+    for params, campo in (
+        ({"q": "a"}, "q"),
+        ({"clase": "inventada"}, "clase"),
+        ({"desde": "ayer"}, "desde"),
+        ({"hasta": "2026-1-1"}, "hasta"),
+        ({"desde": "٢٠٢٦-١٠-٢٩"}, "desde"),
+        ({"desde": "2026-10-29\n"}, "desde"),
+    ):
         r = cl.get("/api/library/items", headers=H, params=params)
         assert r.status_code == 400 and r.json()["field"] == campo, (params, r.text)
     assert cl.get("/api/library/items", headers=H, params={"limite": "mucho"}).status_code == 422
@@ -85,12 +100,13 @@ def test_el_listado_no_incluye_lo_que_ya_no_pasa_permitida(cl):
 
 # --------------------------------------------------------------- abrir y content
 
+
 def test_abrir_en_lo_interactivo_y_null_en_lo_demas(cl):
     viva = _filas(cl.mundo.conn, titulo="Página Viva ñandú")[0]
     fila = cl.get(f"/api/library/items/{viva['id']}", headers=H).json()
     assert fila["abrir"] == BASE + viva["publicado"] and fila["id"] == viva["id"]
     c = cl.get(f"/api/library/items/{viva['id']}/content", headers=H)
-    assert c.status_code == 200 and c.json() == {"abrir": fila["abrir"]}          # la misma URL en /content
+    assert c.status_code == 200 and c.json() == {"abrir": fila["abrir"]}  # la misma URL en /content
     assert c.headers["content-security-policy"] == CSP
     assert cl.get(f"/api/library/items/{_id(cl, titulo='Informe uno')}", headers=H).json()["abrir"] is None
     en_lista = {f["id"]: f["abrir"] for f in cl.get("/api/library/items?limite=500", headers=H).json()}
@@ -116,7 +132,10 @@ def test_sin_abrir_base_configurada_abrir_es_null(cl):
 
 def test_content_de_un_md_es_html_con_csp_y_enlaces_seguros(cl):
     i = _id(cl, titulo="Revista I+D — 2026-10-29") if _filas(cl.mundo.conn, titulo="Revista I+D — 2026-10-29") else None
-    md = _w(cl.mundo.ses / "s1" / "enlaces.md", "# Con enlaces\n\n[a](https://a.test/x) <script>alert(1)</script> [j](javascript:alert(1))")
+    md = _w(
+        cl.mundo.ses / "s1" / "enlaces.md",
+        "# Con enlaces\n\n[a](https://a.test/x) <script>alert(1)</script> [j](javascript:alert(1))",
+    )
     j = L.registrar(cl.mundo.conn, md, env=cl.mundo.env)
     r = cl.get(f"/api/library/items/{j}/content", headers=H)
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
@@ -125,7 +144,7 @@ def test_content_de_un_md_es_html_con_csp_y_enlaces_seguros(cl):
     assert 'target="_blank" rel="noopener noreferrer"' in r.text and "<script" not in r.text.lower()
     assert 'href="javascript' not in r.text
     assert "default-src 'none'" in r.text.split("</head>")[0] and "sandbox" not in r.text.split("</head>")[0]
-    assert r.text.index("Content-Security-Policy") < r.text.index("<title>")        # la meta es la primera
+    assert r.text.index("Content-Security-Policy") < r.text.index("<title>")  # la meta es la primera
 
 
 def test_content_de_un_html_no_interactivo_y_de_una_carpeta(cl):
@@ -138,10 +157,13 @@ def test_content_de_un_html_no_interactivo_y_de_una_carpeta(cl):
 def test_revista_con_html_publicado_se_sirve_maquetada_con_la_misma_csp(cl):
     i = L.registrar(cl.mundo.conn, cl.mundo.rev / "2026-10-29.md", env=cl.mundo.env)
     r = cl.get(f"/api/library/items/{i}/content", headers=H)
-    assert r.status_code == 200 and "<h1>Revista</h1>" in r.text            # el revista-2026-10-29.html del fixture
+    assert r.status_code == 200 and "<h1>Revista</h1>" in r.text  # el revista-2026-10-29.html del fixture
     assert r.headers["content-security-policy"] == CSP
-    otra = cl.get(f"/api/library/items/{L.registrar(cl.mundo.conn, cl.mundo.rev / '2026-10-28.md', env=cl.mundo.env)}/content", headers=H)
-    assert "Revista 28" in otra.text                                         # sin maquetado: el .md convertido
+    otra = cl.get(
+        f"/api/library/items/{L.registrar(cl.mundo.conn, cl.mundo.rev / '2026-10-28.md', env=cl.mundo.env)}/content",
+        headers=H,
+    )
+    assert "Revista 28" in otra.text  # sin maquetado: el .md convertido
 
 
 def test_la_semanal_con_html_publicado_se_sirve_maquetada(cl):
@@ -162,14 +184,17 @@ def test_html_publicado_solo_si_es_el_guardado_para_esa_fila(cl):
     cl.db.execute("UPDATE library_items SET html_publicado=? WHERE id=?", (str(secreto), i))
     cl.db.commit()
     r = cl.get(f"/api/library/items/{i}/content", headers=H)
-    assert "SECRETO AJENO" not in r.text and r.status_code == 200            # cae al .md
-    cl.db.execute("UPDATE library_items SET html_publicado=? WHERE id=?",
-                  (str(cl.mundo.env.html_revista_dir / "revista-2026-10-29.html"), i))
+    assert "SECRETO AJENO" not in r.text and r.status_code == 200  # cae al .md
+    cl.db.execute(
+        "UPDATE library_items SET html_publicado=? WHERE id=?",
+        (str(cl.mundo.env.html_revista_dir / "revista-2026-10-29.html"), i),
+    )
     cl.db.commit()
     assert "<h1>Revista</h1>" in cl.get(f"/api/library/items/{i}/content", headers=H).text
 
 
 # --------------------------------------------------------------- 403 (R13)
+
 
 def test_403_siempre_el_mismo_y_con_csp(cl):
     ausente = _id(cl, titulo="Informe uno")
@@ -181,13 +206,16 @@ def test_403_siempre_el_mismo_y_con_csp(cl):
     cl.db.commit()
     cuerpos = set()
     for i in (ausente, fuera, negra, 999999):
-        for ruta in (f"/api/library/items/{i}", f"/api/library/items/{i}/content",
-                     f"/api/library/items/{i}/content?formato=texto"):
+        for ruta in (
+            f"/api/library/items/{i}",
+            f"/api/library/items/{i}/content",
+            f"/api/library/items/{i}/content?formato=texto",
+        ):
             r = cl.get(ruta, headers=H)
             assert r.status_code == 403, (ruta, r.status_code)
             assert r.headers["content-security-policy"] == CSP
             cuerpos.add(r.text)
-    assert len(cuerpos) == 1, cuerpos                                       # ni existe/no existe ni el motivo
+    assert len(cuerpos) == 1, cuerpos  # ni existe/no existe ni el motivo
     assert "fuera" not in cuerpos.pop() and True
 
 
@@ -198,24 +226,32 @@ def test_el_403_no_dice_rutas_ni_excepciones(cl):
 
 # --------------------------------------------------------------- formato texto (library_get)
 
+
 def test_formato_texto_con_tope(cl):
     i = _id(cl, titulo="Informe uno")
     r = cl.get(f"/api/library/items/{i}/content", headers=H, params={"formato": "texto"})
     assert r.json()["texto"].startswith("# Informe uno") and r.json()["truncado"] is False
     corto = cl.get(f"/api/library/items/{i}/content", headers=H, params={"formato": "texto", "max": 5}).json()
     assert corto["texto"] == "# Inf" and corto["truncado"] is True and corto["total"] > 5
-    h = cl.get(f"/api/library/items/{_id(cl, titulo='Estatica')}/content", headers=H, params={"formato": "texto"}).json()
+    h = cl.get(
+        f"/api/library/items/{_id(cl, titulo='Estatica')}/content", headers=H, params={"formato": "texto"}
+    ).json()
     assert h["texto"] == "Estatica hola" or "hola" in h["texto"]
     assert "<" not in h["texto"]
     assert cl.get(f"/api/library/items/{i}/content", headers=H, params={"formato": "xml"}).status_code == 400
-    assert cl.get(f"/api/library/items/{i}/content", headers=H, params={"formato": "texto", "max": 0}).status_code == 422
+    assert (
+        cl.get(f"/api/library/items/{i}/content", headers=H, params={"formato": "texto", "max": 0}).status_code == 422
+    )
 
 
 # --------------------------------------------------------------- POST
 
+
 def test_post_registra_y_es_idempotente(cl):
     f = _w(cl.mundo.ses / "s1" / "nuevo.md", "# Nuevo desde la API")
-    t = cl.db.execute("INSERT INTO tickets (kind, title, created_by, created_at) VALUES ('manual','t','alice','x')").lastrowid
+    t = cl.db.execute(
+        "INSERT INTO tickets (kind, title, created_by, created_at) VALUES ('manual','t','alice','x')"
+    ).lastrowid
     cl.db.commit()
     a = cl.post("/api/library/items", headers=H, json={"ruta": str(f), "clase": "faro", "ticket": t})
     assert a.status_code == 201 and a.json()["titulo"] == "Nuevo desde la API" and a.json()["origen"] == "manual"
@@ -225,24 +261,42 @@ def test_post_registra_y_es_idempotente(cl):
     assert cl.db.execute("SELECT count(*) FROM library_links WHERE ticket_id=?", (t,)).fetchone()[0] == 1
 
 
-@pytest.mark.parametrize("cuerpo,campo", [
-    ({"ruta": "x", "clase": "faro", "extra": 1}, "extra"),
-    ({"clase": "faro"}, "ruta"), ({"ruta": 5, "clase": "faro"}, "ruta"), ({"ruta": "", "clase": "faro"}, "ruta"),
-    ({"ruta": "x" * 2000, "clase": "faro"}, "ruta"), ({"ruta": "x"}, "clase"), ({"ruta": "x", "clase": "otra"}, "clase"),
-    ({"ruta": "x", "clase": "faro", "ticket": 999999}, "ticket"), ({"ruta": "x", "clase": "faro", "ticket": True}, "ticket"),
-    ({"ruta": "x", "clase": "faro", "ticket": "1"}, "ticket"), ({"ruta": "x", "clase": "faro", "ticket": -1}, "ticket"),
-])
+@pytest.mark.parametrize(
+    "cuerpo,campo",
+    [
+        ({"ruta": "x", "clase": "faro", "extra": 1}, "extra"),
+        ({"clase": "faro"}, "ruta"),
+        ({"ruta": 5, "clase": "faro"}, "ruta"),
+        ({"ruta": "", "clase": "faro"}, "ruta"),
+        ({"ruta": "x" * 2000, "clase": "faro"}, "ruta"),
+        ({"ruta": "x"}, "clase"),
+        ({"ruta": "x", "clase": "otra"}, "clase"),
+        ({"ruta": "x", "clase": "faro", "ticket": 999999}, "ticket"),
+        ({"ruta": "x", "clase": "faro", "ticket": True}, "ticket"),
+        ({"ruta": "x", "clase": "faro", "ticket": "1"}, "ticket"),
+        ({"ruta": "x", "clase": "faro", "ticket": -1}, "ticket"),
+    ],
+)
 def test_post_400_con_su_campo(cl, cuerpo, campo):
     r = cl.post("/api/library/items", headers=H, json=cuerpo)
     assert r.status_code == 400 and r.json()["field"] == campo, r.text
 
 
-@pytest.mark.parametrize("ruta,clase", [
-    ("{ses}/s1/informe.md", "revista"),                       # la clase no es la de la raíz
-    ("{ses}/beta_textos/x.md", "faro"), ("{ses}/s1/datos.json", "faro"), ("{ses}/s1/../../Sesiones_evil/x.md", "faro"),
-    ("{t}/Faro/Sesiones_evil/x.md", "faro"), ("{ses}/s1/informe.md::$DATA", "faro"), ("{ses}/s1/a\x00b.md", "faro"),
-    ("//evil/share/x.md", "faro"), ("{ses}/s1", "faro"), ("{ses}/no_existe.md", "faro"),
-])
+@pytest.mark.parametrize(
+    "ruta,clase",
+    [
+        ("{ses}/s1/informe.md", "revista"),  # la clase no es la de la raíz
+        ("{ses}/beta_textos/x.md", "faro"),
+        ("{ses}/s1/datos.json", "faro"),
+        ("{ses}/s1/../../Sesiones_evil/x.md", "faro"),
+        ("{t}/Faro/Sesiones_evil/x.md", "faro"),
+        ("{ses}/s1/informe.md::$DATA", "faro"),
+        ("{ses}/s1/a\x00b.md", "faro"),
+        ("//evil/share/x.md", "faro"),
+        ("{ses}/s1", "faro"),
+        ("{ses}/no_existe.md", "faro"),
+    ],
+)
 def test_post_403_lo_que_no_pasa_permitida(cl, ruta, clase):
     ruta = ruta.format(ses=cl.mundo.ses, t=cl.mundo.t)
     r = cl.post("/api/library/items", headers=H, json={"ruta": ruta, "clase": clase})
@@ -252,13 +306,30 @@ def test_post_403_lo_que_no_pasa_permitida(cl, ruta, clase):
 
 # --------------------------------------------------------------- revista/{dia}
 
-@pytest.mark.parametrize("dia", ["2026-1-1", "2026-10-29\n", "٢٠٢٦-١٠-٢٩", "semana-2026-4", "2026-10-29x", "semana-2026-43\n",
-                                 "SEMANA-2026-43", " 2026-10-29", "2026-10-29.md", "..", "%2e%2e", "2026-10-29%00"])
+
+@pytest.mark.parametrize(
+    "dia",
+    [
+        "2026-1-1",
+        "2026-10-29\n",
+        "٢٠٢٦-١٠-٢٩",
+        "semana-2026-4",
+        "2026-10-29x",
+        "semana-2026-43\n",
+        "SEMANA-2026-43",
+        " 2026-10-29",
+        "2026-10-29.md",
+        "..",
+        "%2e%2e",
+        "2026-10-29%00",
+    ],
+)
 def test_revista_dia_fuera_de_la_regex_400(cl, dia):
     from urllib.parse import quote
+
     r = cl.get("/api/library/revista/" + quote(dia, safe=""), headers=H)
     if dia == "..":
-        assert r.status_code == 404                      # el cliente normaliza la ruta: ni llega a la regex
+        assert r.status_code == 404  # el cliente normaliza la ruta: ni llega a la regex
         return
     assert r.status_code == 400 and r.json()["field"] == "dia", (dia, r.text)
 
@@ -277,6 +348,7 @@ def test_revista_dia_registra_si_hace_falta_y_devuelve_el_md_con_su_html(cl):
 
 
 # --------------------------------------------------------------- MCP (Spec §6)
+
 
 def test_mcp_library_tools_existen_y_prohiben_argumentos_desconocidos():
     tools = {t.name: t for t in mcp_server.mcp._tool_manager.list_tools()}
@@ -299,7 +371,7 @@ def test_mcp_library_son_clientes_finos(monkeypatch):
     assert hechas == [
         ("GET", "/api/library/items", {"params": {"q": "algo", "clase": "faro", "limite": 20}}),
         ("GET", "/api/library/items/7/content", {"params": {"formato": "texto", "max": 8000}}),
-        ("GET", "/api/library/items/7/content", {"params": {"formato": "texto", "max": 8000}}),   # tope de 8000
+        ("GET", "/api/library/items/7/content", {"params": {"formato": "texto", "max": 8000}}),  # tope de 8000
         ("GET", "/api/library/items/7/content", {"params": {"formato": "texto", "max": 5}}),
         ("POST", "/api/library/items", {"json": {"ruta": "r", "clase": "faro"}}),
         ("POST", "/api/library/items", {"json": {"ruta": "r", "clase": "faro", "ticket": 3}}),
@@ -327,15 +399,21 @@ def test_vt9_ticket_desmesurado_es_400_no_500(cl, ticket):
 def test_id_fuera_de_rango_es_el_mismo_403(cl, i):
     esperado = cl.get("/api/library/items/987654", headers=H)
     assert esperado.status_code == 403
-    for ruta in (f"/api/library/items/{i}", f"/api/library/items/{i}/content", f"/api/library/items/{i}/content?formato=texto"):
+    for ruta in (
+        f"/api/library/items/{i}",
+        f"/api/library/items/{i}/content",
+        f"/api/library/items/{i}/content?formato=texto",
+    ):
         r = cl.get(ruta, headers=H)
         assert r.status_code == 403 and r.text == esperado.text, (ruta, r.status_code, r.text)
 
+
 import json as _json  # noqa: E402
+
 from test_850_library import TOKEN as _T  # noqa: E402,F401
 
-
 # --------------------------------------------------------------- lote final de revisión (entorno vivo, paginación, supervivientes)
+
 
 def test_una_raiz_retirada_deja_de_servir_sin_reiniciar(mundo, tmp_path, monkeypatch):
     casa = tmp_path / "casa"
@@ -347,7 +425,7 @@ def test_una_raiz_retirada_deja_de_servir_sin_reiniciar(mundo, tmp_path, monkeyp
     rj.write_text(mundo.rj.read_text(encoding="utf-8"), encoding="utf-8")
     c = sqlite3.connect(str(mundo.t / "faros.db"), check_same_thread=False)
     c.row_factory = sqlite3.Row
-    cliente = TestClient(api.create_app(c))                      # SIN biblioteca=: el entorno de la casa, vivo
+    cliente = TestClient(api.create_app(c))  # SIN biblioteca=: el entorno de la casa, vivo
     env = L.entorno_de_la_casa()
     env.publicado_dir = mundo.env.publicado_dir
     L.recorrer(mundo.conn, env)
@@ -358,14 +436,19 @@ def test_una_raiz_retirada_deja_de_servir_sin_reiniciar(mundo, tmp_path, monkeyp
     assert cliente.get(f"/api/library/items/{i}", headers=H).status_code == 403
     assert cliente.get(f"/api/library/items/{i}/content", headers=H).status_code == 403
     assert i not in [f["id"] for f in cliente.get("/api/library/items?limite=500", headers=H).json()]
-    rj.write_text("{roto", encoding="utf-8")                      # ilegible: se queda con las últimas buenas
+    rj.write_text("{roto", encoding="utf-8")  # ilegible: se queda con las últimas buenas
     assert cliente.get(f"/api/library/items/{i}", headers=H).status_code == 403
     c.close()
 
 
 def test_limite_y_offset_fuera_de_rango_son_400(cl):
-    for params, campo in (({"limite": 0}, "limite"), ({"limite": 501}, "limite"), ({"limite": -3}, "limite"),
-                          ({"offset": -1}, "offset"), ({"offset": 2**63}, "offset")):
+    for params, campo in (
+        ({"limite": 0}, "limite"),
+        ({"limite": 501}, "limite"),
+        ({"limite": -3}, "limite"),
+        ({"offset": -1}, "offset"),
+        ({"offset": 2**63}, "offset"),
+    ):
         r = cl.get("/api/library/items", headers=H, params=params)
         assert r.status_code == 400 and r.json()["field"] == campo, (params, r.text)
     assert cl.get("/api/library/items", headers=H, params={"limite": 500, "offset": 0}).status_code == 200
@@ -388,7 +471,7 @@ def test_paginacion_sin_repetidos_ni_huecos_aunque_haya_filas_viejas(cl):
             pag = cl.get("/api/library/items", headers=H, params={**params, "limite": 7, "offset": offset}).json()
             vistos += [f["id"] for f in pag]
             if len(pag) < 7:
-                break                                              # página corta = final
+                break  # página corta = final
             offset += 7
         todo = [f["id"] for f in cl.get("/api/library/items", headers=H, params={**params, "limite": 500}).json()]
         assert vistos == todo and len(set(vistos)) == len(vistos), params
@@ -407,18 +490,19 @@ def test_q_se_corta_a_200_caracteres(cl, monkeypatch):
 def test_abrir_exige_interactivo_y_copia_en_disco(cl):
     viva = _filas(cl.mundo.conn, titulo="Página Viva ñandú")[0]
     assert cl.get(f"/api/library/items/{viva['id']}", headers=H).json()["abrir"]
-    (cl.mundo.env.publicado_dir / viva["publicado"]).unlink()                      # is_file
+    (cl.mundo.env.publicado_dir / viva["publicado"]).unlink()  # is_file
     assert cl.get(f"/api/library/items/{viva['id']}", headers=H).json()["abrir"] is None
     info = _filas(cl.mundo.conn, titulo="Informe uno")[0]
     cl.mundo.env.publicado_dir.mkdir(parents=True, exist_ok=True)
     (cl.mundo.env.publicado_dir / "5-falso.html").write_text("x")
-    cl.db.execute("UPDATE library_items SET publicado='5-falso.html' WHERE id=?", (info["id"],))   # interactivo = 0
+    cl.db.execute("UPDATE library_items SET publicado='5-falso.html' WHERE id=?", (info["id"],))  # interactivo = 0
     cl.db.commit()
     assert cl.get(f"/api/library/items/{info['id']}", headers=H).json()["abrir"] is None
 
 
 def test_html_publicado_con_enlace_a_otra_carpeta_no_se_sirve(cl):
     import os
+
     i = L.registrar(cl.mundo.conn, cl.mundo.rev / "2026-10-29.md", env=cl.mundo.env)
     fuera = _w(cl.mundo.t / "fuera_rev" / "x.html", "<html>DE FUERA</html>")
     destino = cl.mundo.env.html_revista_dir / "revista-2026-10-29.html"

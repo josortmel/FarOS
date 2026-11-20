@@ -5,11 +5,11 @@ NUNCA se interpreta como escritorio (matiz de Lienzo: un campo que deduce miente
 """
 
 import asyncio
-import sqlite3
 
 import pytest
 
-from faros import db, decisions as dec, mcp_server
+from faros import db, mcp_server
+from faros import decisions as dec
 from faros.service import TicketError
 
 OPTS = [{"label": "sí", "text": "sí, hazlo"}, {"label": "no", "text": "no lo hagas"}]
@@ -55,8 +55,9 @@ def test_la_lista_de_decisiones_tambien_la_trae(conn):
 def test_decidir_por_mcp_dice_mcp(monkeypatch):
     llamadas = []
     monkeypatch.setattr(mcp_server, "_call", lambda method, path, **kw: llamadas.append(kw) or {"ok": True})
-    asyncio.run(mcp_server.mcp.call_tool("decide", {"agent": "Pepe", "decision_id": 1, "option": "sí",
-                                                     "rationale": "x"}))
+    asyncio.run(
+        mcp_server.mcp.call_tool("decide", {"agent": "Pepe", "decision_id": 1, "option": "sí", "rationale": "x"})
+    )
     assert llamadas[0]["json"]["surface"] == "mcp"
 
 

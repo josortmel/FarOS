@@ -7,14 +7,28 @@ from faros import mcp_server
 
 
 def _ticket(i, status="accepted", when="2026-11-05T10:00"):
-    return {"id": i, "title": f"Tarea {i}", "status": status, "priority": "alta", "owner": "Prima",
-            "scheduled_at": when, "preferred_time": None, "due_state": "ok", "resumen": "x" * 200,
-            "blocked_reason": "y" * 200, "created_at": "2026-11-01T10:00:00", "source": "proposed"}
+    return {
+        "id": i,
+        "title": f"Tarea {i}",
+        "status": status,
+        "priority": "alta",
+        "owner": "Prima",
+        "scheduled_at": when,
+        "preferred_time": None,
+        "due_state": "ok",
+        "resumen": "x" * 200,
+        "blocked_reason": "y" * 200,
+        "created_at": "2026-11-01T10:00:00",
+        "source": "proposed",
+    }
 
 
 def _board():
-    return {"mine_open": [_ticket(i) for i in range(1, 41)] + [_ticket(99, "blocked", "2026-10-01T10:00")],
-            "needs_my_verification": [_ticket(50)], "por_ubicar": [_ticket(60, when=None)]}
+    return {
+        "mine_open": [_ticket(i) for i in range(1, 41)] + [_ticket(99, "blocked", "2026-10-01T10:00")],
+        "needs_my_verification": [_ticket(50)],
+        "por_ubicar": [_ticket(60, when=None)],
+    }
 
 
 def _tool(monkeypatch, board, **kwargs):

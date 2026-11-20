@@ -81,7 +81,6 @@ def test_los_ajustes_aceptan_el_nombre_nuevo_y_el_viejo(tmp_path, monkeypatch):
     que es la regla que ya sigue faros/env.py: lo nuevo gana, lo viejo sigue
     valiendo.
     """
-    import os
     from faros import settings as st
 
     conn = db.connect(tmp_path / "s.db")
@@ -95,8 +94,7 @@ def test_los_ajustes_aceptan_el_nombre_nuevo_y_el_viejo(tmp_path, monkeypatch):
     # solo el nuevo: TIENE que valer (esto fallaba antes)
     monkeypatch.delenv("AGENTICOS_VERIFY_MODEL")
     monkeypatch.setenv("FAROS_VERIFY_MODEL", "nuevo")
-    assert st.get(conn, "verifier_model") == "nuevo", (
-        "FAROS_* no configura nada: el ajuste cae al default EN SILENCIO")
+    assert st.get(conn, "verifier_model") == "nuevo", "FAROS_* no configura nada: el ajuste cae al default EN SILENCIO"
 
     # los dos: manda el nuevo
     monkeypatch.setenv("AGENTICOS_VERIFY_MODEL", "viejo")

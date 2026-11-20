@@ -20,20 +20,18 @@ MASK = "••••"
 
 # key → {default, secret, env (fallback), kind}
 DEFAULTS: dict[str, dict] = {
-    "casa_slots": {"default": [["09:00", "12:00"], ["14:00", "18:00"]], "secret": False,
-                   "kind": "slots", "env": None},
-    "verifier_model": {"default": "haiku", "secret": False, "kind": "str",
-                       "env": "AGENTICOS_VERIFY_MODEL"},
-    "telegram_token": {"default": "", "secret": True, "kind": "str",
-                       "env": "AGENTICOS_TG_BOT_TOKEN"},
-    "telegram_chat_id": {"default": "", "secret": False, "kind": "str",
-                         "env": "AGENTICOS_TG_CHAT_ID"},
-    "anthropic_api_key": {"default": "", "secret": True, "kind": "str",
-                          "env": "ANTHROPIC_API_KEY"},
-    "deepseek_api_key": {"default": "", "secret": True, "kind": "str",
-                         "env": "DEEPSEEK_API_KEY"},
-    "today_window": {"default": {"overdue": True, "due_today": True, "in_progress": True},
-                     "secret": False, "kind": "today_window", "env": None},
+    "casa_slots": {"default": [["09:00", "12:00"], ["14:00", "18:00"]], "secret": False, "kind": "slots", "env": None},
+    "verifier_model": {"default": "haiku", "secret": False, "kind": "str", "env": "AGENTICOS_VERIFY_MODEL"},
+    "telegram_token": {"default": "", "secret": True, "kind": "str", "env": "AGENTICOS_TG_BOT_TOKEN"},
+    "telegram_chat_id": {"default": "", "secret": False, "kind": "str", "env": "AGENTICOS_TG_CHAT_ID"},
+    "anthropic_api_key": {"default": "", "secret": True, "kind": "str", "env": "ANTHROPIC_API_KEY"},
+    "deepseek_api_key": {"default": "", "secret": True, "kind": "str", "env": "DEEPSEEK_API_KEY"},
+    "today_window": {
+        "default": {"overdue": True, "due_today": True, "in_progress": True},
+        "secret": False,
+        "kind": "today_window",
+        "env": None,
+    },
     "backup_retention_days": {"default": 14, "secret": False, "kind": "int", "env": None},
     "verifier_enabled": {"default": True, "secret": False, "kind": "bool", "env": None},
     # v3.1 (T4.2): raíz de repo por defecto para documents() cuando el workflow no la trae.
@@ -99,8 +97,11 @@ def _validate(key: str, value):
             raise TicketError("casa_slots: lista de [inicio, fin] no vacía")
         out = []
         for slot in value:
-            if (not isinstance(slot, (list, tuple)) or len(slot) != 2
-                    or not all(isinstance(x, str) and _HHMM.match(x) for x in slot)):
+            if (
+                not isinstance(slot, (list, tuple))
+                or len(slot) != 2
+                or not all(isinstance(x, str) and _HHMM.match(x) for x in slot)
+            ):
                 raise TicketError(f"casa_slots: franja inválida {slot!r} (['HH:MM','HH:MM'])")
             if slot[0] >= slot[1]:
                 raise TicketError(f"casa_slots: franja vacía o invertida {slot!r}")
@@ -119,8 +120,10 @@ def _validate(key: str, value):
 
 
 def _stored(conn) -> dict:
-    return {r["key"]: json.loads(r["value"]) if r["value"] is not None else None
-            for r in conn.execute("SELECT key, value FROM settings")}
+    return {
+        r["key"]: json.loads(r["value"]) if r["value"] is not None else None
+        for r in conn.execute("SELECT key, value FROM settings")
+    }
 
 
 def get(conn, key: str):
@@ -168,7 +171,8 @@ def patch(conn, agent: str, changes: dict, probados: dict | None = None) -> dict
     unknown = set(changes) - set(DEFAULTS)
     if unknown:
         raise TicketError(f"settings desconocidos: {sorted(unknown)} (válidos: {sorted(DEFAULTS)})")
-    from . import credentials   # aquí y no arriba: credentials importa este módulo
+    from . import credentials  # aquí y no arriba: credentials importa este módulo
+
     usos = {k for k in credentials.USO.values() if k}
     try:
         for key, value in changes.items():
@@ -182,7 +186,7 @@ def patch(conn, agent: str, changes: dict, probados: dict | None = None) -> dict
                 credentials.desde_ajuste(conn, agent, key, clean, (probados or {}).get(key))
             _guardar(conn, key, clean)
     except Exception:
-        conn.rollback()   # un PATCH con una clave que no vale no deja a medias las de antes
+        conn.rollback()  # un PATCH con una clave que no vale no deja a medias las de antes
         raise
     conn.commit()
     return get_all(conn)
@@ -193,5 +197,5 @@ def _guardar(conn, key: str, clean) -> None:
     conn.execute(
         "INSERT INTO settings (key, value, secret, updated_at) VALUES (?, ?, ?, ?)"
         " ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-        (key, json.dumps(clean), 1 if DEFAULTS[key]["secret"] else 0,
-         datetime.now().isoformat(timespec="seconds")))
+        (key, json.dumps(clean), 1 if DEFAULTS[key]["secret"] else 0, datetime.now().isoformat(timespec="seconds")),
+    )

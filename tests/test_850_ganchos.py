@@ -1,13 +1,14 @@
 """#868 (Biblioteca, tarea 3): ganchos de cierre y de run, y el recorrido en su hilo (Spec v2 §3)."""
 
-import os
 import threading
 import time
 
 import pytest
+from test_850_library import _filas, _w, mundo  # noqa: F401
 
-from faros import db, jobs, library as L, service as s
-from test_850_library import mundo, _w, _filas  # noqa: F401
+from faros import db, jobs
+from faros import library as L
+from faros import service as s
 
 
 @pytest.fixture
@@ -24,11 +25,14 @@ def _ticket(conn, **kw):
 
 
 def _links(conn, item_id):
-    return [tuple(r) for r in conn.execute(
-        "SELECT ticket_id, job_id, run_id FROM library_links WHERE item_id=?", (item_id,))]
+    return [
+        tuple(r)
+        for r in conn.execute("SELECT ticket_id, job_id, run_id FROM library_links WHERE item_id=?", (item_id,))
+    ]
 
 
 # --------------------------------------------------------------- al_cerrar
+
 
 def test_al_cerrar_registra_y_enlaza_segun_el_tipo(m):
     f = m.ses / "s1" / "informe.md"
@@ -40,7 +44,7 @@ def test_al_cerrar_registra_y_enlaza_segun_el_tipo(m):
         assert L.al_cerrar(m.conn, t["id"], tipo, f"mira {f}", m.env) == 0
     assert L.al_cerrar(m.conn, t["id"], "command_output", f"escribió {m.ses / 'Hilo_textos' / 'x.md'}", m.env) == 0
     n = len(_filas(m.conn))
-    assert L.al_cerrar(m.conn, t["id"], "file_path", f"hecho en {f}", m.env) == 1     # idempotente
+    assert L.al_cerrar(m.conn, t["id"], "file_path", f"hecho en {f}", m.env) == 1  # idempotente
     assert len(_filas(m.conn)) == n and len(_links(m.conn, fila["id"])) == 1
 
 
@@ -74,8 +78,9 @@ def test_cerrar_no_falla_ni_cambia_si_library_lanza(m, monkeypatch):
     t = _ticket(m.conn, title="Otro")
     out = s.complete_ticket(m.conn, "owner", t["id"], "file_path", f)
     assert out["status"] == ref["status"] == "verified"
-    assert {k: out[k] for k in ("evidence_type", "evidence", "verified_by")} == \
-           {k: ref[k] for k in ("evidence_type", "evidence", "verified_by")}
+    assert {k: out[k] for k in ("evidence_type", "evidence", "verified_by")} == {
+        k: ref[k] for k in ("evidence_type", "evidence", "verified_by")
+    }
     monkeypatch.undo()
     monkeypatch.setattr(L, "registrar", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("registrar roto")))
     monkeypatch.setattr(L, "entorno_cacheado", lambda: m.env)
@@ -91,8 +96,11 @@ def test_el_gancho_corre_despues_del_commit(m, monkeypatch):
     real = L.al_cerrar
 
     def espia(conn, tid, *a, **k):
-        vistos.append((conn.in_transaction, conn.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()[0]))
+        vistos.append(
+            (conn.in_transaction, conn.execute("SELECT status FROM tickets WHERE id=?", (tid,)).fetchone()[0])
+        )
         return real(conn, tid, *a, **k)
+
     monkeypatch.setattr(L, "al_cerrar", espia)
     t = _ticket(m.conn)
     s.complete_ticket(m.conn, "owner", t["id"], "file_path", str(m.ses / "s1" / "informe.md"))
@@ -107,7 +115,9 @@ def test_cierre_con_50_rutas_no_espera_y_acaba_registrando_las_50(m):
     dt = time.perf_counter() - t0
     L.esperar_pendientes()
     total = time.perf_counter() - t0
-    print(f"cierre con 50 rutas: la peticion {dt * 1000:.0f} ms; con el registro en segundo plano {total * 1000:.0f} ms")
+    print(
+        f"cierre con 50 rutas: la peticion {dt * 1000:.0f} ms; con el registro en segundo plano {total * 1000:.0f} ms"
+    )
     assert len(_filas(m.conn, origen="cierre")) == 50
     assert m.conn.execute("SELECT count(*) FROM library_links WHERE ticket_id=?", (t["id"],)).fetchone()[0] == 50
     assert dt < 0.2
@@ -128,6 +138,7 @@ def test_en_memoria_no_hay_hilo_aunque_sean_muchas(mundo, monkeypatch):
 
 
 # --------------------------------------------------------------- finish_run
+
 
 def _run_con_ticket(conn, **jkw):
     t = _ticket(conn, kind="agentic") if False else _ticket(conn)
@@ -171,6 +182,7 @@ def test_run_que_cierra_su_ticket_deja_un_solo_enlace(m):
 
 # --------------------------------------------------------------- recorrido en su hilo
 
+
 def test_recorrer_con_raices_ilegibles_no_toca_nada(m):
     L.recorrer(m.conn, m.env)
     n = len(L.buscar(m.conn, limite=500))
@@ -190,11 +202,13 @@ def test_recorrer_parado_a_medias_no_cuenta_faltas(m):
 def test_barredor_arranca_en_segundo_plano_con_su_conexion_y_para_limpio(m, monkeypatch):
     conexiones = []
     real = db.connect
-    monkeypatch.setattr(db, "connect", lambda *a, **k: conexiones.append(threading.current_thread().name) or real(*a, **k))
+    monkeypatch.setattr(
+        db, "connect", lambda *a, **k: conexiones.append(threading.current_thread().name) or real(*a, **k)
+    )
     b = L.Barredor(m.t / "faros.db", cada_s=3600, entorno=lambda: m.env)
     t0 = time.perf_counter()
     b.start()
-    assert time.perf_counter() - t0 < 0.5                      # start() no espera al recorrido
+    assert time.perf_counter() - t0 < 0.5  # start() no espera al recorrido
     for _ in range(100):
         if b.pasadas:
             break
@@ -203,7 +217,7 @@ def test_barredor_arranca_en_segundo_plano_con_su_conexion_y_para_limpio(m, monk
     t1 = time.perf_counter()
     b.stop()
     assert time.perf_counter() - t1 < 3 and not b._hilo.is_alive()
-    assert len(L.buscar(m.conn, limite=500)) > 10               # y lo registró en la base compartida
+    assert len(L.buscar(m.conn, limite=500)) > 10  # y lo registró en la base compartida
 
 
 def test_barredor_sobrevive_a_un_fallo_y_repite(m):
@@ -214,6 +228,7 @@ def test_barredor_sobrevive_a_un_fallo_y_repite(m):
         if len(intentos) == 1:
             raise RuntimeError("raices.json roto")
         return m.env
+
     b = L.Barredor(m.t / "faros.db", cada_s=0.05, entorno=entorno)
     b.start()
     for _ in range(100):
@@ -247,6 +262,8 @@ def test_entorno_cacheado_se_relee_si_cambia_raices_json(tmp_path, monkeypatch):
     d = tmp_path / "docs"
     d.mkdir()
     (casa / "biblioteca" / "raices.json").write_text(
-        '[{"clase":"faro","ruta":%s,"tipo":"carpeta","patrones":["*.md"],"recursivo":true}]' % __import__("json").dumps(str(d)),
-        encoding="utf-8")
+        '[{"clase":"faro","ruta":%s,"tipo":"carpeta","patrones":["*.md"],"recursivo":true}]'
+        % __import__("json").dumps(str(d)),
+        encoding="utf-8",
+    )
     assert len(L.entorno_cacheado().raices) == 1

@@ -2,7 +2,9 @@
 
 import pytest
 
-from faros import db, service as s, workflows as w
+from faros import db
+from faros import service as s
+from faros import workflows as w
 from faros.service import TicketError
 
 
@@ -14,18 +16,31 @@ def conn():
 
 
 PLAN = {
-    "workflow": {"name": "demo-build", "kind": "construccion",
-                 "spec_path": "docs/SPEC.md", "project": "Demo",
-                 "coordinator": "alice"},
+    "workflow": {
+        "name": "demo-build",
+        "kind": "construccion",
+        "spec_path": "docs/SPEC.md",
+        "project": "Demo",
+        "coordinator": "alice",
+    },
     "phases": ["fundacion", "core"],
     "tasks": [
-        {"key": "T1", "phase": "fundacion", "title": "Esquema de datos",
-         "objetivo": "crear schema", "criterio": "pytest del schema en verde",
-         "verification_level": "peer"},
-        {"key": "T2", "phase": "fundacion", "title": "Service layer",
-         "criterio": "tests service verdes", "depende_de": ["T1"]},
-        {"key": "T3", "phase": "core", "title": "API",
-         "criterio": "smoke curl ok", "depende_de": ["T2"]},
+        {
+            "key": "T1",
+            "phase": "fundacion",
+            "title": "Esquema de datos",
+            "objetivo": "crear schema",
+            "criterio": "pytest del schema en verde",
+            "verification_level": "peer",
+        },
+        {
+            "key": "T2",
+            "phase": "fundacion",
+            "title": "Service layer",
+            "criterio": "tests service verdes",
+            "depende_de": ["T1"],
+        },
+        {"key": "T3", "phase": "core", "title": "API", "criterio": "smoke curl ok", "depende_de": ["T2"]},
     ],
 }
 
@@ -44,6 +59,7 @@ def _tid(conn, wf, key):
 
 # ------------------------------------------------------------ import + contrato
 
+
 def test_import_plan_creates_workflow_tasks_deps(conn):
     wf = _imported(conn)
     assert wf["name"] == "demo-build" and wf["status"] == "active"
@@ -58,8 +74,7 @@ def test_import_plan_creates_workflow_tasks_deps(conn):
 
 
 def test_import_plan_all_or_nothing(conn):
-    bad = {**PLAN, "tasks": PLAN["tasks"] + [
-        {"key": "T9", "phase": "inexistente", "title": "x", "criterio": "y"}]}
+    bad = {**PLAN, "tasks": PLAN["tasks"] + [{"key": "T9", "phase": "inexistente", "title": "x", "criterio": "y"}]}
     with pytest.raises(TicketError, match="fase 'inexistente'"):
         w.import_plan(conn, "alice", bad)
     assert conn.execute("SELECT COUNT(*) c FROM workflows").fetchone()["c"] == 0
@@ -67,16 +82,19 @@ def test_import_plan_all_or_nothing(conn):
 
 
 def test_import_plan_rejects_cycles_dups_unknown_deps(conn):
-    cyc = {**PLAN, "tasks": [
-        {"key": "A", "phase": "core", "title": "a", "criterio": "c", "depende_de": ["B"]},
-        {"key": "B", "phase": "core", "title": "b", "criterio": "c", "depende_de": ["A"]}]}
+    cyc = {
+        **PLAN,
+        "tasks": [
+            {"key": "A", "phase": "core", "title": "a", "criterio": "c", "depende_de": ["B"]},
+            {"key": "B", "phase": "core", "title": "b", "criterio": "c", "depende_de": ["A"]},
+        ],
+    }
     with pytest.raises(TicketError, match="ciclo"):
         w.import_plan(conn, "alice", cyc)
     dup = {**PLAN, "tasks": PLAN["tasks"] + [dict(PLAN["tasks"][0])]}
     with pytest.raises(TicketError, match="duplicadas"):
         w.import_plan(conn, "alice", dup)
-    unk = {**PLAN, "tasks": [{"key": "A", "phase": "core", "title": "a",
-                              "criterio": "c", "depende_de": ["NOPE"]}]}
+    unk = {**PLAN, "tasks": [{"key": "A", "phase": "core", "title": "a", "criterio": "c", "depende_de": ["NOPE"]}]}
     with pytest.raises(TicketError, match="NOPE"):
         w.import_plan(conn, "alice", unk)
 
@@ -93,6 +111,7 @@ def test_workflow_agents_cannot_import(conn):
 
 
 # ------------------------------------------------------------ deps + despacho
+
 
 def test_deps_gate_start_and_dispatch(conn):
     wf = _imported(conn)
@@ -137,6 +156,7 @@ def test_add_dep_rejects_cycle_and_cross_workflow(conn):
 
 # ------------------------------------------------------------ findings
 
+
 def _verify_t1(conn, wf):
     t1 = _tid(conn, wf, "T1")
     w.dispatch_ticket(conn, "alice", t1, "code")
@@ -149,8 +169,7 @@ def _verify_t1(conn, wf):
 def test_finding_full_cycle_open_dispatched_fixed(conn):
     wf = _imported(conn)
     t1 = _verify_t1(conn, wf)
-    f = w.add_finding(conn, "adv-code", wf["id"], "high",
-                      "SQL injection en el filtro", "detalle...", ticket_id=t1)
+    f = w.add_finding(conn, "adv-code", wf["id"], "high", "SQL injection en el filtro", "detalle...", ticket_id=t1)
     assert f["status"] == "open" and f["found_by"] == "adv-code"
     fd = w.dispatch_finding(conn, "alice", f["id"], note="prioridad")
     assert fd["status"] == "dispatched"
@@ -188,6 +207,7 @@ def test_finding_validation(conn):
 
 
 # ------------------------------------------------------------ hitos + estado
+
 
 def test_phase_milestone_and_memory_draft(conn):
     wf = _imported(conn)
@@ -232,6 +252,7 @@ def test_progress_counters(conn):
 
 # ------------------------------------------------------------ ronda adversarial v2
 
+
 def test_fix_rejected_reopens_finding(conn):
     # bob F1: la corrección muere → el finding no se queda dispatched eterno
     wf = _imported(conn)
@@ -269,9 +290,16 @@ def test_finding_category_and_suggestion_travel_to_fix(conn):
     wf = _imported(conn)
     with pytest.raises(TicketError, match="category"):
         w.add_finding(conn, "adv-code", wf["id"], "high", "x", category="tipo-raro")
-    f = w.add_finding(conn, "adv-code", wf["id"], "high", "N+1 en board",
-                      detail="la query se repite", category="degradation",
-                      suggestion="cachear projects en el loop")
+    f = w.add_finding(
+        conn,
+        "adv-code",
+        wf["id"],
+        "high",
+        "N+1 en board",
+        detail="la query se repite",
+        category="degradation",
+        suggestion="cachear projects en el loop",
+    )
     fd = w.dispatch_finding(conn, "alice", f["id"])
     fix = s._as_dict(conn, s._get(conn, fd["correction_ticket_id"]))
     assert "Sugerencia de adv-code: cachear projects" in fix["description"]
@@ -280,13 +308,16 @@ def test_finding_category_and_suggestion_travel_to_fix(conn):
 
 def test_plan_hints_imported(conn):
     # bob P1/P3: agente_sugerido + plan_data
-    plan = {**PLAN, "workflow": {**PLAN["workflow"], "name": "demo-hints"},
-            "tasks": [{**PLAN["tasks"][0], "agente_sugerido": "code",
-                       "estimacion": "M"}] + PLAN["tasks"][1:]}
+    plan = {
+        **PLAN,
+        "workflow": {**PLAN["workflow"], "name": "demo-hints"},
+        "tasks": [{**PLAN["tasks"][0], "agente_sugerido": "code", "estimacion": "M"}] + PLAN["tasks"][1:],
+    }
     wf = w.import_plan(conn, "alice", plan)
     t1 = wf["tickets_by_phase"]["fundacion"][0]
     assert t1["suggested_agent"] == "code"
     import json as _json
+
     assert _json.loads(t1["plan_data"])["estimacion"] == "M"
 
 
@@ -323,12 +354,13 @@ def test_memory_draft_prose(conn):
     ms = w.workflow_status(conn, wf["id"])["milestones"]
     draft = w.memory_draft(conn, wf["id"], ms[0]["id"])
     c = draft["content"]
-    assert "completado el" in c                      # frase de apertura, prosa
+    assert "completado el" in c  # frase de apertura, prosa
     assert "conocimiento negativo" in c and "no es bug" in c
-    assert "decisión: usamos WAL" in c               # notas del history
+    assert "decisión: usamos WAL" in c  # notas del history
 
 
 # ------------------------------------------------------------ batch dispatch
+
 
 def test_dispatch_batch_all_or_nothing(conn):
     """5 valid → 5 dispatched; 1 invalid in the batch → 0 and reason names culprit."""
@@ -338,10 +370,15 @@ def test_dispatch_batch_all_or_nothing(conn):
 
     # batch with one invalid (t2 has unmet deps) → 0 dispatched
     with pytest.raises(TicketError, match="items\\[1\\].*dependencias sin verificar"):
-        w.dispatch_batch(conn, "alice", wf["id"], [
-            {"ticket_id": t1, "to": "code", "note": "lote"},
-            {"ticket_id": t2, "to": "code"},
-        ])
+        w.dispatch_batch(
+            conn,
+            "alice",
+            wf["id"],
+            [
+                {"ticket_id": t1, "to": "code", "note": "lote"},
+                {"ticket_id": t2, "to": "code"},
+            ],
+        )
     # verify t1 was NOT dispatched (all-or-nothing)
     fresh = dict(conn.execute("SELECT * FROM tickets WHERE id=?", (t1,)).fetchone())
     assert fresh["dispatched_to"] is None
@@ -351,9 +388,14 @@ def test_dispatch_batch_success(conn):
     """All valid → all dispatched in one commit."""
     wf = _imported(conn)
     t1 = _tid(conn, wf, "T1")
-    result = w.dispatch_batch(conn, "alice", wf["id"], [
-        {"ticket_id": t1, "to": "code", "note": "batch test"},
-    ])
+    result = w.dispatch_batch(
+        conn,
+        "alice",
+        wf["id"],
+        [
+            {"ticket_id": t1, "to": "code", "note": "batch test"},
+        ],
+    )
     assert result["count"] == 1
     assert result["dispatched"][0]["to"] == "code"
     assert result["dispatched"][0]["ticket_id"] == t1
@@ -371,28 +413,43 @@ def test_dispatch_batch_rejects_duplicate_ticket(conn):
     wf = _imported(conn)
     t1 = _tid(conn, wf, "T1")
     with pytest.raises(TicketError, match="duplicado"):
-        w.dispatch_batch(conn, "alice", wf["id"], [
-            {"ticket_id": t1, "to": "code"},
-            {"ticket_id": t1, "to": "bob"},
-        ])
+        w.dispatch_batch(
+            conn,
+            "alice",
+            wf["id"],
+            [
+                {"ticket_id": t1, "to": "code"},
+                {"ticket_id": t1, "to": "bob"},
+            ],
+        )
 
 
 def test_dispatch_batch_rejects_wrong_workflow(conn):
     wf = _imported(conn)
     solo = s.propose_ticket(conn, "owner", "outside", auto_accept=True)["ticket"]
     with pytest.raises(TicketError, match="no pertenece al workflow"):
-        w.dispatch_batch(conn, "alice", wf["id"], [
-            {"ticket_id": solo["id"], "to": "code"},
-        ])
+        w.dispatch_batch(
+            conn,
+            "alice",
+            wf["id"],
+            [
+                {"ticket_id": solo["id"], "to": "code"},
+            ],
+        )
 
 
 def test_dispatch_batch_rejects_non_coordinator(conn):
     wf = _imported(conn)
     t1 = _tid(conn, wf, "T1")
     with pytest.raises(TicketError, match="coordinador"):
-        w.dispatch_batch(conn, "code", wf["id"], [
-            {"ticket_id": t1, "to": "bob"},
-        ])
+        w.dispatch_batch(
+            conn,
+            "code",
+            wf["id"],
+            [
+                {"ticket_id": t1, "to": "bob"},
+            ],
+        )
 
 
 def test_v1_regression_intact(conn):

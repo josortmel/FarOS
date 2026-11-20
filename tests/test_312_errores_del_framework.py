@@ -45,8 +45,9 @@ def test_405_metodo_no_admitido(client):
 
 
 def test_422_json_mal_formado(client):
-    r = client.post("/api/tickets", headers={**H, "Content-Type": "application/json"},
-                    content=b'{"agent": "alice", "title": ')
+    r = client.post(
+        "/api/tickets", headers={**H, "Content-Type": "application/json"}, content=b'{"agent": "alice", "title": '
+    )
     _plano(r, 422, "request.malformed_json")
 
 
@@ -56,7 +57,8 @@ def test_422_parametro_con_tipo_equivocado_lleva_su_campo(client):
 
 
 def test_el_401_sigue_mandando_sin_token(client):
-    r = client.post("/api/tickets", headers={"Content-Type": "application/json"},
-                    content=b'{"agent": "alice", "title": ')
+    r = client.post(
+        "/api/tickets", headers={"Content-Type": "application/json"}, content=b'{"agent": "alice", "title": '
+    )
     assert r.status_code in (401, 422)  # quien gane, lleva code
     assert r.json()["code"] in ("auth.invalid_token", "request.malformed_json")

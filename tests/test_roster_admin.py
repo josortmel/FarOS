@@ -15,7 +15,10 @@ import json
 
 import pytest
 
-from faros import db, roster, roster_admin as ra, service as s, workflows as w, decisions
+from faros import db, decisions, roster
+from faros import roster_admin as ra
+from faros import service as s
+from faros import workflows as w
 
 
 @pytest.fixture
@@ -25,8 +28,8 @@ def home(tmp_path, monkeypatch):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("FAROS_HOME", str(tmp_path))
     (tmp_path / "roster.json").write_text(
-        json.dumps({"owner": "owner", "agents": ["owner", "alice", "bob", "carol", "dave"]}),
-        encoding="utf-8")
+        json.dumps({"owner": "owner", "agents": ["owner", "alice", "bob", "carol", "dave"]}), encoding="utf-8"
+    )
     roster.reload()
     yield tmp_path
     monkeypatch.undo()
@@ -60,6 +63,7 @@ def _code(fn, *a, **k):
 
 # ---------------------------------------------------------------- lectura
 
+
 def test_listing_says_source_owner_and_counts(conn):
     t = _ticket(conn, "alice")
     _ticket(conn, "alice")
@@ -83,6 +87,7 @@ def test_env_roster_is_read_only_and_names_the_variable(conn, monkeypatch):
 
 # ---------------------------------------------------------------- alta
 
+
 def test_create_is_live_everywhere_without_restart(conn, home):
     before = s.AGENTS
     ra.create(conn, "  zoe ")
@@ -93,11 +98,17 @@ def test_create_is_live_everywhere_without_restart(conn, home):
     assert "zoe" in on_disk["agents"] and on_disk["owner"] == "owner"
 
 
-@pytest.mark.parametrize("bad, status", [
-    ("", 422), ("   ", 422), ("x" * 41, 422),
-    ("verificador", 422), ("Runner-Bot", 422),
-    ("ALICE", 409),
-])
+@pytest.mark.parametrize(
+    "bad, status",
+    [
+        ("", 422),
+        ("   ", 422),
+        ("x" * 41, 422),
+        ("verificador", 422),
+        ("Runner-Bot", 422),
+        ("ALICE", 409),
+    ],
+)
 def test_create_rejects(conn, bad, status):
     e = _code(ra.create, conn, bad)
     assert e.status == status and e.field == "name"
@@ -124,13 +135,20 @@ def test_default_roster_first_write_creates_the_file(tmp_path, monkeypatch):
 
 # ---------------------------------------------------------------- renombrar
 
+
 def test_rename_moves_open_and_closed_tickets_and_coordination(conn):
     open_t = _ticket(conn, "alice")
     closed = _ticket(conn, "alice")
     s.reject_ticket(conn, "owner", closed["id"], "no hace falta ya")
-    wf = w.import_plan(conn, "alice", {
-        "workflow": {"name": "wf-ren", "kind": "construccion", "coordinator": "alice"},
-        "phases": ["p"], "tasks": [{"key": "T1", "phase": "p", "title": "x", "criterio": "y"}]})
+    wf = w.import_plan(
+        conn,
+        "alice",
+        {
+            "workflow": {"name": "wf-ren", "kind": "construccion", "coordinator": "alice"},
+            "phases": ["p"],
+            "tasks": [{"key": "T1", "phase": "p", "title": "x", "criterio": "y"}],
+        },
+    )
     ra.rename(conn, "alice", "Alicia")
     assert _owner_of(conn, open_t["id"]) == "Alicia"
     assert _owner_of(conn, closed["id"]) == "Alicia"
@@ -151,6 +169,7 @@ def test_rename_rules(conn):
 
 
 # ---------------------------------------------------------------- suspender
+
 
 def test_suspend_with_open_tickets_requires_reassign(conn):
     t1, t2 = _ticket(conn, "carol"), _ticket(conn, "carol")
@@ -174,8 +193,9 @@ def test_suspend_with_open_tickets_requires_reassign(conn):
 def test_suspend_without_open_tickets_and_reactivate(conn):
     ra.set_suspended(conn, "bob", True)
     assert "bob" not in s.AGENTS
-    assert _code(ra.set_suspended, conn, "carol", True, reassign_to="bob").status == 422, \
+    assert _code(ra.set_suspended, conn, "carol", True, reassign_to="bob").status == 422, (
         "no se reasigna a un suspendido"
+    )
     res = ra.set_suspended(conn, "bob", False)
     assert res["reassigned"] == 0 and "bob" in s.AGENTS and "bob" not in roster.SUSPENDED
 
@@ -192,6 +212,7 @@ def test_rename_a_suspended_agent_keeps_it_suspended(conn):
 
 # ---------------------------------------------------------------- borrar
 
+
 def test_delete_only_without_any_ticket(conn):
     _ticket(conn, "alice")
     e = _code(ra.delete, conn, "alice")
@@ -205,10 +226,14 @@ def test_delete_only_without_any_ticket(conn):
 
 # ---------------------------------------------------------------- HTTP (contrato con la interfaz)
 
+
 def test_http_contract(home, tmp_path, monkeypatch):
     import sqlite3
+
     from fastapi.testclient import TestClient
+
     from faros import api
+
     monkeypatch.setattr(api, "load_token", lambda: "t-test")
     db.connect(tmp_path / "t.db").close()
     c = sqlite3.connect(str(tmp_path / "t.db"), check_same_thread=False)

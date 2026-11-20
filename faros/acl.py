@@ -29,8 +29,7 @@ _ADMINS = "S-1-5-32-544"
 
 
 def _current_user_sid() -> str | None:
-    r = procutil.run_hidden(["whoami", "/user", "/fo", "csv", "/nh"],
-                            capture_output=True, text=True, timeout=30)
+    r = procutil.run_hidden(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=30)
     row = next(csv.reader(io.StringIO(r.stdout.strip())), None) if r.returncode == 0 else None
     return row[1] if row and len(row) > 1 and row[1].startswith("S-1-") else None
 
@@ -46,11 +45,13 @@ def harden_dir(path: str | os.PathLike) -> bool:
             log.warning("ACL de la casa sin tocar: no sé el SID del usuario actual")
             return False
         grants = [f"*{sid}:(OI)(CI)F" for sid in (user, _SYSTEM, _ADMINS)]
-        r = procutil.run_hidden(["icacls", str(path), "/grant:r", *grants, "/inheritance:r"],
-                                capture_output=True, text=True, timeout=60)
+        r = procutil.run_hidden(
+            ["icacls", str(path), "/grant:r", *grants, "/inheritance:r"], capture_output=True, text=True, timeout=60
+        )
         if r.returncode != 0:
-            log.warning("ACL de la casa sin tocar: icacls salió con %s: %s",
-                        r.returncode, (r.stdout + r.stderr).strip()[:300])
+            log.warning(
+                "ACL de la casa sin tocar: icacls salió con %s: %s", r.returncode, (r.stdout + r.stderr).strip()[:300]
+            )
             return False
         return True
     except Exception as e:  # noqa: BLE001 — el daemon arranca aunque esto falle

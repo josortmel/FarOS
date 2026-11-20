@@ -30,8 +30,9 @@ def llamadas(monkeypatch):
 
 def test_argumento_desconocido_falla_y_lo_nombra(llamadas):
     with pytest.raises(Exception) as e:
-        asyncio.run(mcp_server.mcp.call_tool(
-            "update_ticket", {"agent": "Prima", "ticket_id": 339, "blocked_reason": "x"}))
+        asyncio.run(
+            mcp_server.mcp.call_tool("update_ticket", {"agent": "Prima", "ticket_id": 339, "blocked_reason": "x"})
+        )
     assert "blocked_reason" in str(e.value)
     assert llamadas == [], "no debe llegar ningún PATCH al servidor"
 
@@ -47,6 +48,5 @@ def test_todas_las_tools_prohiben_argumentos_desconocidos():
 
 
 def test_los_argumentos_declarados_siguen_pasando(llamadas):
-    asyncio.run(mcp_server.mcp.call_tool(
-        "update_ticket", {"agent": "Prima", "ticket_id": 339, "title": "nuevo"}))
+    asyncio.run(mcp_server.mcp.call_tool("update_ticket", {"agent": "Prima", "ticket_id": 339, "title": "nuevo"}))
     assert llamadas == [("PATCH", "/api/tickets/339", {"json": {"agent": "Prima", "title": "nuevo"}})]

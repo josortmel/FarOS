@@ -37,7 +37,7 @@ import json
 import os
 import re
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -46,9 +46,9 @@ sys.path.insert(0, str(REPO))
 
 from faros import roster  # noqa: E402
 
-
 # ---------------------------------------------------------------- la lista
 # Esto es lo unico que hay que tocar para cambiar quien aparece en las capturas.
+
 
 def quienes(modo: str) -> tuple[str, list[str]]:
     if modo == "live":
@@ -180,14 +180,34 @@ def ticket(**kw) -> dict:
     que es lo que manda el motor: una fixture que omite campos ensena una UI que
     el motor real no produce."""
     base = {
-        "id": 0, "project_id": 1, "kind": "manual", "title": "", "description": "",
-        "owner": None, "source": "manual", "status": "proposed", "priority": "media",
-        "due_at": None, "verify_criteria": None, "blocked_reason": None,
-        "verification_level": "self", "evidence_type": None, "evidence": None,
-        "verified_by": None, "expires_at": None, "cadence_days": None,
-        "last_done_at": None, "created_by": None, "created_at": dt(-8, "09:20:09"),
-        "closed_at": None, "due_state": "ok", "scheduled_at": None, "duration_min": None,
-        "all_day": 0, "last_change": None, "preferred_time": None,
+        "id": 0,
+        "project_id": 1,
+        "kind": "manual",
+        "title": "",
+        "description": "",
+        "owner": None,
+        "source": "manual",
+        "status": "proposed",
+        "priority": "media",
+        "due_at": None,
+        "verify_criteria": None,
+        "blocked_reason": None,
+        "verification_level": "self",
+        "evidence_type": None,
+        "evidence": None,
+        "verified_by": None,
+        "expires_at": None,
+        "cadence_days": None,
+        "last_done_at": None,
+        "created_by": None,
+        "created_at": dt(-8, "09:20:09"),
+        "closed_at": None,
+        "due_state": "ok",
+        "scheduled_at": None,
+        "duration_min": None,
+        "all_day": 0,
+        "last_change": None,
+        "preferred_time": None,
         "next_due_override": None,
     }
     base.update(kw)
@@ -206,11 +226,20 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
 
     # --- las seis que demuestran el ciclo -------------------------------
     propuesta = ticket(
-        id=101, project_id=1, title=T["t_proposed"], description=T["t_proposed_desc"],
-        owner=a1, source="agent", status="proposed", priority="alta",
+        id=101,
+        project_id=1,
+        title=T["t_proposed"],
+        description=T["t_proposed_desc"],
+        owner=a1,
+        source="agent",
+        status="proposed",
+        priority="alta",
         # due_at hoy: si no, la vista por defecto no la ensena y la captura del
         # README pierde justo lo que la hace distinta — una tarea que propuso un agente
-        created_by=a1, created_at=dt(0, "07:12:40"), due_at=d(0), due_state="due",
+        created_by=a1,
+        created_at=dt(0, "07:12:40"),
+        due_at=d(0),
+        due_state="due",
         verify_criteria=T["t_recurring_crit"],
         last_change={"at": dt(0, "07:12:40"), "by": a1, "from": None, "to": "proposed"},
     )
@@ -218,81 +247,190 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
         # Las aceptadas llevan vencimiento HOY a proposito: la vista por defecto solo
         # admite lo que vence hoy o antes, y una columna «Aceptadas» con una sola tarjeta
         # no parece un tablero de trabajo — parece una demo vacia. Un dia real tiene varias.
-        ticket(id=102, project_id=2, title=T["t_accepted_1"], owner=a2, status="accepted",
-               priority="alta", due_at=d(0), created_by=owner, due_state="due",
-               scheduled_at=dt(0, "09:00"), duration_min=90,
-               last_change={"at": dt(-1, "18:25:00"), "by": a2, "from": "proposed", "to": "accepted"}),
-        ticket(id=103, project_id=1, title=T["t_accepted_2"], owner=a3, status="accepted",
-               priority="media", due_at=d(0), created_by=owner, due_state="due",
-               scheduled_at=dt(0, "12:00"), duration_min=60,
-               last_change={"at": dt(-1, "11:02:00"), "by": a3, "from": "proposed", "to": "accepted"}),
+        ticket(
+            id=102,
+            project_id=2,
+            title=T["t_accepted_1"],
+            owner=a2,
+            status="accepted",
+            priority="alta",
+            due_at=d(0),
+            created_by=owner,
+            due_state="due",
+            scheduled_at=dt(0, "09:00"),
+            duration_min=90,
+            last_change={"at": dt(-1, "18:25:00"), "by": a2, "from": "proposed", "to": "accepted"},
+        ),
+        ticket(
+            id=103,
+            project_id=1,
+            title=T["t_accepted_2"],
+            owner=a3,
+            status="accepted",
+            priority="media",
+            due_at=d(0),
+            created_by=owner,
+            due_state="due",
+            scheduled_at=dt(0, "12:00"),
+            duration_min=60,
+            last_change={"at": dt(-1, "11:02:00"), "by": a3, "from": "proposed", "to": "accepted"},
+        ),
         # la recurrente: cadencia, criterio y un brazo agentico detras
-        ticket(id=104, project_id=1, title=T["t_recurring"], owner=a4, status="accepted",
-               priority="media", cadence_days=7, last_done_at=d(-7), due_at=d(0),
-               due_state="due", verification_level="auto", verify_criteria=T["t_recurring_crit"],
-               created_by=owner, preferred_time="03:30",
-               last_change={"at": dt(-7, "03:31:00"), "by": a4, "from": "in_progress", "to": "accepted"},
-               linked_job={"id": 3, "name": T["j_backup"], "status": "active",
-                           "last_run": {"id": 38, "status": "ok", "verdict": "pass", "finished_at": dt(-7, "03:34:12")}}),
-        ticket(id=105, project_id=3, title=T["t_accepted_3"], owner=a1, status="accepted",
-               priority="baja", created_by=a2, due_at=d(3), due_state="ok",
-               last_change={"at": dt(-2, "16:40:00"), "by": a1, "from": "proposed", "to": "accepted"}),
+        ticket(
+            id=104,
+            project_id=1,
+            title=T["t_recurring"],
+            owner=a4,
+            status="accepted",
+            priority="media",
+            cadence_days=7,
+            last_done_at=d(-7),
+            due_at=d(0),
+            due_state="due",
+            verification_level="auto",
+            verify_criteria=T["t_recurring_crit"],
+            created_by=owner,
+            preferred_time="03:30",
+            last_change={"at": dt(-7, "03:31:00"), "by": a4, "from": "in_progress", "to": "accepted"},
+            linked_job={
+                "id": 3,
+                "name": T["j_backup"],
+                "status": "active",
+                "last_run": {"id": 38, "status": "ok", "verdict": "pass", "finished_at": dt(-7, "03:34:12")},
+            },
+        ),
+        ticket(
+            id=105,
+            project_id=3,
+            title=T["t_accepted_3"],
+            owner=a1,
+            status="accepted",
+            priority="baja",
+            created_by=a2,
+            due_at=d(3),
+            due_state="ok",
+            last_change={"at": dt(-2, "16:40:00"), "by": a1, "from": "proposed", "to": "accepted"},
+        ),
     ]
     en_curso = ticket(
-        id=106, project_id=1, title=T["t_progress"], owner=a4, status="in_progress",
-        priority="alta", created_by=owner, due_at=d(0), due_state="due",
-        verification_level="auto", verify_criteria=T["t_recurring_crit"],
+        id=106,
+        project_id=1,
+        title=T["t_progress"],
+        owner=a4,
+        status="in_progress",
+        priority="alta",
+        created_by=owner,
+        due_at=d(0),
+        due_state="due",
+        verification_level="auto",
+        verify_criteria=T["t_recurring_crit"],
         last_change={"at": dt(0, "08:05:00"), "by": a4, "from": "accepted", "to": "in_progress"},
-        linked_job={"id": 4, "name": T["j_watch"], "status": "active",
-                    "last_run": {"id": 44, "status": "running", "verdict": None, "finished_at": None}},
+        linked_job={
+            "id": 4,
+            "name": T["j_watch"],
+            "status": "active",
+            "last_run": {"id": 44, "status": "running", "verdict": None, "finished_at": None},
+        },
     )
     # HECHA SIN VERIFICAR: la cola de verificacion es lo distintivo del producto
     hecha = ticket(
-        id=107, project_id=2, title=T["t_done"], owner=a2, status="done",
-        priority="media", created_by=owner, evidence_type="file_path", evidence=T["t_done_ev"],
-        verification_level="peer", verify_criteria=T["t_recurring_crit"],
-        closed_at=dt(0, "08:41:00"), due_state="ok",
+        id=107,
+        project_id=2,
+        title=T["t_done"],
+        owner=a2,
+        status="done",
+        priority="media",
+        created_by=owner,
+        evidence_type="file_path",
+        evidence=T["t_done_ev"],
+        verification_level="peer",
+        verify_criteria=T["t_recurring_crit"],
+        closed_at=dt(0, "08:41:00"),
+        due_state="ok",
         last_change={"at": dt(0, "08:41:00"), "by": a2, "from": "in_progress", "to": "done"},
     )
     # VERIFICADA POR OTRO: verifier != owner, que es la regla que sostiene el sistema
     verificada = ticket(
-        id=108, project_id=2, title=T["t_verified"], owner=a3, status="verified",
-        priority="alta", created_by=a2, evidence_type="command_output",
-        evidence="playwright: 12 passed", verification_level="peer",
+        id=108,
+        project_id=2,
+        title=T["t_verified"],
+        owner=a3,
+        status="verified",
+        priority="alta",
+        created_by=a2,
+        evidence_type="command_output",
+        evidence="playwright: 12 passed",
+        verification_level="peer",
         # verificada hoy, y con vencimiento hoy, para que la columna Verified no salga
         # vacia en la vista que se captura: el ciclo se ve entero o no se ve
-        verified_by=a1, closed_at=dt(0, "10:10:00"), due_at=d(0), due_state="due",
+        verified_by=a1,
+        closed_at=dt(0, "10:10:00"),
+        due_at=d(0),
+        due_state="due",
         last_change={"at": dt(0, "10:10:00"), "by": a1, "from": "done", "to": "verified"},
     )
     bloqueada = ticket(
-        id=109, project_id=3, title=T["t_blocked"], owner=a1, status="blocked",
-        priority="media", created_by=owner, blocked_reason=T["t_blocked_why"],
-        due_at=d(-3), due_state="overdue",
+        id=109,
+        project_id=3,
+        title=T["t_blocked"],
+        owner=a1,
+        status="blocked",
+        priority="media",
+        created_by=owner,
+        blocked_reason=T["t_blocked_why"],
+        due_at=d(-3),
+        due_state="overdue",
         last_change={"at": dt(-3, "10:15:00"), "by": a1, "from": "accepted", "to": "blocked"},
     )
 
     board = {
-        "view": "today", "project_id": None, "projects": projects,
+        "view": "today",
+        "project_id": None,
+        "projects": projects,
         "columns": {
-            "proposed": [propuesta], "accepted": aceptadas, "in_progress": [en_curso],
-            "done": [hecha], "verified": [verificada],
+            "proposed": [propuesta],
+            "accepted": aceptadas,
+            "in_progress": [en_curso],
+            "done": [hecha],
+            "verified": [verificada],
         },
         "laterals": {"blocked": [bloqueada]},
-        "counts": {"proposed": 1, "accepted": len(aceptadas), "in_progress": 1,
-                   "done": 1, "verified": 1, "blocked": 1},
+        "counts": {"proposed": 1, "accepted": len(aceptadas), "in_progress": 1, "done": 1, "verified": 1, "blocked": 1},
     }
 
     todos = [propuesta, *aceptadas, en_curso, hecha, verificada, bloqueada]
-    sin_ubicar = ticket(id=110, project_id=1, title=T["t_unplaced"], owner=a1, status="accepted",
-                        priority="baja", cadence_days=7, preferred_time=None, last_done_at=d(-7), due_at=d(0),
-                        due_state="due", created_by=owner,
-                        last_change={"at": dt(-2, "10:00:00"), "by": owner, "from": "proposed", "to": "accepted"})
+    sin_ubicar = ticket(
+        id=110,
+        project_id=1,
+        title=T["t_unplaced"],
+        owner=a1,
+        status="accepted",
+        priority="baja",
+        cadence_days=7,
+        preferred_time=None,
+        last_done_at=d(-7),
+        due_at=d(0),
+        due_state="due",
+        created_by=owner,
+        last_change={"at": dt(-2, "10:00:00"), "by": owner, "from": "proposed", "to": "accepted"},
+    )
     # dos y no una: un dia real tiene varias cosas por ubicar, y la banda «sin hora» con
     # una sola tarjeta se vacia en cuanto la arrastras (y un e2e ya no puede devolverla)
-    sin_ubicar2 = ticket(id=111, project_id=2, title=T["t_unplaced2"], owner=a2, status="accepted",
-                         priority="media", cadence_days=7, preferred_time=None, last_done_at=d(-7), due_at=d(0),
-                         due_state="due", created_by=owner,
-                         last_change={"at": dt(-3, "12:00:00"), "by": owner, "from": "proposed", "to": "accepted"})
+    sin_ubicar2 = ticket(
+        id=111,
+        project_id=2,
+        title=T["t_unplaced2"],
+        owner=a2,
+        status="accepted",
+        priority="media",
+        cadence_days=7,
+        preferred_time=None,
+        last_done_at=d(-7),
+        due_at=d(0),
+        due_state="due",
+        created_by=owner,
+        last_change={"at": dt(-3, "12:00:00"), "by": owner, "from": "proposed", "to": "accepted"},
+    )
     board["columns"]["accepted"] += [sin_ubicar, sin_ubicar2]
     board["laterals"]["por_ubicar"] = [sin_ubicar, sin_ubicar2]
     board["counts"]["accepted"] += 2
@@ -312,207 +450,591 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
     ocupadas = {t["scheduled_at"][11:16] for t in todos if t["scheduled_at"]}
     turno = (h for h in libres if h not in ocupadas)
     for t in todos:
-        cuando = t["scheduled_at"] or (f'{t["due_at"]}T{next(turno, "18:00")}' if t["due_at"] else None)
+        cuando = t["scheduled_at"] or (f"{t['due_at']}T{next(turno, '18:00')}" if t["due_at"] else None)
         if not cuando:
             continue
-        cal_items.append({
-            "ticket_id": t["id"], "plan_key": None, "title": t["title"], "owner": t["owner"],
-            "project_id": t["project_id"], "status": t["status"], "priority": t["priority"],
-            "due_state": t["due_state"], "last_change": t["last_change"],
-            "cadence_days": t["cadence_days"], "preferred_time": t["preferred_time"],
-            "all_day": t["all_day"], "duration_min": t["duration_min"] or 60,
-            "kind": "ticket", "date": cuando[:10], "start": cuando[11:16],
-            "end": None, "ghost": False, "occurrence_n": None,
-        })
+        cal_items.append(
+            {
+                "ticket_id": t["id"],
+                "plan_key": None,
+                "title": t["title"],
+                "owner": t["owner"],
+                "project_id": t["project_id"],
+                "status": t["status"],
+                "priority": t["priority"],
+                "due_state": t["due_state"],
+                "last_change": t["last_change"],
+                "cadence_days": t["cadence_days"],
+                "preferred_time": t["preferred_time"],
+                "all_day": t["all_day"],
+                "duration_min": t["duration_min"] or 60,
+                "kind": "ticket",
+                "date": cuando[:10],
+                "start": cuando[11:16],
+                "end": None,
+                "ghost": False,
+                "occurrence_n": None,
+            }
+        )
     # LAS OCURRENCIAS PROYECTADAS CUBREN EL RANGO ENTERO, no dos sueltas. No es rellenar:
     # es lo que hace el motor — una recurrente semanal proyecta su cadencia por delante, y
     # el calendario existe para ensenar eso. Con dos, la vista Mes salia casi en blanco y
     # un mes vacio en el README no dice «sistema joven», dice «sistema sin usar».
     for n in range(1, 5):
-        cal_items.append({
-            "ticket_id": 104, "plan_key": None, "title": T["t_recurring"], "owner": a4,
-            "project_id": 1, "status": "accepted", "priority": "media", "due_state": "ok",
-            "last_change": None, "cadence_days": 7, "preferred_time": "03:30", "all_day": 0,
-            "duration_min": 30, "kind": "ticket", "date": d(7 * n), "start": "03:30",
-            "end": None, "ghost": True, "occurrence_n": n,
-        })
-    cal_items.append({
-        "ticket_id": 110, "plan_key": None, "title": T["t_unplaced"], "owner": a1,
-        "project_id": 1, "status": "accepted", "priority": "baja", "due_state": "due",
-        "last_change": sin_ubicar["last_change"], "cadence_days": 7, "preferred_time": None,
-        "all_day": 0, "duration_min": 60, "kind": "ticket", "date": d(0), "start": None,
-        "end": None, "ghost": False, "occurrence_n": 0,
-    })
-    cal_items.append({
-        "ticket_id": 111, "plan_key": None, "title": T["t_unplaced2"], "owner": a2,
-        "project_id": 2, "status": "accepted", "priority": "media", "due_state": "due",
-        "last_change": sin_ubicar2["last_change"], "cadence_days": 7, "preferred_time": None,
-        "all_day": 0, "duration_min": 60, "kind": "ticket", "date": d(0), "start": None,
-        "end": None, "ghost": False, "occurrence_n": 0,
-    })
+        cal_items.append(
+            {
+                "ticket_id": 104,
+                "plan_key": None,
+                "title": T["t_recurring"],
+                "owner": a4,
+                "project_id": 1,
+                "status": "accepted",
+                "priority": "media",
+                "due_state": "ok",
+                "last_change": None,
+                "cadence_days": 7,
+                "preferred_time": "03:30",
+                "all_day": 0,
+                "duration_min": 30,
+                "kind": "ticket",
+                "date": d(7 * n),
+                "start": "03:30",
+                "end": None,
+                "ghost": True,
+                "occurrence_n": n,
+            }
+        )
+    cal_items.append(
+        {
+            "ticket_id": 110,
+            "plan_key": None,
+            "title": T["t_unplaced"],
+            "owner": a1,
+            "project_id": 1,
+            "status": "accepted",
+            "priority": "baja",
+            "due_state": "due",
+            "last_change": sin_ubicar["last_change"],
+            "cadence_days": 7,
+            "preferred_time": None,
+            "all_day": 0,
+            "duration_min": 60,
+            "kind": "ticket",
+            "date": d(0),
+            "start": None,
+            "end": None,
+            "ghost": False,
+            "occurrence_n": 0,
+        }
+    )
+    cal_items.append(
+        {
+            "ticket_id": 111,
+            "plan_key": None,
+            "title": T["t_unplaced2"],
+            "owner": a2,
+            "project_id": 2,
+            "status": "accepted",
+            "priority": "media",
+            "due_state": "due",
+            "last_change": sin_ubicar2["last_change"],
+            "cadence_days": 7,
+            "preferred_time": None,
+            "all_day": 0,
+            "duration_min": 60,
+            "kind": "ticket",
+            "date": d(0),
+            "start": None,
+            "end": None,
+            "ghost": False,
+            "occurrence_n": 0,
+        }
+    )
     calendar = {"from": d(-7), "to": d(21), "lanes": [owner, *agents], "slots": [], "items": cal_items}
 
     # --- agentes: jobs y runs -------------------------------------------
     def job(i, name, status, harness, model, sched, **kw):
         base = {
-            "id": i, "name": name, "status": status, "harness": harness, "model": model,
+            "id": i,
+            "name": name,
+            "status": status,
+            "harness": harness,
+            "model": model,
             "prompt": f"Check the state and report what changed. Working dir: {CWD_EJEMPLO}",
-            "cwd": CWD_EJEMPLO, "permission_mode": "dontAsk", "allowed_tools": ["Read", "Bash"],
-            "mcp_config": None, "inherit_mcp": [], "strict_mcp": 0, "add_dirs": [],
-            "effort": None, "fallback_model": None, "system_prompt": None, "json_schema": None,
-            "max_budget_usd": 1.0, "billing_mode": "subscription", "timeout_s": 1800,
-            "schedule": sched, "verify_level": "auto",
-            "verify_criteria": T["t_recurring_crit"], "ticket_id": None, "project_id": 1,
+            "cwd": CWD_EJEMPLO,
+            "permission_mode": "dontAsk",
+            "allowed_tools": ["Read", "Bash"],
+            "mcp_config": None,
+            "inherit_mcp": [],
+            "strict_mcp": 0,
+            "add_dirs": [],
+            "effort": None,
+            "fallback_model": None,
+            "system_prompt": None,
+            "json_schema": None,
+            "max_budget_usd": 1.0,
+            "billing_mode": "subscription",
+            "timeout_s": 1800,
+            "schedule": sched,
+            "verify_level": "auto",
+            "verify_criteria": T["t_recurring_crit"],
+            "ticket_id": None,
+            "project_id": 1,
         }
         base.update(kw)
         return base
 
     jobs = [
-        job(1, T["j_digest"], "active", "claude-cli", "haiku",
-            {"type": "recurring", "every_days": 1, "at": ["08:00"]}),
-        job(2, T["j_market"], "paused", "opencode", "deepseek-v4-pro",
-            {"type": "weekly", "weekdays": [0], "at": ["07:30"]}),
-        job(3, T["j_backup"], "active", "claude-cli", "haiku",
-            {"type": "weekly", "weekdays": [6], "at": ["03:30"]}, ticket_id=104),
-        job(4, T["j_watch"], "active", "claude-cli", "haiku",
-            {"type": "recurring", "every_days": 1, "at": ["09:00", "11:00", "13:00"]}, ticket_id=106),
+        job(1, T["j_digest"], "active", "claude-cli", "haiku", {"type": "recurring", "every_days": 1, "at": ["08:00"]}),
+        job(
+            2,
+            T["j_market"],
+            "paused",
+            "opencode",
+            "deepseek-v4-pro",
+            {"type": "weekly", "weekdays": [0], "at": ["07:30"]},
+        ),
+        job(
+            3,
+            T["j_backup"],
+            "active",
+            "claude-cli",
+            "haiku",
+            {"type": "weekly", "weekdays": [6], "at": ["03:30"]},
+            ticket_id=104,
+        ),
+        job(
+            4,
+            T["j_watch"],
+            "active",
+            "claude-cli",
+            "haiku",
+            {"type": "recurring", "every_days": 1, "at": ["09:00", "11:00", "13:00"]},
+            ticket_id=106,
+        ),
         job(5, T["j_sweep"], "archived", "claude-cli", "sonnet", {"type": "manual"}),
     ]
     runs = {
-        "1": [{"id": 51, "status": "ok", "started_at": dt(0, "08:00:04"), "finished_at": dt(0, "08:01:22"),
-               "cost_usd": 0.004, "cost_kind": "equivalent", "verdict": "pass",
-               "verdict_reason": None, "result_summary": T["r_ok"], "job_id": 1,
-               "exit_code": 0, "session_id": "s-51", "output_path": None, "verified_at": dt(0, "08:05:00")},
-              {"id": 45, "status": "ok", "started_at": dt(-7, "08:00:03"), "finished_at": dt(-7, "08:01:10"),
-               "cost_usd": 0.004, "cost_kind": "equivalent", "verdict": "pass",
-               "verdict_reason": None, "result_summary": T["r_ok"], "job_id": 1,
-               "exit_code": 0, "session_id": "s-45", "output_path": None, "verified_at": dt(-7, "08:05:00")}],
-        "2": [{"id": 47, "status": "error", "started_at": dt(-7, "07:30:00"), "finished_at": dt(-7, "07:31:10"),
-               "cost_usd": 0.0, "cost_kind": "equivalent", "verdict": "fail",
-               "verdict_reason": T["r_fail"], "result_summary": T["r_fail"], "job_id": 2,
-               "exit_code": 1, "session_id": "s-47", "output_path": None, "verified_at": dt(-7, "07:35:00")}],
-        "3": [{"id": 38, "status": "ok", "started_at": dt(-7, "03:30:02"), "finished_at": dt(-7, "03:34:12"),
-               "cost_usd": 0.012, "cost_kind": "equivalent", "verdict": "pass",
-               "verdict_reason": None, "result_summary": T["r_backup"], "job_id": 3,
-               "exit_code": 0, "session_id": "s-38", "output_path": None, "verified_at": dt(-7, "03:40:00")}],
+        "1": [
+            {
+                "id": 51,
+                "status": "ok",
+                "started_at": dt(0, "08:00:04"),
+                "finished_at": dt(0, "08:01:22"),
+                "cost_usd": 0.004,
+                "cost_kind": "equivalent",
+                "verdict": "pass",
+                "verdict_reason": None,
+                "result_summary": T["r_ok"],
+                "job_id": 1,
+                "exit_code": 0,
+                "session_id": "s-51",
+                "output_path": None,
+                "verified_at": dt(0, "08:05:00"),
+            },
+            {
+                "id": 45,
+                "status": "ok",
+                "started_at": dt(-7, "08:00:03"),
+                "finished_at": dt(-7, "08:01:10"),
+                "cost_usd": 0.004,
+                "cost_kind": "equivalent",
+                "verdict": "pass",
+                "verdict_reason": None,
+                "result_summary": T["r_ok"],
+                "job_id": 1,
+                "exit_code": 0,
+                "session_id": "s-45",
+                "output_path": None,
+                "verified_at": dt(-7, "08:05:00"),
+            },
+        ],
+        "2": [
+            {
+                "id": 47,
+                "status": "error",
+                "started_at": dt(-7, "07:30:00"),
+                "finished_at": dt(-7, "07:31:10"),
+                "cost_usd": 0.0,
+                "cost_kind": "equivalent",
+                "verdict": "fail",
+                "verdict_reason": T["r_fail"],
+                "result_summary": T["r_fail"],
+                "job_id": 2,
+                "exit_code": 1,
+                "session_id": "s-47",
+                "output_path": None,
+                "verified_at": dt(-7, "07:35:00"),
+            }
+        ],
+        "3": [
+            {
+                "id": 38,
+                "status": "ok",
+                "started_at": dt(-7, "03:30:02"),
+                "finished_at": dt(-7, "03:34:12"),
+                "cost_usd": 0.012,
+                "cost_kind": "equivalent",
+                "verdict": "pass",
+                "verdict_reason": None,
+                "result_summary": T["r_backup"],
+                "job_id": 3,
+                "exit_code": 0,
+                "session_id": "s-38",
+                "output_path": None,
+                "verified_at": dt(-7, "03:40:00"),
+            }
+        ],
         # run VIVO: la superficie de agentes tiene que poder ensenar algo corriendo
-        "4": [{"id": 44, "status": "running", "started_at": dt(0, "09:00:01"), "finished_at": None,
-               "cost_usd": None, "cost_kind": None, "verdict": None, "verdict_reason": None,
-               "result_summary": None, "job_id": 4, "exit_code": None,
-               "session_id": "s-44", "output_path": None, "verified_at": None}],
+        "4": [
+            {
+                "id": 44,
+                "status": "running",
+                "started_at": dt(0, "09:00:01"),
+                "finished_at": None,
+                "cost_usd": None,
+                "cost_kind": None,
+                "verdict": None,
+                "verdict_reason": None,
+                "result_summary": None,
+                "job_id": 4,
+                "exit_code": None,
+                "session_id": "s-44",
+                "output_path": None,
+                "verified_at": None,
+            }
+        ],
         "5": [],
     }
-    ag_cal = {"from": d(-7), "to": d(14), "lanes": ["claude-cli", "opencode"], "items": [
-        {"job_id": 1, "title": T["j_digest"], "name": T["j_digest"], "harness": "claude-cli",
-         "model": "haiku", "status": "active", "schedule_human": "daily · 08:00",
-         "schedule_type": "recurring", "all_day": 0, "ghost": False, "kind": "run",
-         "date": d(0), "start": "08:00", "end": "08:01", "run_id": 51, "verdict": "pass",
-         "verdict_reason": None, "cost_usd": 0.004, "started_at": dt(0, "08:00:04"),
-         "finished_at": dt(0, "08:01:22"), "occurrence_n": None},
-        {"job_id": 4, "title": T["j_watch"], "name": T["j_watch"], "harness": "claude-cli",
-         "model": "haiku", "status": "active", "schedule_human": "daily · 09:00, 11:00, 13:00",
-         "schedule_type": "recurring", "all_day": 0, "ghost": False, "kind": "run",
-         "date": d(0), "start": "09:00", "end": None, "run_id": 44, "verdict": None,
-         "verdict_reason": None, "cost_usd": None, "started_at": dt(0, "09:00:01"),
-         "finished_at": None, "occurrence_n": None},
-        {"job_id": 3, "title": T["j_backup"], "name": T["j_backup"], "harness": "claude-cli",
-         "model": "haiku", "status": "active", "schedule_human": "weekly · 03:30",
-         "schedule_type": "weekly", "all_day": 0, "ghost": True, "kind": "job",
-         "date": d(2), "start": "03:30", "end": None, "run_id": None, "verdict": None,
-         "verdict_reason": None, "cost_usd": None, "started_at": None,
-         "finished_at": None, "occurrence_n": 1},
-        {"job_id": 1, "title": T["j_digest"], "name": T["j_digest"], "harness": "claude-cli",
-         "model": "haiku", "status": "active", "schedule_human": "daily · 08:00",
-         "schedule_type": "recurring", "all_day": 0, "ghost": False, "kind": "run",
-         "date": d(-7), "start": "08:00", "end": "08:01", "run_id": 45, "verdict": "pass",
-         "verdict_reason": None, "cost_usd": 0.004, "started_at": dt(-7, "08:00:03"),
-         "finished_at": dt(-7, "08:01:10"), "occurrence_n": None},
-        {"job_id": 2, "title": T["j_market"], "name": T["j_market"], "harness": "opencode",
-         "model": "deepseek-v4-pro", "status": "paused", "schedule_human": "weekly · 07:30",
-         "schedule_type": "weekly", "all_day": 0, "ghost": False, "kind": "run",
-         "date": d(-7), "start": "07:30", "end": "07:31", "run_id": 47, "verdict": "fail",
-         "verdict_reason": T["r_fail"], "cost_usd": 0.0, "started_at": dt(-7, "07:30:00"),
-         "finished_at": dt(-7, "07:31:10"), "occurrence_n": None},
-        {"job_id": 3, "title": T["j_backup"], "name": T["j_backup"], "harness": "claude-cli",
-         "model": "haiku", "status": "active", "schedule_human": "weekly · 03:30",
-         "schedule_type": "weekly", "all_day": 0, "ghost": False, "kind": "run",
-         "date": d(-7), "start": "03:30", "end": "03:34", "run_id": 38, "verdict": "pass",
-         "verdict_reason": None, "cost_usd": 0.012, "started_at": dt(-7, "03:30:02"),
-         "finished_at": dt(-7, "03:34:12"), "occurrence_n": None},
-    ]}
+    ag_cal = {
+        "from": d(-7),
+        "to": d(14),
+        "lanes": ["claude-cli", "opencode"],
+        "items": [
+            {
+                "job_id": 1,
+                "title": T["j_digest"],
+                "name": T["j_digest"],
+                "harness": "claude-cli",
+                "model": "haiku",
+                "status": "active",
+                "schedule_human": "daily · 08:00",
+                "schedule_type": "recurring",
+                "all_day": 0,
+                "ghost": False,
+                "kind": "run",
+                "date": d(0),
+                "start": "08:00",
+                "end": "08:01",
+                "run_id": 51,
+                "verdict": "pass",
+                "verdict_reason": None,
+                "cost_usd": 0.004,
+                "started_at": dt(0, "08:00:04"),
+                "finished_at": dt(0, "08:01:22"),
+                "occurrence_n": None,
+            },
+            {
+                "job_id": 4,
+                "title": T["j_watch"],
+                "name": T["j_watch"],
+                "harness": "claude-cli",
+                "model": "haiku",
+                "status": "active",
+                "schedule_human": "daily · 09:00, 11:00, 13:00",
+                "schedule_type": "recurring",
+                "all_day": 0,
+                "ghost": False,
+                "kind": "run",
+                "date": d(0),
+                "start": "09:00",
+                "end": None,
+                "run_id": 44,
+                "verdict": None,
+                "verdict_reason": None,
+                "cost_usd": None,
+                "started_at": dt(0, "09:00:01"),
+                "finished_at": None,
+                "occurrence_n": None,
+            },
+            {
+                "job_id": 3,
+                "title": T["j_backup"],
+                "name": T["j_backup"],
+                "harness": "claude-cli",
+                "model": "haiku",
+                "status": "active",
+                "schedule_human": "weekly · 03:30",
+                "schedule_type": "weekly",
+                "all_day": 0,
+                "ghost": True,
+                "kind": "job",
+                "date": d(2),
+                "start": "03:30",
+                "end": None,
+                "run_id": None,
+                "verdict": None,
+                "verdict_reason": None,
+                "cost_usd": None,
+                "started_at": None,
+                "finished_at": None,
+                "occurrence_n": 1,
+            },
+            {
+                "job_id": 1,
+                "title": T["j_digest"],
+                "name": T["j_digest"],
+                "harness": "claude-cli",
+                "model": "haiku",
+                "status": "active",
+                "schedule_human": "daily · 08:00",
+                "schedule_type": "recurring",
+                "all_day": 0,
+                "ghost": False,
+                "kind": "run",
+                "date": d(-7),
+                "start": "08:00",
+                "end": "08:01",
+                "run_id": 45,
+                "verdict": "pass",
+                "verdict_reason": None,
+                "cost_usd": 0.004,
+                "started_at": dt(-7, "08:00:03"),
+                "finished_at": dt(-7, "08:01:10"),
+                "occurrence_n": None,
+            },
+            {
+                "job_id": 2,
+                "title": T["j_market"],
+                "name": T["j_market"],
+                "harness": "opencode",
+                "model": "deepseek-v4-pro",
+                "status": "paused",
+                "schedule_human": "weekly · 07:30",
+                "schedule_type": "weekly",
+                "all_day": 0,
+                "ghost": False,
+                "kind": "run",
+                "date": d(-7),
+                "start": "07:30",
+                "end": "07:31",
+                "run_id": 47,
+                "verdict": "fail",
+                "verdict_reason": T["r_fail"],
+                "cost_usd": 0.0,
+                "started_at": dt(-7, "07:30:00"),
+                "finished_at": dt(-7, "07:31:10"),
+                "occurrence_n": None,
+            },
+            {
+                "job_id": 3,
+                "title": T["j_backup"],
+                "name": T["j_backup"],
+                "harness": "claude-cli",
+                "model": "haiku",
+                "status": "active",
+                "schedule_human": "weekly · 03:30",
+                "schedule_type": "weekly",
+                "all_day": 0,
+                "ghost": False,
+                "kind": "run",
+                "date": d(-7),
+                "start": "03:30",
+                "end": "03:34",
+                "run_id": 38,
+                "verdict": "pass",
+                "verdict_reason": None,
+                "cost_usd": 0.012,
+                "started_at": dt(-7, "03:30:02"),
+                "finished_at": dt(-7, "03:34:12"),
+                "occurrence_n": None,
+            },
+        ],
+    }
 
     def _alias(fam, target, tier):
-        return {"id": fam, "label": f"{fam.capitalize()} (alias → {target})", "family": fam,
-                "alias_of": target, "tier": tier, "source": "help", "validated": True,
-                "validated_at": d(-10), "note": T["m_alias"]}
+        return {
+            "id": fam,
+            "label": f"{fam.capitalize()} (alias → {target})",
+            "family": fam,
+            "alias_of": target,
+            "tier": tier,
+            "source": "help",
+            "validated": True,
+            "validated_at": d(-10),
+            "note": T["m_alias"],
+        }
 
     def _fijo(mid, label, fam, tier):
-        return {"id": mid, "label": label, "family": fam, "alias_of": None, "tier": tier,
-                "source": "measured", "validated": True, "validated_at": d(-10), "note": ""}
+        return {
+            "id": mid,
+            "label": label,
+            "family": fam,
+            "alias_of": None,
+            "tier": tier,
+            "source": "measured",
+            "validated": True,
+            "validated_at": d(-10),
+            "note": "",
+        }
 
     harnesses = [
-        {"name": "claude-cli", "installed": True, "version": "2.1.0", "billing": "subscription",
-         "capabilities": ["mcp", "json_schema", "effort"],
-         # #309: la FORMA REAL de /api/harnesses desde v3.1 (T5.5). La vieja
-         # {alias,label,tier} dejaba vacio el selector de familia del job en modo fixtures.
-         "models": [_alias("fable", "claude-fable-5-1", "max"), _alias("opus", "claude-opus-5", "high"),
-                    _alias("sonnet", "claude-sonnet-5", "mid"), _alias("haiku", "claude-haiku-4-5-20251001", "cheap"),
-                    _fijo("claude-fable-5-1", "Fable 5.1", "fable", "max"),
-                    _fijo("claude-opus-5", "Opus 5", "opus", "high"),
-                    _fijo("claude-sonnet-5", "Sonnet 5", "sonnet", "mid"),
-                    _fijo("claude-haiku-4-5-20251001", "Haiku 4.5", "haiku", "cheap")],
-         "models_source": "probe", "models_refreshed_at": dt(-1, "22:10:00"),
-         "families": ["claude"]},
-        {"name": "opencode", "installed": True, "version": "0.9.4", "billing": "api",
-         "capabilities": ["mcp"],
-         "models": [{"id": "deepseek/deepseek-v4-pro", "label": "deepseek/deepseek-v4-pro", "family": None,
-                     "alias_of": None, "tier": "high", "source": "cli", "validated": None, "note": ""}],
-         "models_source": "static", "models_refreshed_at": None, "families": ["deepseek"]},
-        {"name": "codex", "installed": False, "version": None, "billing": "api",
-         "capabilities": [], "models": [], "models_source": "static",
-         "models_refreshed_at": None, "families": []},
+        {
+            "name": "claude-cli",
+            "installed": True,
+            "version": "2.1.0",
+            "billing": "subscription",
+            "capabilities": ["mcp", "json_schema", "effort"],
+            # #309: la FORMA REAL de /api/harnesses desde v3.1 (T5.5). La vieja
+            # {alias,label,tier} dejaba vacio el selector de familia del job en modo fixtures.
+            "models": [
+                _alias("fable", "claude-fable-5-1", "max"),
+                _alias("opus", "claude-opus-5", "high"),
+                _alias("sonnet", "claude-sonnet-5", "mid"),
+                _alias("haiku", "claude-haiku-4-5-20251001", "cheap"),
+                _fijo("claude-fable-5-1", "Fable 5.1", "fable", "max"),
+                _fijo("claude-opus-5", "Opus 5", "opus", "high"),
+                _fijo("claude-sonnet-5", "Sonnet 5", "sonnet", "mid"),
+                _fijo("claude-haiku-4-5-20251001", "Haiku 4.5", "haiku", "cheap"),
+            ],
+            "models_source": "probe",
+            "models_refreshed_at": dt(-1, "22:10:00"),
+            "families": ["claude"],
+        },
+        {
+            "name": "opencode",
+            "installed": True,
+            "version": "0.9.4",
+            "billing": "api",
+            "capabilities": ["mcp"],
+            "models": [
+                {
+                    "id": "deepseek/deepseek-v4-pro",
+                    "label": "deepseek/deepseek-v4-pro",
+                    "family": None,
+                    "alias_of": None,
+                    "tier": "high",
+                    "source": "cli",
+                    "validated": None,
+                    "note": "",
+                }
+            ],
+            "models_source": "static",
+            "models_refreshed_at": None,
+            "families": ["deepseek"],
+        },
+        {
+            "name": "codex",
+            "installed": False,
+            "version": None,
+            "billing": "api",
+            "capabilities": [],
+            "models": [],
+            "models_source": "static",
+            "models_refreshed_at": None,
+            "families": [],
+        },
     ]
-    mcp_servers = [{
-        "id": 1, "name": "gmail", "transport": "stdio",
-        "command": "node", "args": [f"{CWD_EJEMPLO}/mcp/gmail/index.js"], "url": None,
-        "env": {"GMAIL_OAUTH_TOKEN": "••••"}, "headers": {}, "enabled": False,
-        "note": T["mcp_note"], "source": "manual",
-        "created_at": dt(-20, "12:00:00"), "updated_at": dt(-20, "12:00:00"),
-    }]
+    mcp_servers = [
+        {
+            "id": 1,
+            "name": "gmail",
+            "transport": "stdio",
+            "command": "node",
+            "args": [f"{CWD_EJEMPLO}/mcp/gmail/index.js"],
+            "url": None,
+            "env": {"GMAIL_OAUTH_TOKEN": "••••"},
+            "headers": {},
+            "enabled": False,
+            "note": T["mcp_note"],
+            "source": "manual",
+            "created_at": dt(-20, "12:00:00"),
+            "updated_at": dt(-20, "12:00:00"),
+        }
+    ]
     mcp_inherited = [
-        {"name": "faros", "scope": "user", "transport": "stdio", "command": f"python -m faros.mcp"},
+        {"name": "faros", "scope": "user", "transport": "stdio", "command": "python -m faros.mcp"},
         {"name": "search", "scope": "user", "transport": "http", "command": f"https://search.{DOMINIO}/mcp"},
     ]
-    decisions = [{
-        "id": 1, "workflow_id": 1, "project_id": 1, "title": T["dec_title"],
-        "context": T["dec_ctx"],
-        # #309: el contrato es [{label, text}] (opciones LITERALES enteras); con strings la UI pintaba botones vacios
-        "options": [{"label": "claude-cli", "text": T["dec_opt1"]}, {"label": "opencode", "text": T["dec_opt2"]}],
-        "asked_by": a4,
-        "status": "open", "decided_by": None, "decision": None, "rationale": None,
-        "deferred_until": None, "created_at": dt(-1, "17:00:00"), "decided_at": None,
-        "history": [], "workflow_name": T["wf_name"],
-    }]
+    decisions = [
+        {
+            "id": 1,
+            "workflow_id": 1,
+            "project_id": 1,
+            "title": T["dec_title"],
+            "context": T["dec_ctx"],
+            # #309: el contrato es [{label, text}] (opciones LITERALES enteras); con strings la UI pintaba botones vacios
+            "options": [{"label": "claude-cli", "text": T["dec_opt1"]}, {"label": "opencode", "text": T["dec_opt2"]}],
+            "asked_by": a4,
+            "status": "open",
+            "decided_by": None,
+            "decision": None,
+            "rationale": None,
+            "deferred_until": None,
+            "created_at": dt(-1, "17:00:00"),
+            "decided_at": None,
+            "history": [],
+            "workflow_name": T["wf_name"],
+        }
+    ]
     workflows_list = [
-        {"id": 1, "name": T["wf_name"], "status": "active", "coordinator": a4, "kind": "build",
-         "pct_global": 62, "open_findings": 2,
-         "phases_summary": [{"phase": "1-core", "pct": 100}, {"phase": "2-ui", "pct": 40}],
-         "created_at": dt(-30, "09:00:00")},
-        {"id": 2, "name": T["wf_name2"], "status": "active", "coordinator": a2, "kind": "build",
-         "pct_global": 18, "open_findings": 0,
-         "phases_summary": [{"phase": "1-design", "pct": 18}], "created_at": dt(-6, "09:00:00")},
+        {
+            "id": 1,
+            "name": T["wf_name"],
+            "status": "active",
+            "coordinator": a4,
+            "kind": "build",
+            "pct_global": 62,
+            "open_findings": 2,
+            "phases_summary": [{"phase": "1-core", "pct": 100}, {"phase": "2-ui", "pct": 40}],
+            "created_at": dt(-30, "09:00:00"),
+        },
+        {
+            "id": 2,
+            "name": T["wf_name2"],
+            "status": "active",
+            "coordinator": a2,
+            "kind": "build",
+            "pct_global": 18,
+            "open_findings": 0,
+            "phases_summary": [{"phase": "1-design", "pct": 18}],
+            "created_at": dt(-6, "09:00:00"),
+        },
         # #291: el archivado (antes retocado a mano en el JSON; ahora sale del generador)
-        {"id": 3, "name": T["wf_archived"], "status": "archived", "coordinator": a3, "kind": "build",
-         "pct_global": 100, "open_findings": 0,
-         "phases_summary": [{"phase": "1-export", "pct": 100}, {"phase": "2-review", "pct": 100}],
-         "created_at": dt(-76, "09:00:00")},
+        {
+            "id": 3,
+            "name": T["wf_archived"],
+            "status": "archived",
+            "coordinator": a3,
+            "kind": "build",
+            "pct_global": 100,
+            "open_findings": 0,
+            "phases_summary": [{"phase": "1-export", "pct": 100}, {"phase": "2-review", "pct": 100}],
+            "created_at": dt(-76, "09:00:00"),
+        },
         # #309: los estados que el producto tiene y la demo no traia (se archiva un cerrado; se cancela un activo)
-        {"id": 4, "name": T["wf_closed"], "status": "closed", "coordinator": a2, "kind": "build",
-         "pct_global": 100, "open_findings": 0,
-         "phases_summary": [{"phase": "1-fix", "pct": 100}], "created_at": dt(-21, "09:00:00")},
-        {"id": 5, "name": T["wf_cancelled"], "status": "cancelled", "coordinator": a1, "kind": "build",
-         "pct_global": 30, "open_findings": 0,
-         "phases_summary": [{"phase": "1-spike", "pct": 30}], "created_at": dt(-40, "09:00:00")},
+        {
+            "id": 4,
+            "name": T["wf_closed"],
+            "status": "closed",
+            "coordinator": a2,
+            "kind": "build",
+            "pct_global": 100,
+            "open_findings": 0,
+            "phases_summary": [{"phase": "1-fix", "pct": 100}],
+            "created_at": dt(-21, "09:00:00"),
+        },
+        {
+            "id": 5,
+            "name": T["wf_cancelled"],
+            "status": "cancelled",
+            "coordinator": a1,
+            "kind": "build",
+            "pct_global": 30,
+            "open_findings": 0,
+            "phases_summary": [{"phase": "1-spike", "pct": 30}],
+            "created_at": dt(-40, "09:00:00"),
+        },
     ]
     # CONTRATO REAL DE workflow.json, leido de js/api.js y no deducido del board:
     # phases (lista de nombres) · tickets_by_phase (dict fase -> tickets) · findings ·
@@ -530,49 +1052,98 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
             (verificada, "1-core", True, None),
         ]
     ]
-    por_fase = {"1-core": [t for t in wf_tickets if t["phase"] == "1-core"],
-                "2-ui": [t for t in wf_tickets if t["phase"] == "2-ui"]}
+    por_fase = {
+        "1-core": [t for t in wf_tickets if t["phase"] == "1-core"],
+        "2-ui": [t for t in wf_tickets if t["phase"] == "2-ui"],
+    }
     workflow = {
-        "id": 1, "name": T["wf_name"], "status": "active", "coordinator": a4,
-        "kind": "build", "pct_global": 0,  # lo recalcula el propio renderer
+        "id": 1,
+        "name": T["wf_name"],
+        "status": "active",
+        "coordinator": a4,
+        "kind": "build",
+        "pct_global": 0,  # lo recalcula el propio renderer
         "phases": ["1-core", "2-ui"],
         "tickets_by_phase": por_fase,
         "phases_summary": [],
         "findings": [
-            {"id": 1, "workflow_id": 1, "ticket_id": 106, "title": T["f_open"],
-             "severity": "alta", "status": "open", "found_by": a1,
-             "created_at": dt(-1, "16:20:00"), "closed_at": None, "note": None},
-            {"id": 2, "workflow_id": 1, "ticket_id": 107, "title": T["f_closed"],
-             "severity": "media", "status": "closed", "found_by": a3,
-             "created_at": dt(-4, "11:00:00"), "closed_at": dt(-2, "09:30:00"), "note": None},
+            {
+                "id": 1,
+                "workflow_id": 1,
+                "ticket_id": 106,
+                "title": T["f_open"],
+                "severity": "alta",
+                "status": "open",
+                "found_by": a1,
+                "created_at": dt(-1, "16:20:00"),
+                "closed_at": None,
+                "note": None,
+            },
+            {
+                "id": 2,
+                "workflow_id": 1,
+                "ticket_id": 107,
+                "title": T["f_closed"],
+                "severity": "media",
+                "status": "closed",
+                "found_by": a3,
+                "created_at": dt(-4, "11:00:00"),
+                "closed_at": dt(-2, "09:30:00"),
+                "note": None,
+            },
         ],
         "handoffs": [
-            {"id": 1, "workflow_id": 1, "author": a4, "created_at": dt(-1, "19:40:00"),
-             "lead": T["ho_lead"], "body": T["ho_body"]},
+            {
+                "id": 1,
+                "workflow_id": 1,
+                "author": a4,
+                "created_at": dt(-1, "19:40:00"),
+                "lead": T["ho_lead"],
+                "body": T["ho_body"],
+            },
         ],
-        "latest_handoff": {"id": 1, "workflow_id": 1, "author": a4,
-                           "created_at": dt(-1, "19:40:00"), "lead": T["ho_lead"], "body": T["ho_body"]},
-        "milestones": [{"id": 1, "workflow_id": 1, "phase": "1-core", "title": T["ms"],
-                        "reached_at": dt(-2, "18:00:00"), "saved_to_ecodb": 1}],
+        "latest_handoff": {
+            "id": 1,
+            "workflow_id": 1,
+            "author": a4,
+            "created_at": dt(-1, "19:40:00"),
+            "lead": T["ho_lead"],
+            "body": T["ho_body"],
+        },
+        "milestones": [
+            {
+                "id": 1,
+                "workflow_id": 1,
+                "phase": "1-core",
+                "title": T["ms"],
+                "reached_at": dt(-2, "18:00:00"),
+                "saved_to_ecodb": 1,
+            }
+        ],
         "milestones_pending_ecodb": 0,
         "recent_activity": [
-            {"at": dt(0, "10:10:00"), "by": a1, "kind": "transition",
-             "text": T["ac_verified"], "ticket_id": 108},
-            {"at": dt(0, "08:41:00"), "by": a2, "kind": "transition",
-             "text": T["ac_done"], "ticket_id": 107},
+            {"at": dt(0, "10:10:00"), "by": a1, "kind": "transition", "text": T["ac_verified"], "ticket_id": 108},
+            {"at": dt(0, "08:41:00"), "by": a2, "kind": "transition", "text": T["ac_done"], "ticket_id": 107},
         ],
         "projects": projects[:1],
     }
     meta = {
         "harnesses": ["claude-cli", "opencode"],
-        "models": [{"alias": "haiku", "label": "Haiku 4.5", "tier": "cheap"},
-                   {"alias": "sonnet", "label": "Sonnet 5", "tier": "mid"},
-                   {"alias": "opus", "label": "Opus 4.8", "tier": "high"}],
+        "models": [
+            {"alias": "haiku", "label": "Haiku 4.5", "tier": "cheap"},
+            {"alias": "sonnet", "label": "Sonnet 5", "tier": "mid"},
+            {"alias": "opus", "label": "Opus 4.8", "tier": "high"},
+        ],
         "permission_modes": ["dontAsk", "acceptEdits", "plan", "bypassPermissions"],
         "evidence_types": ["file_path", "command_output", "memory_id", "peer_attestation", "run_output"],
         "verification_levels": ["self", "peer", "auto"],
-        "defaults": {"model": "haiku", "timeout_s": 1800, "permission_mode": "dontAsk",
-                     "schedule": {"type": "manual"}, "verification_level": "auto"},
+        "defaults": {
+            "model": "haiku",
+            "timeout_s": 1800,
+            "permission_mode": "dontAsk",
+            "schedule": {"type": "manual"},
+            "verification_level": "auto",
+        },
         "agents": [owner, *agents],
         "docs_dir": f"{HOME_EJEMPLO}/docs",
         "owner": owner,
@@ -582,11 +1153,18 @@ def construir(owner: str, agents: list[str], lang: str) -> dict[str, object]:
     }
 
     return {
-        "board.json": board, "calendar.json": calendar, "agents_jobs.json": jobs,
-        "agents_runs.json": runs, "agents_calendar.json": ag_cal, "harnesses.json": harnesses,
-        "mcp_servers.json": mcp_servers, "mcp_inherited.json": mcp_inherited,
-        "decisions.json": decisions, "workflows_list.json": workflows_list,
-        "workflow.json": workflow, "meta.json": meta,
+        "board.json": board,
+        "calendar.json": calendar,
+        "agents_jobs.json": jobs,
+        "agents_runs.json": runs,
+        "agents_calendar.json": ag_cal,
+        "harnesses.json": harnesses,
+        "mcp_servers.json": mcp_servers,
+        "mcp_inherited.json": mcp_inherited,
+        "decisions.json": decisions,
+        "workflows_list.json": workflows_list,
+        "workflow.json": workflow,
+        "meta.json": meta,
     }
 
 
@@ -620,16 +1198,21 @@ NOMBRES = _nombres_privados()
 # fixture publica — una ruta de usuario, un directorio de datos de Windows, un correo.
 # Estas si pueden vivir en el fichero, porque no dicen QUIEN.
 SUBCADENAS = [
-    "AgenticOS", "LOCALAPPDATA", "@gmail", "gmail.com",
+    "AgenticOS",
+    "LOCALAPPDATA",
+    "@gmail",
+    "gmail.com",
     # LAS RUTAS, EN LAS DOS CODIFICACIONES. En fuente JS y en JSON una ruta de Windows
     # va ESCAPADA, asi que los bytes son C:\\\\Users y un termino con UNA barra devuelve
     # CERO sobre un fichero que la contiene tres veces. No es un patron flojo: es una
     # codificacion que nadie habia considerado, y cualquier .js o .json puede traerla.
     # Lo encontro Hilo en api.js, donde mi barrido decia limpio y habia tres rutas suyas.
     "C:" + chr(92) + "Users",
-    "C:" + chr(92)*2 + "Users",
-    "/Users/", "/home/",
+    "C:" + chr(92) * 2 + "Users",
+    "/Users/",
+    "/home/",
 ]
+
 
 # Y LOS PROPIOS DE QUIEN INSTALA ESTO, QUE NO VIVEN AQUI.
 # Este fichero existe para impedir que datos personales viajen en una fixture publica,
@@ -647,10 +1230,11 @@ def _terminos_propios() -> list[str]:
     try:
         lineas = Path(ruta).read_text(encoding="utf-8").splitlines()
     except OSError as e:
-        print(f"ABORTADO: FAROS_DENY_FILE apunta a {ruta!r} y no se puede leer ({e}).",
-              file=sys.stderr)
+        print(f"ABORTADO: FAROS_DENY_FILE apunta a {ruta!r} y no se puede leer ({e}).", file=sys.stderr)
         raise SystemExit(2)
     return [l.strip() for l in lineas if l.strip() and not l.startswith("#")]
+
+
 PROPIOS = _terminos_propios()
 PROHIBIDO = NOMBRES + SUBCADENAS + PROPIOS
 
@@ -713,8 +1297,14 @@ def main() -> int:
     # en api.js con el barrido en verde. Se plantan las dos formas y las dos tienen
     # que saltar, o no se escribe nada.
     casos = {
-        "__canario_ruta_escapada__": '{"path": "C:' + chr(92)*2 + 'Users' + chr(92)*2 + 'Admin' + chr(92)*2 + 'Documents"}',
-        "__canario_ruta_plana__": '{"path": "C:' + chr(92) + 'Users' + chr(92) + 'Admin"}',
+        "__canario_ruta_escapada__": '{"path": "C:'
+        + chr(92) * 2
+        + "Users"
+        + chr(92) * 2
+        + "Admin"
+        + chr(92) * 2
+        + 'Documents"}',
+        "__canario_ruta_plana__": '{"path": "C:' + chr(92) + "Users" + chr(92) + 'Admin"}',
     }
     # El canario de NOMBRE solo se planta si hay nombres privados que detectar. Plantarlo
     # cuando la lista esta vacia abortaria siempre en un clon limpio — cambiar un falso

@@ -2,12 +2,9 @@
 
 import json
 
-import pytest
-
 from faros import harness
-from faros.harness.base import HarnessAdapter, Capabilities, ModelInfo, RunResult
-from faros.harness.claude_cli import parse_help_aliases, ClaudeCliAdapter
-
+from faros.harness.base import Capabilities, HarnessAdapter, ModelInfo, RunResult
+from faros.harness.claude_cli import parse_help_aliases
 
 HELP_SNIPPET = """
   --mcp-config <configs...>             Load MCP servers from JSON files or
@@ -72,11 +69,20 @@ def test_claude_read_cost_is_equivalent_not_billed():
 
 def test_claude_build_command_v3_flags():
     a = harness.get("claude-cli")
-    job = {"model": "haiku", "permission_mode": "dontAsk", "allowed_tools": "Read",
-           "inherit_mcp": json.dumps(["agenticos"]), "mcp_config": "C:/x/mcp.json",
-           "strict_mcp": 0, "add_dirs": json.dumps(["C:/data"]), "effort": "high",
-           "fallback_model": "sonnet", "system_prompt": "eres un job",
-           "json_schema": {"type": "object"}, "max_budget_usd": 5}
+    job = {
+        "model": "haiku",
+        "permission_mode": "dontAsk",
+        "allowed_tools": "Read",
+        "inherit_mcp": json.dumps(["agenticos"]),
+        "mcp_config": "C:/x/mcp.json",
+        "strict_mcp": 0,
+        "add_dirs": json.dumps(["C:/data"]),
+        "effort": "high",
+        "fallback_model": "sonnet",
+        "system_prompt": "eres un job",
+        "json_schema": {"type": "object"},
+        "max_budget_usd": 5,
+    }
     cmd = a.build_command(job)
     # #1281: stream-json (+ --verbose) en vez de json, para que un run cortado deje lo que llevaba
     assert cmd[1:6] == ["-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence"]
@@ -91,14 +97,24 @@ def test_claude_build_command_v3_flags():
 def test_claude_build_command_minimal_is_unchanged_from_v1():
     a = harness.get("claude-cli")
     cmd = a.build_command({"model": "haiku", "permission_mode": "dontAsk"})
-    assert cmd[1:] == ["-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
-                       "--model", "haiku", "--permission-mode", "dontAsk"]   # #1281: stream-json
+    assert cmd[1:] == [
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--no-session-persistence",
+        "--model",
+        "haiku",
+        "--permission-mode",
+        "dontAsk",
+    ]  # #1281: stream-json
 
 
 def test_claude_validate_model_accepts_full_names(monkeypatch):
     # #1354: sin sustituir la sonda, este test lanzaba el Claude Code instalado en la
     # máquina (`claude --model gpt-9`) en cada corrida, y en una limpia no había.
     from faros.harness import claude_cli
+
     sondeados = []
     monkeypatch.setattr(claude_cli, "_probe_model", lambda exe, m: sondeados.append(m) or False)
     a = harness.get("claude-cli")
@@ -109,9 +125,19 @@ def test_claude_validate_model_accepts_full_names(monkeypatch):
 
 def test_claude_parse_output_list_format():
     a = harness.get("claude-cli")
-    out = json.dumps([{"type": "system"}, {"type": "result", "subtype": "success",
-                                            "result": "hola", "total_cost_usd": 0.01,
-                                            "session_id": "s1", "structured_output": {"k": 1}}])
+    out = json.dumps(
+        [
+            {"type": "system"},
+            {
+                "type": "result",
+                "subtype": "success",
+                "result": "hola",
+                "total_cost_usd": 0.01,
+                "session_id": "s1",
+                "structured_output": {"k": 1},
+            },
+        ]
+    )
     r = a.parse_output(out, 0)
     assert r.status == "ok" and r.output_text == "hola" and r.structured == {"k": 1}
 
@@ -120,11 +146,20 @@ def test_claude_parse_output_stream_json():
     # #1281: la forma que da `claude -p --output-format stream-json --verbose` (medida el 17-nov con haiku):
     # un objeto por línea, el veredicto en la última de type «result».
     a = harness.get("claude-cli")
-    lineas = [{"type": "system", "subtype": "init", "model": "haiku"},
-              {"type": "assistant", "message": {"content": [{"type": "text", "text": "Hola"}]}},
-              {"type": "rate_limit_event"},
-              {"type": "result", "subtype": "success", "is_error": False, "result": "Hola",
-               "total_cost_usd": 0.0080799, "session_id": "d20bbdf8", "structured_output": None}]
+    lineas = [
+        {"type": "system", "subtype": "init", "model": "haiku"},
+        {"type": "assistant", "message": {"content": [{"type": "text", "text": "Hola"}]}},
+        {"type": "rate_limit_event"},
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "result": "Hola",
+            "total_cost_usd": 0.0080799,
+            "session_id": "d20bbdf8",
+            "structured_output": None,
+        },
+    ]
     r = a.parse_output("\n".join(json.dumps(l) for l in lineas) + "\n", 0)
     assert (r.status, r.output_text, r.cost_usd, r.session_id) == ("ok", "Hola", 0.0080799, "d20bbdf8")
     error = lineas[:-1] + [{"type": "result", "subtype": "error_max_turns", "is_error": True, "result": ""}]

@@ -18,15 +18,18 @@ import json
 import re
 import shutil
 import subprocess
-
-from ..procutil import run_hidden
 from pathlib import Path
 
-from .base import HarnessAdapter, Capabilities, ModelInfo, RunResult
+from ..procutil import run_hidden
+from .base import Capabilities, HarnessAdapter, ModelInfo, RunResult
 
 SUMMARY_MAX = 2000
-_ALIAS_LABELS = {"fable": "Fable (alias: el más capaz)", "opus": "Opus (alias)",
-                 "sonnet": "Sonnet (alias)", "haiku": "Haiku (alias: barato)"}
+_ALIAS_LABELS = {
+    "fable": "Fable (alias: el más capaz)",
+    "opus": "Opus (alias)",
+    "sonnet": "Sonnet (alias)",
+    "haiku": "Haiku (alias: barato)",
+}
 _ALIAS_TIER = {"fable": "max", "opus": "high", "sonnet": "mid", "haiku": "cheap"}
 
 
@@ -61,10 +64,14 @@ def _lineas_json(stdout: str) -> list | None:
 def _probe_model(exe: str, model: str, timeout: int = 20) -> bool:
     """Sonda medida por Prima (docs/mediciones/modelos_claude_cli.md §2)."""
     from .model_discovery import UNRECOGNIZED_MARKER
+
     try:
-        r = run_hidden([exe, "-p", "--model", model, "--tools", "",
-                        "--max-budget-usd", "0.001", "--no-session-persistence", "x"],
-                       capture_output=True, text=True, timeout=timeout)
+        r = run_hidden(
+            [exe, "-p", "--model", model, "--tools", "", "--max-budget-usd", "0.001", "--no-session-persistence", "x"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
     except (subprocess.SubprocessError, OSError):
         return False
     return UNRECOGNIZED_MARKER not in ((r.stderr or "") + (r.stdout or ""))
@@ -74,10 +81,18 @@ class ClaudeCliAdapter(HarnessAdapter):
     name = "claude-cli"
     billing = "subscription"  # OAuth: consume la suscripción, no precio API (el dueño)
     executable = "claude"
-    capabilities = Capabilities(mcp=True, allowed_tools=True, permission_mode=True,
-                                json_schema=True, effort=True, fallback_model=True,
-                                system_prompt=True, add_dir=True, budget=False,
-                                inherit_mcp=True)
+    capabilities = Capabilities(
+        mcp=True,
+        allowed_tools=True,
+        permission_mode=True,
+        json_schema=True,
+        effort=True,
+        fallback_model=True,
+        system_prompt=True,
+        add_dir=True,
+        budget=False,
+        inherit_mcp=True,
+    )
 
     def __init__(self):
         super().__init__()
@@ -109,21 +124,47 @@ class ClaudeCliAdapter(HarnessAdapter):
         (model_catalog.SEED) + resultado del último refresco (settings.model_catalog)
         + /v1/models si hay API key."""
         from . import model_catalog as mc
+
         aliases = parse_help_aliases(self._help_text())
         entries = mc.merge_cache(mc.seed_entries(aliases), (settings or {}).get("model_catalog"))
-        models = [ModelInfo(e.id, e.label, e.source, e.tier or _ALIAS_TIER.get(e.id), e.family,
-                            e.alias_of, e.validated, e.validated_at, e.note) for e in entries]
+        models = [
+            ModelInfo(
+                e.id,
+                e.label,
+                e.source,
+                e.tier or _ALIAS_TIER.get(e.id),
+                e.family,
+                e.alias_of,
+                e.validated,
+                e.validated_at,
+                e.note,
+            )
+            for e in entries
+        ]
         api_key = (settings or {}).get("anthropic_api_key")
         if api_key:
             # Fuente (a) de la decisión 1 — medida por Prima (T1.3): única que
             # garantiza acceso para la cuenta. Coste $0 (listado, no inferencia).
             from .model_discovery import list_models_api
+
             api_models = list_models_api(api_key)
             if api_models:
                 seen = {m.id for m in models}
-                models += [ModelInfo(m.name, m.name, "api", None, mc.family_of(m.name),
-                                     None, True, mc.datetime.now().strftime("%Y-%m-%d"), "de /v1/models")
-                           for m in api_models if m.name not in seen]
+                models += [
+                    ModelInfo(
+                        m.name,
+                        m.name,
+                        "api",
+                        None,
+                        mc.family_of(m.name),
+                        None,
+                        True,
+                        mc.datetime.now().strftime("%Y-%m-%d"),
+                        "de /v1/models",
+                    )
+                    for m in api_models
+                    if m.name not in seen
+                ]
                 return models, "help+measured+api"
         return models, "help+measured"
 
@@ -149,8 +190,16 @@ class ClaudeCliAdapter(HarnessAdapter):
     def build_command(self, job: dict) -> list[str]:
         # #1281: stream-json (+ --verbose, que lo exige con -p) escribe una línea por evento MIENTRAS trabaja; con
         # «json» no salía nada hasta el final, y un run cortado por timeout no dejaba ni por dónde iba.
-        cmd = [self.exe, "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
-               "--model", job["model"]]
+        cmd = [
+            self.exe,
+            "-p",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--no-session-persistence",
+            "--model",
+            job["model"],
+        ]
         if job.get("permission_mode"):
             cmd += ["--permission-mode", job["permission_mode"]]
         allowed = job.get("allowed_tools")
@@ -203,7 +252,7 @@ class ClaudeCliAdapter(HarnessAdapter):
         try:
             data = json.loads(stdout)
         except (json.JSONDecodeError, ValueError):
-            data = _lineas_json(stdout)   # #1281: stream-json, un objeto por línea
+            data = _lineas_json(stdout)  # #1281: stream-json, un objeto por línea
             if data is None:
                 status = "ok" if exit_code == 0 and stdout.strip() else "error"
                 return RunResult(status, exit_code, None, None, stdout, None)
@@ -212,8 +261,7 @@ class ClaudeCliAdapter(HarnessAdapter):
             # LISTA de mensajes; el veredicto es el último item type=="result".
             results = [m for m in data if isinstance(m, dict) and m.get("type") == "result"]
             if not results:
-                return RunResult("error" if exit_code != 0 else "ok",
-                                 exit_code, None, None, stdout[:SUMMARY_MAX], None)
+                return RunResult("error" if exit_code != 0 else "ok", exit_code, None, None, stdout[:SUMMARY_MAX], None)
             data = results[-1]
         text = data.get("result") or ""
         is_error = bool(data.get("is_error")) or data.get("subtype") not in (None, "success")

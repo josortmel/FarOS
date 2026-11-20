@@ -12,14 +12,18 @@ from faros import prueba
 
 def _git(repo, *args):
     import subprocess
-    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
-                   check=True, capture_output=True)
+
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args], check=True, capture_output=True
+    )
 
 
 def _sha(repo):
     import subprocess
-    return subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
-                          capture_output=True, text=True, check=True).stdout.strip()
+
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
 
 
 def test_la_copia_se_borra_aunque_la_prueba_deje_ficheros_de_solo_lectura(tmp_path):
@@ -40,7 +44,8 @@ def test_la_copia_se_borra_aunque_la_prueba_deje_ficheros_de_solo_lectura(tmp_pa
         "open(q, 'w').write('y')\n"
         "os.chmod(q, stat.S_IREAD)\n"
         "raise SystemExit(0)\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     _git(r, "add", "-A")
     _git(r, "commit", "-q", "-m", "deja ficheros de solo lectura")
 
@@ -59,11 +64,12 @@ def test_los_tests_de_app_encuentran_sus_modulos_de_node(tmp_path):
     (r / "app" / "node_modules" / "faro-mod").mkdir(parents=True)
     (r / ".gitignore").write_text("node_modules/\n", encoding="utf-8")
     (r / "app" / "node_modules" / "faro-mod" / "package.json").write_text(
-        '{"name": "faro-mod", "main": "index.js"}', encoding="utf-8")
-    (r / "app" / "node_modules" / "faro-mod" / "index.js").write_text(
-        "module.exports = 42;\n", encoding="utf-8")
+        '{"name": "faro-mod", "main": "index.js"}', encoding="utf-8"
+    )
+    (r / "app" / "node_modules" / "faro-mod" / "index.js").write_text("module.exports = 42;\n", encoding="utf-8")
     (r / "app" / "prueba.js").write_text(
-        "const v = require('faro-mod');\nif (v !== 42) process.exit(1);\n", encoding="utf-8")
+        "const v = require('faro-mod');\nif (v !== 42) process.exit(1);\n", encoding="utf-8"
+    )
     _git(r, "init", "-q", "-b", "master")
     _git(r, "add", "-A")
     _git(r, "commit", "-q", "-m", "test de app con una dependencia")

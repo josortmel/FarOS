@@ -7,8 +7,9 @@ la 44 con el 26-oct). library._fecha usaba fromisocalendar(año, semana, 1). Y c
 se salta lo que no ha cambiado, las que ya estaban no se corregían solas: ahora sí.
 """
 
-from faros import library as L
 from test_850_library import mundo  # noqa: F401  (el mismo árbol temporal)
+
+from faros import library as L
 
 
 def test_la_semana_46_es_el_viernes_13():
@@ -23,9 +24,12 @@ def test_una_fecha_en_el_nombre_sigue_mandando():
 def test_una_pasada_vuelve_a_fechar_la_que_ya_estaba_mal(mundo):
     L.recorrer(mundo.conn, mundo.env)
     ruta = "%semana-2026-43.md"
-    mundo.conn.execute("UPDATE library_items SET fecha='2026-10-19' WHERE ruta LIKE ? AND ruta NOT LIKE ?",
-                       (ruta, "%lectura_semana-2026-43.md"))
+    mundo.conn.execute(
+        "UPDATE library_items SET fecha='2026-10-19' WHERE ruta LIKE ? AND ruta NOT LIKE ?",
+        (ruta, "%lectura_semana-2026-43.md"),
+    )
     L.recorrer(mundo.conn, mundo.env)
-    fila = mundo.conn.execute("SELECT fecha FROM library_items WHERE ruta LIKE ? AND ruta NOT LIKE ?",
-                              (ruta, "%lectura_semana-2026-43.md")).fetchone()
+    fila = mundo.conn.execute(
+        "SELECT fecha FROM library_items WHERE ruta LIKE ? AND ruta NOT LIKE ?", (ruta, "%lectura_semana-2026-43.md")
+    ).fetchone()
     assert fila[0] == "2026-10-23"

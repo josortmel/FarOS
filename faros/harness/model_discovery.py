@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
+from dataclasses import asdict, dataclass
+from typing import Optional
 
 from ..procutil import run_hidden
-from dataclasses import dataclass, asdict
-from typing import Optional
 
 KNOWN_ALIASES = ("opus", "sonnet", "fable", "haiku")
 
@@ -32,10 +31,7 @@ class Model:
 def parse_help_aliases() -> list[Model]:
     """Aliases documentados en --help. Siempre disponible, coste $0."""
     try:
-        r = run_hidden(
-            ["claude", "--help"],
-            capture_output=True, text=True, timeout=10
-        )
+        r = run_hidden(["claude", "--help"], capture_output=True, text=True, timeout=10)
         aliases = list(KNOWN_ALIASES)
         m = re.search(r"alias.*?'(\w+)'.*?'(\w+)'.*?'(\w+)'", r.stdout)
         if m:
@@ -61,10 +57,7 @@ def validate_model(name: str, timeout: int = 15) -> bool:
     mínimo) o la lista de /v1/models.
     """
     try:
-        r = run_hidden(
-            ["claude", "-p", "--model", name, "x"],
-            capture_output=True, text=True, timeout=timeout
-        )
+        r = run_hidden(["claude", "-p", "--model", name, "x"], capture_output=True, text=True, timeout=timeout)
         combined = (r.stderr or "") + (r.stdout or "")
         return UNRECOGNIZED_MARKER not in combined
     except Exception:
@@ -85,10 +78,7 @@ def list_models_api(api_key: str) -> list[Model]:
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read())
-            return [
-                Model(name=m["id"], source="api", accessible=True)
-                for m in data.get("data", [])
-            ]
+            return [Model(name=m["id"], source="api", accessible=True) for m in data.get("data", [])]
     except Exception:
         return []
 
