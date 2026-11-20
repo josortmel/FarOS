@@ -1006,5 +1006,21 @@
   "su timbre suena como invitación, no como aviso de trabajo": "its bell rings as an invitation, not as a work reminder",
   "«{s}» es tiempo libre: su timbre suena como invitación.": "«{s}» is free time: its bell rings as an invitation.",
   "«{s}» vuelve a ser trabajo.": "«{s}» is work again.",
-  "Esta tarea es de «{s}»: solo «{s}» o el dueño de la casa pueden marcarla como tiempo libre.": "This task belongs to «{s}»: only «{s}» or the head of the house can mark it as free time."
+  "Esta tarea es de «{s}»: solo «{s}» o el dueño de la casa pueden marcarla como tiempo libre.": "This task belongs to «{s}»: only «{s}» or the head of the house can mark it as free time.",
+  "Cambios": "Changes",
+  "Todavía no ha cambiado ninguna clave.": "No key has changed yet.",
+  "dio de alta «{s}», de tipo «{s}».": "added «{s}», of type «{s}».",
+  "dio de alta «{s}», de tipo «{s}», y la puso en uso.": "added «{s}», of type «{s}», and put it in use.",
+  "dio de alta «{s}», de tipo «{s}», y la usa en vez de «{s}».": "added «{s}», of type «{s}», and uses it instead of «{s}».",
+  "cambió el nombre «{s}» por «{s}».": "renamed «{s}» to «{s}».",
+  "cambió de dónde viene «{s}»: «{s}».": "changed where «{s}» comes from: «{s}».",
+  "quitó de dónde viene «{s}».": "removed where «{s}» comes from.",
+  "cambió el valor de «{s}».": "changed the value of «{s}».",
+  "empezó a usar «{s}».": "started using «{s}».",
+  "dejó de usar «{s}».": "stopped using «{s}».",
+  "pasó a usar «{s}» en vez de «{s}».": "switched to «{s}» instead of «{s}».",
+  "marcó «{s}» para entregarse bajo demanda.": "marked «{s}» to be handed out on request.",
+  "dejó de entregar «{s}» bajo demanda.": "stopped handing out «{s}» on request.",
+  "borró «{s}».": "deleted «{s}».",
+  "cambió «{s}» de «{s}».": "changed «{s}» of «{s}»."
 }

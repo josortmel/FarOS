@@ -121,6 +121,13 @@ function build() {
     go('lib');
   });
   $('.topbar__actions').prepend(lib);
+  /* «Más» se cierra al elegir algo que te lleva a otro sitio (Ajustes, Verificar cola); Tema e Idioma se pulsan
+     varias veces seguidas y lo dejan abierto. Antes se quedaba encima de Ajustes, tapándolo (visto el 20-nov). */
+  for (const id of ['#btn-settings', '#btn-verify'])
+    $(id)?.addEventListener('click', () => {
+      $('.topbar__actions').classList.remove('is-open');
+      more.setAttribute('aria-expanded', 'false');
+    });
 
   /* carril de estados del tablero */
   const states = document.createElement('nav');
