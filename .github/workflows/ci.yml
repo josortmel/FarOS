@@ -91,10 +91,18 @@ jobs:
             - name: vulture (dead code in faros/)
               if: ${{ !cancelled() }}
               shell: bash
+              # vulture exits 0 (clean) or 3 (found something). Anything else (not installed, crash) is
+              # an error: without this check a missing vulture printed nothing for faros/ and passed green.
               run: |
                   set +e
                   vulture faros tests tools vulture_whitelist.py --min-confidence 60 \
-                      --ignore-decorators "@app.*,@mcp.tool,@pytest.*" > vulture.txt
+                      --ignore-decorators "@app.*,@mcp.tool,@pytest.*" > vulture.txt 2>&1
+                  status=$?
+                  if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+                      cat vulture.txt
+                      echo "::error::vulture did not run (exit code $status)"
+                      exit 1
+                  fi
                   dead=$(grep -E '^faros' vulture.txt)
                   if [ -n "$dead" ]; then
                       echo "$dead"
