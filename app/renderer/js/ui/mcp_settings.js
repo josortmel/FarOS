@@ -10,9 +10,11 @@
 import { esc } from '../util.js';
 import { t as tr } from '../i18n.js';
 
-let cursorBusqueda = null;   // #311: posicion del cursor entre repintados del buscador
+let cursorBusqueda = null; // #311: posicion del cursor entre repintados del buscador
 let handlers = null; // { onImport(), onToggle(server, enabled), onDelete(server), onSearch(q) }
-export function initMcpSettings(h) { handlers = h; }
+export function initMcpSettings(h) {
+  handlers = h;
+}
 
 function cmdOf(s) {
   if (s.transport === 'stdio' || s.command) return [s.command, ...(s.args ?? [])].filter(Boolean).join(' ');
@@ -25,8 +27,11 @@ function cmdOf(s) {
    solo aparece si el motor da la carpeta de documentos (/api/meta docs_dir) — un botón
    que no puede abrir nada es peor que no tenerlo. */
 export const GUIDES = {
-  gmail: { file: 'gmail_oauth.md', desktop: 'Guia_Gmail_AgenticOS.md',
-           why: 'necesita el OAuth de Google Cloud (unos 10 min)' },
+  gmail: {
+    file: 'gmail_oauth.md',
+    desktop: 'Guia_Gmail_AgenticOS.md',
+    why: 'necesita el OAuth de Google Cloud (unos 10 min)',
+  },
 };
 export function guideFor(s) {
   return GUIDES[String(s.name ?? '').toLowerCase()] ?? null;
@@ -45,7 +50,13 @@ function guideOf(s, state) {
 export function renderMcpSettings(body, state) {
   const all = state.mcpServers ?? [];
   const q = (state.mcpQuery ?? '').trim().toLowerCase();
-  const list = q ? all.filter(s => [s.name, s.transport, cmdOf(s), s.source, s.note].filter(Boolean).some(v => String(v).toLowerCase().includes(q))) : all;
+  const list = q
+    ? all.filter((s) =>
+        [s.name, s.transport, cmdOf(s), s.source, s.note]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q)),
+      )
+    : all;
 
   const root = document.createElement('section');
   root.className = 'settings__sec mcp';
@@ -75,7 +86,13 @@ export function renderMcpSettings(body, state) {
         <code class="mcprow__cmd" title="${esc(cmdOf(s))}">${esc(cmdOf(s))}</code>
         ${s.note ? `<div class="mcprow__note">${esc(s.note)}</div>` : ''}
         ${guideOf(s, state)}
-        ${Object.keys(s.env ?? {}).length ? `<div class="mcprow__env">env: ${Object.keys(s.env).map(k => `<span>${esc(k)}=${esc(String(s.env[k]))}</span>`).join(' ')}</div>` : ''}
+        ${
+          Object.keys(s.env ?? {}).length
+            ? `<div class="mcprow__env">env: ${Object.keys(s.env)
+                .map((k) => `<span>${esc(k)}=${esc(String(s.env[k]))}</span>`)
+                .join(' ')}</div>`
+            : ''
+        }
       </div>
       <div class="mcprow__acts">
         <label class="mcprow__toggle"><input type="checkbox" data-toggle${s.enabled ? ' checked' : ''}> habilitado</label>
@@ -83,7 +100,9 @@ export function renderMcpSettings(body, state) {
       </div>`;
     row.querySelector('[data-toggle]').addEventListener('change', (e) => handlers.onToggle(s, e.target.checked));
     row.querySelector('[data-del]').addEventListener('click', () => handlers.onDelete(s));
-    row.querySelector('[data-guide]')?.addEventListener('click', (e) => handlers.onOpenGuide(e.currentTarget.dataset.guide));
+    row
+      .querySelector('[data-guide]')
+      ?.addEventListener('click', (e) => handlers.onOpenGuide(e.currentTarget.dataset.guide));
     ul.appendChild(row);
   }
   /* #311: EL BUSCADOR ESCRIBIA AL REVES. Teclear repinta esta superficie entera, asi

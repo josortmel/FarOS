@@ -31,25 +31,33 @@ export const LANGS = ['es', 'en'];
    el dueño; lo que el usuario elija con el botón manda por encima y persiste. */
 const LOCALE = { es: 'es-ES', en: 'en-US' };
 
-let dict = Object.create(null);   // español → inglés (vacío mientras lang === 'es')
+let dict = Object.create(null); // español → inglés (vacío mientras lang === 'es')
 let lang = 'es';
 
 function delSistema() {
   try {
     const n = (navigator.languages?.[0] || navigator.language || 'es').slice(0, 2).toLowerCase();
     return LANGS.includes(n) ? n : 'es';
-  } catch { return 'es'; }
+  } catch {
+    return 'es';
+  }
 }
 
 function leer() {
   try {
     const v = localStorage.getItem(KEY);
     return LANGS.includes(v) ? v : delSistema();
-  } catch { return delSistema(); }   // ventana privada: la sesión vale igual
+  } catch {
+    return delSistema();
+  } // ventana privada: la sesión vale igual
 }
 
-export function getLang() { return lang; }
-export function locale() { return LOCALE[lang] ?? LOCALE.es; }
+export function getLang() {
+  return lang;
+}
+export function locale() {
+  return LOCALE[lang] ?? LOCALE.es;
+}
 
 /* ---------------- fechas: Intl, nunca catálogo ----------------
    Los meses y los días vivían en arrays fijos en español (util.js, calendar.js) y
@@ -66,15 +74,17 @@ function tablas() {
   const mesLargo = fmt({ month: 'long' });
   const diaCorto = fmt({ weekday: 'short' });
   const diaLargo = fmt({ weekday: 'long' });
-  const limpia = (s) => s.replace(/\.$/, '');   // es-ES devuelve «sept.» con punto
+  const limpia = (s) => s.replace(/\.$/, ''); // es-ES devuelve «sept.» con punto
   /* 2026-01-15 y sucesivos: fechas cualesquiera de cada mes / de cada día de semana */
   const porMes = (f) => Array.from({ length: 12 }, (_, m) => limpia(f.format(new Date(2026, m, 15))));
   /* 4-ene-2026 es domingo → índice 0 = domingo, como getDay() */
   const porDia = (f) => Array.from({ length: 7 }, (_, w) => limpia(f.format(new Date(2026, 0, 4 + w))));
   cacheFechas = {
     lang,
-    mesesCorto: porMes(mesCorto), mesesLargo: porMes(mesLargo),
-    diasCorto: porDia(diaCorto),  diasLargo: porDia(diaLargo),
+    mesesCorto: porMes(mesCorto),
+    mesesLargo: porMes(mesLargo),
+    diasCorto: porDia(diaCorto),
+    diasLargo: porDia(diaLargo),
   };
   return cacheFechas;
 }
@@ -91,7 +101,10 @@ const fmtCache = new Map();
 function dtf(opts) {
   const k = lang + JSON.stringify(opts);
   let f = fmtCache.get(k);
-  if (!f) { f = new Intl.DateTimeFormat(locale(), opts); fmtCache.set(k, f); }
+  if (!f) {
+    f = new Intl.DateTimeFormat(locale(), opts);
+    fmtCache.set(k, f);
+  }
   return f;
 }
 /* #262/#271: la inicial del dia para la rejilla semanal de un job. OJO AL INDICE:
@@ -101,10 +114,10 @@ function dtf(opts) {
    Se usa `narrow`, que en espanol da L M X J V S D y en ingles M T W T F S S. */
 export const diaLetra = (i) => {
   const f = dtf({ weekday: 'narrow' });
-  return f.format(new Date(2026, 0, 4 + ((i + 1) % 7)));  // 4-ene-2026 fue domingo
+  return f.format(new Date(2026, 0, 4 + ((i + 1) % 7))); // 4-ene-2026 fue domingo
 };
 
-export const fechaLarga  = (d) => dtf({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+export const fechaLarga = (d) => dtf({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
 export const fechaDiaMes = (d) => dtf({ weekday: 'long', day: 'numeric', month: 'long' }).format(d);
 
 /* Normaliza una cadena a su patrón: los números salen a {n} para que
@@ -134,10 +147,9 @@ export function t(s) {
   /* reinserta las cifras y las citas originales, cada una en su orden */
   const citas = limpio.match(CITA) ?? [];
   const cifras = sinCitas(limpio).match(/\d+/g) ?? [];
-  let i = 0, j = 0;
-  const traducido = conPatron
-    .replace(/\{n\}/g, () => cifras[i++] ?? '')
-    .replace(/«\{s\}»/g, () => citas[j++] ?? '');
+  let i = 0,
+    j = 0;
+  const traducido = conPatron.replace(/\{n\}/g, () => cifras[i++] ?? '').replace(/«\{s\}»/g, () => citas[j++] ?? '');
   /* con función: ahora el texto lleva datos, y un «$&» en un nombre no es un patrón */
   return crudo.replace(limpio, () => traducido);
 }
@@ -171,8 +183,8 @@ const SKIP = '[data-i18n-skip], code, pre, .mcprow__cmd, .mcprow__id';
    Un WeakMap y no un atributo data-: los nodos de texto no tienen atributos, y
    ademas asi no se ensucia el DOM ni sobrevive nada a un repintado de verdad.
    Se guarda SOLO la primera vez: la segunda pasada ya veria el ingles. */
-const originalTexto = new WeakMap();   // nodo de texto -> espaniol original
-const originalAttr  = new WeakMap();   // elemento -> { attr: valor original }
+const originalTexto = new WeakMap(); // nodo de texto -> espaniol original
+const originalAttr = new WeakMap(); // elemento -> { attr: valor original }
 
 /* Aplica el catálogo sobre lo ya pintado. Idempotente por definición: si una
    cadena ya está en inglés no está en el catálogo (que va de español a inglés)
@@ -203,7 +215,10 @@ export function applyI18n(root = document.body) {
       const traducido = t(v);
       if (traducido === v) continue;
       const guardados = originalAttr.get(el) ?? {};
-      if (!(a in guardados)) { guardados[a] = v; originalAttr.set(el, guardados); }
+      if (!(a in guardados)) {
+        guardados[a] = v;
+        originalAttr.set(el, guardados);
+      }
       el.setAttribute(a, traducido);
     }
   }
@@ -235,12 +250,15 @@ export function restoreI18n(root = document.body) {
     const guardados = originalAttr.get(el);
     if (!guardados) continue;
     for (const [a, v] of Object.entries(guardados)) el.setAttribute(a, v);
-    originalAttr.delete(el);   // mismo motivo: un atributo que cambie en espaniol
+    originalAttr.delete(el); // mismo motivo: un atributo que cambie en espaniol
   }
 }
 
 async function cargar(l) {
-  if (l === 'es') { dict = Object.create(null); return; }
+  if (l === 'es') {
+    dict = Object.create(null);
+    return;
+  }
   try {
     const r = await fetch(`locales/${l}.json`);
     dict = r.ok ? await r.json() : Object.create(null);
@@ -253,12 +271,18 @@ async function cargar(l) {
 /* Cambia el idioma en caliente: no recarga la ventana, repinta. Quien llame
    pasa su propia función de repintado — i18n no sabe nada del render. */
 let repintar = () => {};
-export function onRepaint(fn) { repintar = fn; }
+export function onRepaint(fn) {
+  repintar = fn;
+}
 
 export async function setLang(l) {
   if (!LANGS.includes(l) || l === lang) return lang;
   lang = l;
-  try { localStorage.setItem(KEY, l); } catch { /* sin almacenamiento: vale la sesión */ }
+  try {
+    localStorage.setItem(KEY, l);
+  } catch {
+    /* sin almacenamiento: vale la sesión */
+  }
   /* AQUÍ y no dentro de applyI18n: applyI18n sale antes de tiempo cuando el idioma es
      español, así que al volver de inglés el atributo se quedaba en «en». Y de ese
      atributo cuelgan ahora las reglas de caja de las fechas en el CSS — el rótulo se
@@ -284,7 +308,11 @@ export async function setLang(l) {
 /* #314: el menu de la bandeja vive en el proceso principal y solo sabe el idioma si se lo
    decimos. Fuera de Electron (fixtures, navegador) no hay puente y no pasa nada. */
 function avisarMain() {
-  try { window.agenticos?.setLang?.(lang); } catch { /* sin puente */ }
+  try {
+    window.agenticos?.setLang?.(lang);
+  } catch {
+    /* sin puente */
+  }
 }
 
 export async function initI18n() {

@@ -6,11 +6,18 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win --config electron-builder.yml",
-    "dist:dir": "electron-builder --win --dir --config electron-builder.yml"
+    "dist:dir": "electron-builder --win --dir --config electron-builder.yml",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "electron": "^44.9.3",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "eslint": "10.14.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.10"
   },
   "author": "josortmel"
 }

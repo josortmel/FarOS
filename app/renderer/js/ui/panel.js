@@ -8,9 +8,9 @@
 
 import { TRANSITIONS, ACTION_LABEL, STATUS_LABEL, VLEVEL } from '../transitions.js';
 import { fmtWhen, fmtDate, fmtWhenScheduled, esc, projectColor } from '../util.js';
-import { t as tr, applyI18n } from '../i18n.js';  // #314
+import { t as tr, applyI18n } from '../i18n.js'; // #314
 import { api } from '../api.js';
-import { notaHTML, avisosDe } from './criterio_avisos.js';   // #1136
+import { notaHTML, avisosDe } from './criterio_avisos.js'; // #1136
 
 let handlers = null; // { onTransition(t, target, action), onOpenJob(jobId), onPatchTime(t, patch), onPatchFields(t, patch), onTiempoLibre(t, libre), onClose }
 
@@ -37,11 +37,11 @@ function renderEditSection(t, board) {
       <div class="field-row-3">
         <div class="field">
           <label for="ed-prio">Prioridad</label>
-          <select id="ed-prio">${PRIORITIES.map(p => `<option value="${p}"${t.priority === p ? ' selected' : ''}>${p}</option>`).join('')}</select>
+          <select id="ed-prio">${PRIORITIES.map((p) => `<option value="${p}"${t.priority === p ? ' selected' : ''}>${p}</option>`).join('')}</select>
         </div>
         <div class="field">
           <label for="ed-owner">Responsable</label>
-          <select id="ed-owner">${agents.map(a => `<option value="${esc(a)}"${t.owner === a ? ' selected' : ''}>${esc(a)}</option>`).join('')}${t.owner ? '' : '<option value="" selected>—</option>'}</select>
+          <select id="ed-owner">${agents.map((a) => `<option value="${esc(a)}"${t.owner === a ? ' selected' : ''}>${esc(a)}</option>`).join('')}${t.owner ? '' : '<option value="" selected>—</option>'}</select>
         </div>
         <div class="field">
           <label for="ed-due">Vence</label>
@@ -53,12 +53,20 @@ function renderEditSection(t, board) {
         <textarea id="ed-crit" rows="2">${esc(t.verify_criteria ?? '')}</textarea>
         ${notaHTML(avisosDe(t.id), t.verify_criteria)}
       </div>
-      ${!t.cadence_days && t.kind !== 'agentic' ? `
+      ${
+        !t.cadence_days && t.kind !== 'agentic'
+          ? `
       <div class="field">
         <label for="ed-vlevel">Nivel de verificación</label>
-        <select id="ed-vlevel">${Object.keys(VLEVEL).map(v => `<option value="${v}"${t.verification_level === v ? ' selected' : ''}>${esc(VLEVEL[v][0])}</option>`).join('')}</select>
+        <select id="ed-vlevel">${Object.keys(VLEVEL)
+          .map(
+            (v) => `<option value="${v}"${t.verification_level === v ? ' selected' : ''}>${esc(VLEVEL[v][0])}</option>`,
+          )
+          .join('')}</select>
         <span class="hint" id="ed-vlevel-txt">${esc(VLEVEL[t.verification_level]?.[1] ?? '')}</span>
-      </div>` : ''}
+      </div>`
+          : ''
+      }
       <div class="time-form__actions">
         <button type="submit" class="btn btn--ghost btn--sm"${closed ? ' disabled' : ''}>Guardar cambios</button>
         <span class="hint">el motor valida; si no deja, lo dice</span>
@@ -71,7 +79,9 @@ function renderEditSection(t, board) {
     e.preventDefault();
     const q = (id) => s.querySelector(id);
     const patch = {};
-    const put = (k, v, cur) => { if ((v ?? '') !== (cur ?? '')) patch[k] = v; }; // solo lo que cambió
+    const put = (k, v, cur) => {
+      if ((v ?? '') !== (cur ?? '')) patch[k] = v;
+    }; // solo lo que cambió
     put('title', q('#ed-title').value.trim(), t.title);
     put('description', q('#ed-desc').value.trim(), t.description);
     put('priority', q('#ed-prio').value, t.priority);
@@ -115,7 +125,9 @@ function renderTimeSection(t) {
           <label for="tm-all"><input type="checkbox" id="tm-all"${t.all_day ? ' checked' : ''}> Todo el día</label>
         </div>
       </div>
-      ${recurring ? `
+      ${
+        recurring
+          ? `
       <div class="field-row">
         <div class="field">
           <label for="tm-pref">Hora preferida</label>
@@ -127,7 +139,9 @@ function renderTimeSection(t) {
           <input type="date" id="tm-next" value="${esc(t.next_due_override ?? '')}">
           <div class="hint">solo la próxima; la cadencia no cambia</div>
         </div>
-      </div>` : ''}
+      </div>`
+          : ''
+      }
       <div class="time-form__actions">
         <button type="submit" class="btn btn--ghost btn--sm"${closed ? ' disabled' : ''}>Guardar tiempo</button>
         <span class="hint">vacío = sin programar</span>
@@ -155,11 +169,13 @@ function renderTimeSection(t) {
    no (400 timbre.solo_las_suyas), la casilla vuelve a como estaba y app.js lo dice en una frase. */
 async function pintarLibre(s, t) {
   const box = s.querySelector('#tm-libre');
-  let libre = false;
+  let libre;
   try {
     const tareas = (await api().settings())?.timbre_tiempo_libre?.tareas ?? [];
     libre = tareas.map(Number).includes(Number(t.id));
-  } catch { return; }   // sin ajustes no se ofrece: mejor deshabilitada que mintiendo
+  } catch {
+    return;
+  } // sin ajustes no se ofrece: mejor deshabilitada que mintiendo
   box.checked = libre;
   box.disabled = Boolean(box.dataset.cerrada);
   box.addEventListener('change', async () => {
@@ -186,7 +202,9 @@ export function closePanel() {
   panel.classList.remove('is-open');
   scrim.hidden = true;
   clearTimeout(hideTimer);
-  hideTimer = setTimeout(() => { panel.hidden = true; }, 240);
+  hideTimer = setTimeout(() => {
+    panel.hidden = true;
+  }, 240);
 }
 
 /* el único sitio que abre el panel (ticket o job): cancela el cierre pendiente */
@@ -204,21 +222,24 @@ export function showPanelShell() {
 /* ---------- T3.7: la ficha del Plan por secciones, no como blob ---------- */
 
 const PLAN_SECTIONS = [
-  ['objetivo',         'Objetivo'],
+  ['objetivo', 'Objetivo'],
   ['archivos_a_tocar', 'Archivos'],
-  ['accion',           'Acción'],
-  ['pre',              'Pre'],
-  ['post',             'Post'],
-  ['tests',            'Tests'],
-  ['criterio',         'Criterio'],
-  ['rollback',         'Rollback'],
-  ['depende_de',       'Depende de'],
+  ['accion', 'Acción'],
+  ['pre', 'Pre'],
+  ['post', 'Post'],
+  ['tests', 'Tests'],
+  ['criterio', 'Criterio'],
+  ['rollback', 'Rollback'],
+  ['depende_de', 'Depende de'],
 ];
 
 function parsePlan(t) {
   if (!t.plan_data) return null;
-  try { return typeof t.plan_data === 'string' ? JSON.parse(t.plan_data) : t.plan_data; }
-  catch { return null; } // plan_data roto: se cae a la descripción plana, no a un error
+  try {
+    return typeof t.plan_data === 'string' ? JSON.parse(t.plan_data) : t.plan_data;
+  } catch {
+    return null;
+  } // plan_data roto: se cae a la descripción plana, no a un error
 }
 
 function renderPlanSections(t, plan) {
@@ -228,12 +249,16 @@ function renderPlanSections(t, plan) {
     plan.phase ? `${tr('fase')} <b>${esc(plan.phase)}</b>` : '',
     plan.estimacion ? `${tr('tamaño')} <b>${esc(plan.estimacion)}</b>` : '',
     plan.agente_sugerido ? `${tr('sugerido')} <b>${esc(plan.agente_sugerido)}</b>` : '',
-    plan.verification_level ? `${tr('verificación')} <b>${esc(tr(VLEVEL[plan.verification_level]?.[0] ?? plan.verification_level))}</b>` : '',
-  ].filter(Boolean).join(' · ');
+    plan.verification_level
+      ? `${tr('verificación')} <b>${esc(tr(VLEVEL[plan.verification_level]?.[0] ?? plan.verification_level))}</b>`
+      : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   s.innerHTML = `<div class="panel__section-title">${tr('Ficha del Plan')}${plan.key ? ` · ${esc(plan.key)}` : ''}</div>
     ${facts ? `<div class="plan__facts">${facts}</div>` : ''}`;
 
-  const unmet = new Map((t.unmet_deps ?? []).map(d => [d.plan_key ?? `#${d.id}`, d]));
+  const unmet = new Map((t.unmet_deps ?? []).map((d) => [d.plan_key ?? `#${d.id}`, d]));
   const dl = document.createElement('dl');
   dl.className = 'plan__grid';
   for (const [field, label] of PLAN_SECTIONS) {
@@ -243,14 +268,20 @@ function renderPlanSections(t, plan) {
     dt.textContent = label;
     const dd = document.createElement('dd');
     if (field === 'archivos_a_tocar') {
-      dd.innerHTML = `<ul class="plan__list plan__list--files">${[].concat(v).map(f => `<li><code>${esc(f)}</code></li>`).join('')}</ul>`;
+      dd.innerHTML = `<ul class="plan__list plan__list--files">${[]
+        .concat(v)
+        .map((f) => `<li><code>${esc(f)}</code></li>`)
+        .join('')}</ul>`;
     } else if (field === 'depende_de') {
-      dd.innerHTML = `<ul class="plan__list plan__list--deps">${[].concat(v).map(k => {
-        const d = unmet.get(k);
-        return d
-          ? `<li class="plan__dep plan__dep--unmet"><span class="plan__dep-key">${esc(k)}</span> ${esc(STATUS_LABEL[d.status] ?? d.status)} — ${tr('espera')}</li>`
-          : `<li class="plan__dep plan__dep--met"><span class="plan__dep-key">${esc(k)}</span> ✓</li>`;
-      }).join('')}</ul>`;
+      dd.innerHTML = `<ul class="plan__list plan__list--deps">${[]
+        .concat(v)
+        .map((k) => {
+          const d = unmet.get(k);
+          return d
+            ? `<li class="plan__dep plan__dep--unmet"><span class="plan__dep-key">${esc(k)}</span> ${esc(STATUS_LABEL[d.status] ?? d.status)} — ${tr('espera')}</li>`
+            : `<li class="plan__dep plan__dep--met"><span class="plan__dep-key">${esc(k)}</span> ✓</li>`;
+        })
+        .join('')}</ul>`;
     } else if (field === 'criterio') {
       dd.innerHTML = `<div class="panel__criteria">${esc(String(v))}</div>`;
     } else {
@@ -263,7 +294,7 @@ function renderPlanSections(t, plan) {
 }
 
 export async function openPanel(t, board) {
-  const proj = board.projects.find(p => p.id === t.project_id);
+  const proj = board.projects.find((p) => p.id === t.project_id);
   const plan = parsePlan(t);
   const panel = showPanelShell();
 
@@ -272,7 +303,10 @@ export async function openPanel(t, board) {
   head.className = 'panel__head';
 
   const badges = [];
-  if (t.due_state === 'overdue') badges.push(`<span class="badge badge--overdue">${tr('▲ vencida')}${t.due_at ? ' · ' + fmtDate(t.due_at) : ''}</span>`);
+  if (t.due_state === 'overdue')
+    badges.push(
+      `<span class="badge badge--overdue">${tr('▲ vencida')}${t.due_at ? ' · ' + fmtDate(t.due_at) : ''}</span>`,
+    );
   else if (t.due_state === 'due') badges.push(`<span class="badge badge--due">● hoy</span>`);
   if (t.status === 'blocked') badges.push(`<span class="badge badge--blocked">⛔ bloqueada</span>`);
   if (t.priority === 'alta') badges.push(`<span class="badge badge--prio">! alta</span>`);
@@ -328,11 +362,17 @@ export async function openPanel(t, board) {
     row.className = 'panel__actions';
     for (const target of targets) {
       const action = legal[target];
-      const recambio = action === 'block' && t.status === 'blocked';   // #482: cambiar el motivo, no bloquear otra vez
+      const recambio = action === 'block' && t.status === 'blocked'; // #482: cambiar el motivo, no bloquear otra vez
       const btn = document.createElement('button');
-      btn.className = !recambio && (action === 'reject' || action === 'block' || action === 'rework') ? 'btn btn--danger' : 'btn btn--ghost';
-      btn.textContent = recambio ? 'Cambiar motivo…'
-        : action === 'rework' ? `${tr('Devolver a')} ${STATUS_LABEL[target] ?? target}…` : (ACTION_LABEL[action] ?? action);
+      btn.className =
+        !recambio && (action === 'reject' || action === 'block' || action === 'rework')
+          ? 'btn btn--danger'
+          : 'btn btn--ghost';
+      btn.textContent = recambio
+        ? 'Cambiar motivo…'
+        : action === 'rework'
+          ? `${tr('Devolver a')} ${STATUS_LABEL[target] ?? target}…`
+          : (ACTION_LABEL[action] ?? action);
       btn.addEventListener('click', () => handlers.onTransition(t, target, action));
       row.appendChild(btn);
     }
@@ -344,18 +384,26 @@ export async function openPanel(t, board) {
      Lo que antes se repartía en la sala («me la quedo yo») queda en la tarea: quién la tiene, y
      «Me la quedo» / «Soltar». El motor manda: si otro la coge a la vez, el segundo ve «ya la tiene X».
      No en las «self» (se sellan solas), ni en las recurrentes o agénticas, ni para el dueño de la tarea. */
-  if (!t.closed_at && t.verification_level && t.verification_level !== 'self' && !t.cadence_days && t.kind !== 'agentic') {
+  if (
+    !t.closed_at &&
+    t.verification_level &&
+    t.verification_level !== 'self' &&
+    !t.cadence_days &&
+    t.kind !== 'agentic'
+  ) {
     const { agent: me, owner: casa } = handlers.me?.() ?? {};
     const quien = t.verify_claimed_by;
     const s = document.createElement('section');
     s.className = 'panel__section panel__claim';
     s.innerHTML = `
       <div class="panel__section-title">${esc(tr('Verificación'))}</div>
-      <p class="claim__who">${quien
-        ? `${esc(tr('La verificación la tiene'))} <b>${esc(quien)}</b>${t.verify_claimed_at ? ' · ' + fmtWhen(t.verify_claimed_at) : ''}`
-        : esc(tr('Nadie se ha quedado todavía esta verificación.'))}</p>`;
+      <p class="claim__who">${
+        quien
+          ? `${esc(tr('La verificación la tiene'))} <b>${esc(quien)}</b>${t.verify_claimed_at ? ' · ' + fmtWhen(t.verify_claimed_at) : ''}`
+          : esc(tr('Nadie se ha quedado todavía esta verificación.'))
+      }</p>`;
     const row = document.createElement('div');
-    row.className = 'claim__actions';  // NO .panel__actions: la capa de móvil se lleva esa a su barra (mobile.js)
+    row.className = 'claim__actions'; // NO .panel__actions: la capa de móvil se lleva esa a su barra (mobile.js)
     const mk = (label, accion) => {
       const b = document.createElement('button');
       b.className = 'btn btn--ghost';
@@ -372,16 +420,19 @@ export async function openPanel(t, board) {
 
   /* ---------- T1.14: brazo automático (manual vinculada a un job) ---------- */
   if (t.linked_job) {
-    const lj = t.linked_job; const lr = lj.last_run;
+    const lj = t.linked_job;
+    const lr = lj.last_run;
     const s = document.createElement('section');
     s.className = 'panel__section';
     s.innerHTML = `
       <div class="panel__section-title">Brazo automático</div>
       <div class="arm">
         <div class="arm__name">${esc(lj.name)} <span class="jobstate jobstate--${esc(lj.status ?? 'active')}">${lj.status === 'paused' ? 'pausado' : lj.status === 'archived' ? 'archivado' : 'activo'}</span></div>
-        <div class="arm__run">${lr
-          ? `run ${lr.id} · ${esc(lr.status)}${lr.finished_at ? ' · ' + fmtWhen(lr.finished_at) : ''}${lr.verdict ? ` · <b class="arm__verdict--${lr.verdict}">${esc(tr({ pass: 'pasa', fail: 'falla', uncertain: 'incierto' }[lr.verdict] ?? lr.verdict))}</b>` : ''}`
-          : 'sin runs todavía'}</div>
+        <div class="arm__run">${
+          lr
+            ? `run ${lr.id} · ${esc(lr.status)}${lr.finished_at ? ' · ' + fmtWhen(lr.finished_at) : ''}${lr.verdict ? ` · <b class="arm__verdict--${lr.verdict}">${esc(tr({ pass: 'pasa', fail: 'falla', uncertain: 'incierto' }[lr.verdict] ?? lr.verdict))}</b>` : ''}`
+            : 'sin runs todavía'
+        }</div>
         <div class="hint">run ok + veredicto «pasa» → esta tarea se completa sola con evidencia run_output (T1.10)</div>
       </div>`;
     const go = document.createElement('button');
@@ -412,12 +463,16 @@ export async function openPanel(t, board) {
      el historial, que llega más tarde. */
   applyI18n(panel);
 
-  api().history(t.id)
-    .then(payload => {
+  api()
+    .history(t.id)
+    .then((payload) => {
       // shape canónico del daemon: {ticket, history:[{old_status,new_status,changed_by,changed_at,note}]}
-      const items = Array.isArray(payload) ? payload : payload?.history ?? [];
+      const items = Array.isArray(payload) ? payload : (payload?.history ?? []);
       list.innerHTML = '';
-      if (!items.length) { list.innerHTML = '<li>—</li>'; return; }
+      if (!items.length) {
+        list.innerHTML = '<li>—</li>';
+        return;
+      }
       for (const h of [...items].reverse()) {
         const li = document.createElement('li');
         const when = h.changed_at ?? h.at ?? h.timestamp ?? h.created_at;
@@ -436,7 +491,9 @@ export async function openPanel(t, board) {
         list.appendChild(li);
       }
     })
-    .catch(() => { list.innerHTML = '<li>(historial no disponible)</li>'; })
+    .catch(() => {
+      list.innerHTML = '<li>(historial no disponible)</li>';
+    })
     .finally(() => applyI18n(list));
 }
 
@@ -450,8 +507,8 @@ export async function openPanel(t, board) {
    Pepe y a un modelo es justo lo que esta etiqueta tiene que separar. Una clase que aún no
    conozco se enseña tal cual. */
 const PROV = {
-  'external':         ['prov--ext',  'persona',        'Verificada por una persona: fuera de la familia de modelos'],
-  'same-family':      ['prov--fam',  'misma familia',  'Verificada por otro Claude de la casa'],
+  external: ['prov--ext', 'persona', 'Verificada por una persona: fuera de la familia de modelos'],
+  'same-family': ['prov--fam', 'misma familia', 'Verificada por otro Claude de la casa'],
   'same-family:self': ['prov--self', 'autoverificada', 'Sellada por su propio responsable, en una tarea de nivel self'],
 };
 function provChip(p) {

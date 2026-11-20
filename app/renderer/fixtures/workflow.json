@@ -5,10 +5,7 @@
   "coordinator": "dave",
   "kind": "build",
   "pct_global": 0,
-  "phases": [
-    "1-core",
-    "2-ui"
-  ],
+  "phases": ["1-core", "2-ui"],
   "tickets_by_phase": {
     "1-core": [
       {

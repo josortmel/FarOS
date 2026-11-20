@@ -11,9 +11,9 @@
 import { renderMcpSettings } from './mcp_settings.js';
 import { renderRoster } from './roster_settings.js';
 import { renderCredentials } from './credentials_settings.js';
-import { renderProofSettings } from './proof_settings.js';   // #601
-import { renderQuietSetting, renderReadRootsSetting } from './verifier_settings.js';   // #695
-import { renderTimbreSetting } from './timbre_settings.js';   // #1217
+import { renderProofSettings } from './proof_settings.js'; // #601
+import { renderQuietSetting, renderReadRootsSetting } from './verifier_settings.js'; // #695
+import { renderTimbreSetting } from './timbre_settings.js'; // #1217
 /* #262: la fecha larga salia con 'es-ES' clavado en la llamada */
 import { fechaDiaMes, t as tr } from '../i18n.js';
 import { renderCalendar } from './calendar.js';
@@ -23,13 +23,18 @@ import { renderCalendar } from './calendar.js';
    /api/agents/calendar y cada elemento es un job (programado) o un run pasado
    (veredicto en color). Solo lectura: clic abre el job; la programación se edita
    en su modal. Carriles = harness. */
-export const AG_CAL_TABS = [['day', 'Hoy'], ['week', 'Semana'], ['month', 'Mes'], ['year', 'Año']];
+export const AG_CAL_TABS = [
+  ['day', 'Hoy'],
+  ['week', 'Semana'],
+  ['month', 'Mes'],
+  ['year', 'Año'],
+];
 
 function agStatus(it) {
   if (it.kind === 'run') {
     if (it.status === 'running') return 'running';
     if (it.verdict === 'pass') return 'pasa';
-    if (it.verdict === 'uncertain') return 'incierto';  // #470: no es un fallo
+    if (it.verdict === 'uncertain') return 'incierto'; // #470: no es un fallo
     if (it.verdict === 'fail' || ['error', 'timeout', 'cancelled'].includes(it.status)) return 'falla';
     return 'sinveredicto';
   }
@@ -38,7 +43,7 @@ function agStatus(it) {
 export function agCalState(state) {
   const data = state.agCalData;
   if (!data) return { calView: state.agCalView, calDate: state.agCalDate, calDaySel: state.agCalDaySel, calData: null };
-  const items = (data.items ?? []).map(it => ({
+  const items = (data.items ?? []).map((it) => ({
     ...it,
     ticket_id: it.job_id,
     owner: it.harness ?? '—',
@@ -50,8 +55,13 @@ export function agCalState(state) {
     priority: null,
     due_state: null,
   }));
-  const lanes = [...new Set([...(data.lanes ?? []), ...items.map(i => i.owner)])].filter(Boolean);
-  return { calView: state.agCalView, calDate: state.agCalDate, calDaySel: state.agCalDaySel, calData: { ...data, lanes, items } };
+  const lanes = [...new Set([...(data.lanes ?? []), ...items.map((i) => i.owner)])].filter(Boolean);
+  return {
+    calView: state.agCalView,
+    calDate: state.agCalDate,
+    calDaySel: state.agCalDaySel,
+    calData: { ...data, lanes, items },
+  };
 }
 import { fmtWhen, fmtSchedule, fmtRelative, fmtDayShort, fmtUsd, runOutputText, esc } from '../util.js';
 import { api } from '../api.js';
@@ -61,13 +71,15 @@ let handlers = null;
 // { onSelectTab, onSetDays, onSetJobFilter, onOpenJob, onNewJob, onEditJob,
 //   onJobAction(job, action), onCancelRun(runId), onVerdict(run, verdict), onClose }
 
-export function initAgents(h) { handlers = h; }
+export function initAgents(h) {
+  handlers = h;
+}
 
 export const AG_TABS = [
   ['scheduled', 'Programados'],
-  ['running',   'En ejecución'],
-  ['results',   'Resultados'],
-  ['jobs',      'Jobs'],
+  ['running', 'En ejecución'],
+  ['results', 'Resultados'],
+  ['jobs', 'Jobs'],
   /* #277 (el dueño: «el botón de ajustes lanza el panel de agentes, no abre ningún ajuste»):
      el botón de la barra dice «Ajustes» y aterrizaba en una pestaña llamada «MCP», dentro
      de una superficie llamada «Agentes». El destino tiene que llamarse como el botón —
@@ -78,8 +90,7 @@ export const AG_TABS = [
 /* #277: en Ajustes, la barra de Agentes no manda. Ni el conmutador Kanban/Calendario
    (configurar no tiene calendario), ni el pulso de la máquina, ni «Nuevo job» — que es
    el botón más fuerte de la pantalla y no ajusta nada. Configurar no es trabajar. */
-export const isSettings = (state) =>
-  state.surface === 'agents' && state.agTab === 'mcp' && state.agMode !== 'calendar';
+export const isSettings = (state) => state.surface === 'agents' && state.agTab === 'mcp' && state.agMode !== 'calendar';
 
 const RUN_GLYPH = { ok: '✓', error: '✕', timeout: '✕', running: '●', cancelled: '⊘' };
 
@@ -123,7 +134,8 @@ function costTxt(r) {
 function focusKey(el) {
   if (el.id) return `#${CSS.escape(el.id)}`;
   for (const k of ['agMode', 'ag', 'agCal']) {
-    if (el.dataset?.[k] != null) return `[data-${k.replace(/[A-Z]/g, c => '-' + c.toLowerCase())}="${CSS.escape(el.dataset[k])}"]`;
+    if (el.dataset?.[k] != null)
+      return `[data-${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}="${CSS.escape(el.dataset[k])}"]`;
   }
   return null;
 }
@@ -132,11 +144,14 @@ export function renderAgentsBar(state) {
   const bar = document.getElementById('ag-bar');
   const focused = bar.contains(document.activeElement) ? focusKey(document.activeElement) : null;
   bar.innerHTML = '';
-  try { buildAgentsBar(bar, state); } finally { if (focused) bar.querySelector(focused)?.focus(); }
+  try {
+    buildAgentsBar(bar, state);
+  } finally {
+    if (focused) bar.querySelector(focused)?.focus();
+  }
 }
 
 function buildAgentsBar(bar, state) {
-
   /* T5.2: el mismo conmutador que el Tablero — Kanban (las pestañas de siempre) o Calendario */
   const isCal = state.agMode === 'calendar';
   const settings = isSettings(state); // #277
@@ -145,7 +160,10 @@ function buildAgentsBar(bar, state) {
     mode.className = 'views views--mode';
     mode.id = 'ag-mode-tabs';
     mode.setAttribute('aria-label', 'Modo de Agentes');
-    for (const [key, label] of [['kanban', 'Kanban'], ['calendar', 'Calendario']]) {
+    for (const [key, label] of [
+      ['kanban', 'Kanban'],
+      ['calendar', 'Calendario'],
+    ]) {
       const b = document.createElement('button');
       b.className = `views__tab${(isCal ? 'calendar' : 'kanban') === key ? ' is-active' : ''}`;
       b.dataset.agMode = key;
@@ -189,10 +207,14 @@ function buildAgentsBar(bar, state) {
 
   /* pulso: lo que importa de la máquina, en una línea */
   const jobs = state.agJobs ?? [];
-  const active = jobs.filter(j => j.status === 'active').length;
-  const next = jobs.filter(j => j.status === 'active' && j.next_fire).sort((a, b) => a.next_fire.localeCompare(b.next_fire))[0];
-  const failed = (state.agResults ?? []).filter(r => r.last_run?.verdict === 'fail' || ['error', 'timeout'].includes(r.last_run?.status)).length;
-  const unsure = (state.agResults ?? []).filter(r => r.last_run?.verdict === 'uncertain').length;  // #470
+  const active = jobs.filter((j) => j.status === 'active').length;
+  const next = jobs
+    .filter((j) => j.status === 'active' && j.next_fire)
+    .sort((a, b) => a.next_fire.localeCompare(b.next_fire))[0];
+  const failed = (state.agResults ?? []).filter(
+    (r) => r.last_run?.verdict === 'fail' || ['error', 'timeout'].includes(r.last_run?.status),
+  ).length;
+  const unsure = (state.agResults ?? []).filter((r) => r.last_run?.verdict === 'uncertain').length; // #470
   const bits = [];
   if (running) bits.push(`<span class="boardpulse__live">● ${running} en ejecución</span>`);
   if (failed) bits.push(`<span class="boardpulse__bad">✕ ${failed} con fallo</span>`);
@@ -207,7 +229,7 @@ function buildAgentsBar(bar, state) {
 
   const btn = document.createElement('button');
   btn.className = 'btn btn--primary';
-  btn.id = 'btn-new-job';          // como #btn-settings: el texto se traduce, el id no
+  btn.id = 'btn-new-job'; // como #btn-settings: el texto se traduce, el id no
   btn.textContent = 'Nuevo job';
   btn.addEventListener('click', () => handlers.onNewJob());
   bar.appendChild(btn);
@@ -216,14 +238,15 @@ function buildAgentsBar(bar, state) {
 /* punto vivo en la pestaña de superficie */
 export function renderAgentsSurfaceBadge(state) {
   const b = document.getElementById('ag-live-badge');
-  b.hidden = !(state.agRunning?.length);
+  b.hidden = !state.agRunning?.length;
 }
 
 /* ---------------- cuerpo por pestaña ---------------- */
 
 export function renderAgentsBody(state) {
   const body = document.getElementById('ag-body');
-  if (state.agMode === 'calendar') {                       // T5.2
+  if (state.agMode === 'calendar') {
+    // T5.2
     body.innerHTML = '';
     body.classList.add('ag__body--cal');
     const root = document.createElement('div');
@@ -236,11 +259,16 @@ export function renderAgentsBody(state) {
   body.classList.remove('ag__body--cal');
   body.innerHTML = '';
   switch (state.agTab) {
-    case 'scheduled': return renderScheduled(body, state);
-    case 'running':   return renderRunning(body, state);
-    case 'results':   return renderResults(body, state);
-    case 'jobs':      return renderJobs(body, state);
-    case 'mcp':       return renderSettings(body, state); // T5.9 + #252
+    case 'scheduled':
+      return renderScheduled(body, state);
+    case 'running':
+      return renderRunning(body, state);
+    case 'results':
+      return renderResults(body, state);
+    case 'jobs':
+      return renderJobs(body, state);
+    case 'mcp':
+      return renderSettings(body, state); // T5.9 + #252
   }
 }
 
@@ -254,11 +282,11 @@ function renderSettings(body, state) {
     <span class="pane__hint">Agentes de la casa, claves y servidores MCP.</span>`;
   body.appendChild(head);
   renderRoster(body, state);
-  renderTimbreSetting(body, state);   // #1217
-  renderCredentials(body, state);   // #460
-  renderQuietSetting(body, state);   // #695
-  renderProofSettings(body, state);   // #601
-  renderReadRootsSetting(body, state);   // #695
+  renderTimbreSetting(body, state); // #1217
+  renderCredentials(body, state); // #460
+  renderQuietSetting(body, state); // #695
+  renderProofSettings(body, state); // #601
+  renderReadRootsSetting(body, state); // #695
   renderMcpSettings(body, state);
 }
 
@@ -282,10 +310,16 @@ function renderScheduled(body, state) {
   body.appendChild(head);
 
   const sch = state.agSchedule;
-  if (!sch) { body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>'); return; }
+  if (!sch) {
+    body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>');
+    return;
+  }
   const items = sch.items ?? [];
   if (!items.length) {
-    body.insertAdjacentHTML('beforeend', `<div class="pane__empty">Nada programado hasta ${esc(sch.to)}. Los jobs manuales solo corren con el botón.</div>`);
+    body.insertAdjacentHTML(
+      'beforeend',
+      `<div class="pane__empty">Nada programado hasta ${esc(sch.to)}. Los jobs manuales solo corren con el botón.</div>`,
+    );
     return;
   }
   const byDay = new Map();
@@ -296,7 +330,8 @@ function renderScheduled(body, state) {
   }
   const agenda = document.createElement('div');
   agenda.className = 'agenda';
-  const today = new Date(); const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const today = new Date();
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   for (const [day, arr] of byDay) {
     const block = document.createElement('section');
     block.className = 'agenda__day';
@@ -307,7 +342,8 @@ function renderScheduled(body, state) {
     for (const it of arr) {
       const row = document.createElement('div');
       row.className = 'agenda__item';
-      row.setAttribute('role', 'button'); row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
       row.innerHTML = `
         <span class="agenda__time">${esc(it.fire_at.slice(11, 16))}</span>
         <span class="agenda__name">${esc(it.name)}</span>
@@ -328,12 +364,18 @@ function renderRunning(body, state) {
   head.innerHTML = `<span class="pane__title">En ejecución</span><span class="pane__hint">Runs vivos ahora mismo. Cancelar mata el proceso; el run queda «cancelado».</span>`;
   body.appendChild(head);
   const runs = state.agRunning;
-  if (!runs) { body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>'); return; }
-  if (!runs.length) { body.insertAdjacentHTML('beforeend', '<div class="pane__empty">Máquina parada. Nada corre ahora.</div>'); return; }
+  if (!runs) {
+    body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>');
+    return;
+  }
+  if (!runs.length) {
+    body.insertAdjacentHTML('beforeend', '<div class="pane__empty">Máquina parada. Nada corre ahora.</div>');
+    return;
+  }
   const wrap = document.createElement('div');
   wrap.className = 'running';
   for (const r of runs) {
-    const job = r.job ?? (state.agJobs ?? []).find(j => j.id === r.job_id) ?? { name: `job #${r.job_id}` };
+    const job = r.job ?? (state.agJobs ?? []).find((j) => j.id === r.job_id) ?? { name: `job #${r.job_id}` };
     const card = document.createElement('article');
     card.className = 'runcard';
     card.innerHTML = `
@@ -357,9 +399,14 @@ function renderRunning(body, state) {
     out.className = 'machine__output';
     out.textContent = 'output…';
     card.appendChild(out);
-    api().runOutput(r.id)
-      .then(res => { out.textContent = runOutputText(res); })
-      .catch(() => { out.textContent = '(sin output todavía)'; });
+    api()
+      .runOutput(r.id)
+      .then((res) => {
+        out.textContent = runOutputText(res);
+      })
+      .catch(() => {
+        out.textContent = '(sin output todavía)';
+      });
     wrap.appendChild(card);
   }
   body.appendChild(wrap);
@@ -370,7 +417,9 @@ function renderResults(body, state) {
   const head = document.createElement('div');
   head.className = 'pane__head';
   head.innerHTML = `<span class="pane__title">Resultados</span><span class="pane__hint">Último run de cada job con su veredicto. Lo que hizo la máquina mientras no mirabas.</span>`;
-  const pending = (state.agResults ?? []).filter(x => x.last_run?.status === 'ok' && !x.last_run.verdict && x.job.verify_level !== 'none').length;
+  const pending = (state.agResults ?? []).filter(
+    (x) => x.last_run?.status === 'ok' && !x.last_run.verdict && x.job.verify_level !== 'none',
+  ).length;
   const verify = document.createElement('button');
   verify.className = 'btn btn--ghost btn--sm';
   verify.id = 'ag-verify-now';
@@ -380,8 +429,17 @@ function renderResults(body, state) {
   head.appendChild(verify);
   body.appendChild(head);
   const res = state.agResults;
-  if (!res) { body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>'); return; }
-  if (!res.length) { body.insertAdjacentHTML('beforeend', '<div class="pane__empty">Sin jobs todavía. Crea el primero con «Nuevo job».</div>'); return; }
+  if (!res) {
+    body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>');
+    return;
+  }
+  if (!res.length) {
+    body.insertAdjacentHTML(
+      'beforeend',
+      '<div class="pane__empty">Sin jobs todavía. Crea el primero con «Nuevo job».</div>',
+    );
+    return;
+  }
 
   /* orden de lectura: fallos primero, luego lo pendiente de veredicto, luego el resto por fecha */
   const rank = (x) => {
@@ -389,11 +447,13 @@ function renderResults(body, state) {
     if (!r) return 5;
     if (r.status === 'running') return 1;
     if (r.verdict === 'fail' || ['error', 'timeout'].includes(r.status)) return 0;
-    if (r.verdict === 'uncertain') return 0.5;  // #470: lo que espera a una persona, justo detrás de los fallos
+    if (r.verdict === 'uncertain') return 0.5; // #470: lo que espera a una persona, justo detrás de los fallos
     if (r.status === 'ok' && !r.verdict) return 2;
     return 3;
   };
-  const rows = [...res].sort((a, b) => rank(a) - rank(b) || (b.last_run?.started_at ?? '').localeCompare(a.last_run?.started_at ?? ''));
+  const rows = [...res].sort(
+    (a, b) => rank(a) - rank(b) || (b.last_run?.started_at ?? '').localeCompare(a.last_run?.started_at ?? ''),
+  );
 
   const list = document.createElement('div');
   list.className = 'res';
@@ -401,7 +461,8 @@ function renderResults(body, state) {
     const { g, cls } = runGlyph(r);
     const row = document.createElement('article');
     row.className = 'res__row';
-    row.setAttribute('role', 'button'); row.tabIndex = 0;
+    row.setAttribute('role', 'button');
+    row.tabIndex = 0;
     /* #302: cuando un run FALLA, su salida y la razon del veredicto son la misma frase, y
        la fila la pintaba DOS VECES seguidas con distinta etiqueta:
            exit 1: web search denied without an allowlist.
@@ -410,15 +471,15 @@ function renderResults(body, state) {
        usuario lo mismo dos veces no anade informacion: anade ruido y hace dudar de si son
        dos cosas distintas. Si la razon ya esta dicha arriba, queda solo el sello. */
     const mismo = (a, b) => {
-      const n = x => (x ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const n = (x) => (x ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
       return n(a) && n(a) === n(b);
     };
     let verdict = '';
     if (r?.verdict) {
       const razon = mismo(r.verdict_reason, r.result_summary) ? '' : (r.verdict_reason ?? '');
       verdict = `<div class="res__verdict res__verdict--${r.verdict}"><b>${esc(tr(verdictTxt(r.verdict)))}</b><span>${esc(razon)}</span></div>`;
-    }
-    else if (r?.status === 'ok') verdict = `<div class="res__verdict res__verdict--pending">sin veredicto todavía${job.verify_level === 'none' ? ' (este job no se verifica)' : ''}</div>`;
+    } else if (r?.status === 'ok')
+      verdict = `<div class="res__verdict res__verdict--pending">sin veredicto todavía${job.verify_level === 'none' ? ' (este job no se verifica)' : ''}</div>`;
     row.innerHTML = `
       <span class="res__glyph res__glyph--${cls}" aria-hidden="true">${g}</span>
       <div>
@@ -436,21 +497,31 @@ function renderResults(body, state) {
       const resolvible = !r.verdict || r.verdict === 'uncertain';
       if (resolvible) {
         const ok = document.createElement('button');
-        ok.className = 'btn btn--ghost btn--sm'; ok.textContent = 'Pasa';
+        ok.className = 'btn btn--ghost btn--sm';
+        ok.textContent = 'Pasa';
         ok.title = tr('Veredicto manual: pasa');
-        ok.addEventListener('click', (e) => { e.stopPropagation(); handlers.onVerdict(r, 'pass'); });
+        ok.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handlers.onVerdict(r, 'pass');
+        });
         acts.appendChild(ok);
       }
       if (resolvible) {
         const ko = document.createElement('button');
-        ko.className = 'btn btn--danger btn--sm'; ko.textContent = 'Falla…';
+        ko.className = 'btn btn--danger btn--sm';
+        ko.textContent = 'Falla…';
         ko.title = 'Veredicto manual: falla, con motivo';
-        ko.addEventListener('click', (e) => { e.stopPropagation(); handlers.onVerdict(r, 'fail'); });
+        ko.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handlers.onVerdict(r, 'fail');
+        });
         acts.appendChild(ko);
       }
     }
     row.addEventListener('click', () => handlers.onOpenJob(job.id));
-    row.addEventListener('keydown', (e) => { if (e.key === 'Enter') handlers.onOpenJob(job.id); });
+    row.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handlers.onOpenJob(job.id);
+    });
     list.appendChild(row);
   }
   body.appendChild(list);
@@ -466,8 +537,13 @@ function renderJobs(body, state) {
   const filters = document.createElement('div');
   filters.className = 'jobs__filters';
   const jobs = state.agJobs ?? [];
-  for (const [key, label] of [['active', 'Activos'], ['paused', 'Pausados'], ['archived', 'Archivados'], ['all', 'Todos']]) {
-    const n = key === 'all' ? jobs.length : jobs.filter(j => j.status === key).length;
+  for (const [key, label] of [
+    ['active', 'Activos'],
+    ['paused', 'Pausados'],
+    ['archived', 'Archivados'],
+    ['all', 'Todos'],
+  ]) {
+    const n = key === 'all' ? jobs.length : jobs.filter((j) => j.status === key).length;
     const b = document.createElement('button');
     b.className = `pchip${state.agJobFilter === key ? ' is-active' : ''}`;
     b.textContent = `${label} · ${n}`;
@@ -476,9 +552,15 @@ function renderJobs(body, state) {
   }
   body.appendChild(filters);
 
-  if (!state.agJobs) { body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>'); return; }
-  const shown = jobs.filter(j => state.agJobFilter === 'all' || j.status === state.agJobFilter);
-  if (!shown.length) { body.insertAdjacentHTML('beforeend', '<div class="pane__empty">Ningún job en este filtro.</div>'); return; }
+  if (!state.agJobs) {
+    body.insertAdjacentHTML('beforeend', '<div class="pane__empty">cargando…</div>');
+    return;
+  }
+  const shown = jobs.filter((j) => state.agJobFilter === 'all' || j.status === state.agJobFilter);
+  if (!shown.length) {
+    body.insertAdjacentHTML('beforeend', '<div class="pane__empty">Ningún job en este filtro.</div>');
+    return;
+  }
 
   const list = document.createElement('div');
   list.className = 'jobs';
@@ -489,9 +571,12 @@ function renderJobs(body, state) {
     const row = document.createElement('article');
     row.className = `jobrow jobrow--${j.status}`;
     row.dataset.id = j.id;
-    const cost = j.billing_mode === 'api'
-      ? `$${(j.total_cost_usd ?? 0).toFixed(2)} facturado`
-      : j.billing_mode === 'local' ? 'local · gratis' : `≈$${(j.total_equivalent_usd ?? 0).toFixed(2)} equiv. · suscripción`;
+    const cost =
+      j.billing_mode === 'api'
+        ? `$${(j.total_cost_usd ?? 0).toFixed(2)} facturado`
+        : j.billing_mode === 'local'
+          ? 'local · gratis'
+          : `≈$${(j.total_equivalent_usd ?? 0).toFixed(2)} equiv. · suscripción`;
     row.innerHTML = `
       <div>
         <div class="jobrow__name">${esc(j.name)} <span class="jobstate jobstate--${j.status}">${j.status === 'active' ? 'activo' : j.status === 'paused' ? 'pausado' : 'archivado'}</span>${health ? ` <span class="jobhealth jobhealth--${health.cls}">${esc(health.txt)}</span>` : ''}</div>
@@ -505,18 +590,28 @@ function renderJobs(body, state) {
     const acts = row.querySelector('.jobrow__actions');
     const mk = (label, cls, action, title) => {
       const b = document.createElement('button');
-      b.className = `btn ${cls} btn--sm`; b.textContent = label; if (title) b.title = title;
+      b.className = `btn ${cls} btn--sm`;
+      b.textContent = label;
+      if (title) b.title = title;
       b.addEventListener('click', () => handlers.onJobAction(j, action));
       return b;
     };
     if (j.status === 'active') {
-      acts.appendChild(mk(r?.status === 'running' ? 'Ejecutándose…' : '▶ Lanzar', 'btn--primary', 'launch', `Lanzar ahora (${j.model})`));
+      acts.appendChild(
+        mk(
+          r?.status === 'running' ? 'Ejecutándose…' : '▶ Lanzar',
+          'btn--primary',
+          'launch',
+          `Lanzar ahora (${j.model})`,
+        ),
+      );
       acts.appendChild(mk('Pausar', 'btn--ghost', 'pause'));
     }
     if (j.status === 'paused') acts.appendChild(mk('Reanudar', 'btn--primary', 'resume'));
     if (j.status !== 'archived') {
       const ed = document.createElement('button');
-      ed.className = 'btn btn--ghost btn--sm'; ed.textContent = 'Editar…';
+      ed.className = 'btn btn--ghost btn--sm';
+      ed.textContent = 'Editar…';
       ed.addEventListener('click', () => handlers.onEditJob(j));
       acts.appendChild(ed);
       acts.appendChild(mk('Duplicar', 'btn--ghost', 'duplicate'));
@@ -564,15 +659,23 @@ export async function openJobPanel(job) {
   acts.innerHTML = `<div class="panel__section-title">Operar</div>`;
   const row = document.createElement('div');
   row.className = 'panel__actions';
-  const mk = (label, cls, fn) => { const b = document.createElement('button'); b.className = `btn ${cls}`; b.textContent = label; b.addEventListener('click', fn); return b; };
+  const mk = (label, cls, fn) => {
+    const b = document.createElement('button');
+    b.className = `btn ${cls}`;
+    b.textContent = label;
+    b.addEventListener('click', fn);
+    return b;
+  };
   const running = job.last_run?.status === 'running';
   if (job.status === 'active') {
     const l = mk(running ? 'Ejecutándose…' : 'Lanzar ahora', 'btn--primary', () => handlers.onJobAction(job, 'launch'));
-    l.disabled = running; row.appendChild(l);
+    l.disabled = running;
+    row.appendChild(l);
     if (running) row.appendChild(mk('Cancelar run', 'btn--danger', () => handlers.onCancelRun(job.last_run.id)));
     row.appendChild(mk('Pausar', 'btn--ghost', () => handlers.onJobAction(job, 'pause')));
   }
-  if (job.status === 'paused') row.appendChild(mk('Reanudar', 'btn--primary', () => handlers.onJobAction(job, 'resume')));
+  if (job.status === 'paused')
+    row.appendChild(mk('Reanudar', 'btn--primary', () => handlers.onJobAction(job, 'resume')));
   if (job.status !== 'archived') {
     row.appendChild(mk('Editar…', 'btn--ghost', () => handlers.onEditJob(job)));
     row.appendChild(mk('Duplicar', 'btn--ghost', () => handlers.onJobAction(job, 'duplicate')));
@@ -614,10 +717,14 @@ export async function openJobPanel(job) {
 
   const list = m.querySelector('.runs');
   const out = m.querySelector('#job-run-output');
-  api().jobRuns(job.id)
-    .then(runs => {
+  api()
+    .jobRuns(job.id)
+    .then((runs) => {
       list.innerHTML = '';
-      if (!runs.length) { list.innerHTML = '<li style="cursor:default">sin runs todavía</li>'; return; }
+      if (!runs.length) {
+        list.innerHTML = '<li style="cursor:default">sin runs todavía</li>';
+        return;
+      }
       for (const r of runs) {
         const li = document.createElement('li');
         const { g } = runGlyph(r);
@@ -627,17 +734,25 @@ export async function openJobPanel(job) {
           <span>run ${r.id} · ${esc(r.status)}${r.verdict ? ` · <span class="runs__verdict--${r.verdict}">${esc(tr(verdictTxt(r.verdict)))}</span>${r.verdict_reason ? ' — ' + esc(r.verdict_reason) : ''}` : ''}</span>
           <span class="runs__cost">${costTxt(r)}</span>`;
         li.addEventListener('click', () => {
-          list.querySelectorAll('li').forEach(x => x.classList.remove('is-open'));
+          list.querySelectorAll('li').forEach((x) => x.classList.remove('is-open'));
           li.classList.add('is-open');
-          out.hidden = false; out.textContent = 'cargando output…';
-          api().runOutput(r.id)
-            .then(res => { out.textContent = runOutputText(res); })
-            .catch(err => { out.textContent = `(no se pudo cargar: ${err.reason ?? err.message})`; });
+          out.hidden = false;
+          out.textContent = 'cargando output…';
+          api()
+            .runOutput(r.id)
+            .then((res) => {
+              out.textContent = runOutputText(res);
+            })
+            .catch((err) => {
+              out.textContent = `(no se pudo cargar: ${err.reason ?? err.message})`;
+            });
         });
         list.appendChild(li);
       }
       // el último run se abre solo: es lo que se viene a leer
       list.querySelector('li')?.click();
     })
-    .catch(() => { list.innerHTML = '<li style="cursor:default">(runs no disponibles)</li>'; });
+    .catch(() => {
+      list.innerHTML = '<li style="cursor:default">(runs no disponibles)</li>';
+    });
 }

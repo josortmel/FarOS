@@ -7,63 +7,63 @@
 
 :root {
   /* ---- Color: sistema OKLCH. Nunca #000 ni #fff. ---- */
-  --color-bg:                oklch(98% 0.008 60);   /* blanco hueso cálido */
-  --color-bg-warm:           oklch(96% 0.012 60);   /* columnas, wells */
-  --color-bg-well:           oklch(94% 0.014 58);   /* pozos de columna */
-  --color-card:              oklch(99% 0.005 60);   /* tarjeta sobre pozo */
-  --color-text:              oklch(18% 0.01 50);
-  --color-text-soft:         oklch(35% 0.01 50);
-  --color-text-mute:         oklch(48% 0.01 50);    /* ≥4.5:1 sobre bg-warm */
-  --color-rule:              oklch(85% 0.01 60);
-  --color-rule-strong:       oklch(72% 0.012 55);
+  --color-bg: oklch(98% 0.008 60); /* blanco hueso cálido */
+  --color-bg-warm: oklch(96% 0.012 60); /* columnas, wells */
+  --color-bg-well: oklch(94% 0.014 58); /* pozos de columna */
+  --color-card: oklch(99% 0.005 60); /* tarjeta sobre pozo */
+  --color-text: oklch(18% 0.01 50);
+  --color-text-soft: oklch(35% 0.01 50);
+  --color-text-mute: oklch(48% 0.01 50); /* ≥4.5:1 sobre bg-warm */
+  --color-rule: oklch(85% 0.01 60);
+  --color-rule-strong: oklch(72% 0.012 55);
 
   /* Zona de máquina (visor de runs, ficha de job) — Nivel B */
-  --color-surface-deep:      oklch(22% 0.005 50);
-  --color-surface-deeper:    oklch(15% 0.005 50);
-  --color-surface-text:      oklch(92% 0.012 60);
+  --color-surface-deep: oklch(22% 0.005 50);
+  --color-surface-deeper: oklch(15% 0.005 50);
+  --color-surface-text: oklch(92% 0.012 60);
   --color-surface-text-soft: oklch(72% 0.01 55);
-  --color-surface-rule:      oklch(32% 0.008 50);
+  --color-surface-rule: oklch(32% 0.008 50);
 
   /* Naranja de marca */
-  --color-orange-soft:       oklch(68% 0.16 55);
-  --color-orange-bright:     oklch(70% 0.18 50);
-  --color-orange-deep:       oklch(52% 0.16 45);    /* CTA / texto sobre claro */
-  --color-orange-muted:      oklch(58% 0.12 50);
-  --color-orange-wash:       oklch(92% 0.04 55);
-  --color-orange-glow:       oklch(75% 0.2 50);
+  --color-orange-soft: oklch(68% 0.16 55);
+  --color-orange-bright: oklch(70% 0.18 50);
+  --color-orange-deep: oklch(52% 0.16 45); /* CTA / texto sobre claro */
+  --color-orange-muted: oklch(58% 0.12 50);
+  --color-orange-wash: oklch(92% 0.04 55);
+  --color-orange-glow: oklch(75% 0.2 50);
 
   /* Semánticos de estado (siempre acompañados de forma/copy) */
-  --color-ok:                oklch(46% 0.11 150);   /* verde apagado, texto sobre claro */
-  --color-ok-wash:           oklch(93% 0.035 150);
-  --color-danger:            oklch(46% 0.15 25);
-  --color-danger-wash:       oklch(93% 0.03 25);
-  --color-warn:              var(--color-orange-deep);
-  --color-warn-wash:         var(--color-orange-wash);
-  --color-block:             oklch(40% 0.02 50);
-  --color-block-wash:        oklch(90% 0.012 55);
+  --color-ok: oklch(46% 0.11 150); /* verde apagado, texto sobre claro */
+  --color-ok-wash: oklch(93% 0.035 150);
+  --color-danger: oklch(46% 0.15 25);
+  --color-danger-wash: oklch(93% 0.03 25);
+  --color-warn: var(--color-orange-deep);
+  --color-warn-wash: var(--color-orange-wash);
+  --color-block: oklch(40% 0.02 50);
+  --color-block-wash: oklch(90% 0.012 55);
   /* #470: «incierto» (verdict = uncertain, #451). Ni verde ni rojo ni naranja (el naranja es
      «en curso» y la marca): el único hueco libre del círculo, azul violáceo. Se lee como
      «falta que lo mire una persona». */
-  --color-unsure:            oklch(48% 0.13 265);
-  --color-unsure-wash:       oklch(93% 0.03 265);
+  --color-unsure: oklch(48% 0.13 265);
+  --color-unsure-wash: oklch(93% 0.03 265);
 
   /* ---- Tipografía ---- */
-  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
-  --font-body:    "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono:    "Geist Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
-  --font-mono-industrial: "Commit Mono", "Geist Mono", ui-monospace, Consolas, monospace;
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --font-mono-industrial: 'Commit Mono', 'Geist Mono', ui-monospace, Consolas, monospace;
 
   /* Escala Operate: densa pero legible (cuerpo ≥14px — regla del dueño) */
-  --text-app:      1.375rem;    /* wordmark FarOS */
-  --text-h1:       1.125rem;    /* títulos de panel */
-  --text-body:     0.9375rem;   /* 15px — cuerpo, títulos de tarjeta */
-  --text-small:    0.875rem;    /* 14px — descripciones, mínimos */
-  --text-meta:     0.75rem;     /* 12px — mono, metadata */
-  --text-micro:    0.6875rem;   /* 11px — SOLO tags uppercase con tracking */
+  --text-app: 1.375rem; /* wordmark FarOS */
+  --text-h1: 1.125rem; /* títulos de panel */
+  --text-body: 0.9375rem; /* 15px — cuerpo, títulos de tarjeta */
+  --text-small: 0.875rem; /* 14px — descripciones, mínimos */
+  --text-meta: 0.75rem; /* 12px — mono, metadata */
+  --text-micro: 0.6875rem; /* 11px — SOLO tags uppercase con tracking */
 
   --lh-tight: 1.15;
-  --lh-snug:  1.3;
-  --lh-body:  1.55;
+  --lh-snug: 1.3;
+  --lh-body: 1.55;
 
   /* ---- Espaciado ---- */
   --sp-1: 0.25rem;
@@ -78,14 +78,14 @@
   --radius-panel: 12px;
   --radius-pill: 999px;
   --shadow-card: 0 1px 2px oklch(18% 0.01 50 / 0.06), 0 2px 8px oklch(18% 0.01 50 / 0.05);
-  --shadow-lift: 0 4px 10px oklch(18% 0.01 50 / 0.12), 0 10px 28px oklch(18% 0.01 50 / 0.10);
+  --shadow-lift: 0 4px 10px oklch(18% 0.01 50 / 0.12), 0 10px 28px oklch(18% 0.01 50 / 0.1);
   --shadow-panel: 0 8px 24px oklch(18% 0.01 50 / 0.14), 0 24px 64px oklch(18% 0.01 50 / 0.12);
 
   /* ---- Motion (curvas de marca, sin bounce) ---- */
-  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
   --t-fast: 140ms;
-  --t-med:  240ms;
+  --t-med: 240ms;
 }
 
 /* ============================================================
@@ -96,41 +96,41 @@
    zona de máquina un punto más honda que el fondo para que siga
    siendo «otro material» también en oscuro.
    ============================================================ */
-:root[data-theme="dark"] {
+:root[data-theme='dark'] {
   color-scheme: dark;
-  --color-bg:                oklch(17% 0.008 55);
-  --color-bg-warm:           oklch(21% 0.010 55);
-  --color-bg-well:           oklch(24% 0.012 55);
-  --color-card:              oklch(26% 0.010 55);
-  --color-text:              oklch(93% 0.010 60);
-  --color-text-soft:         oklch(80% 0.010 60);
-  --color-text-mute:         oklch(68% 0.010 58);   /* ≥ 4.5:1 sobre bg-warm */
-  --color-rule:              oklch(31% 0.010 55);
-  --color-rule-strong:       oklch(44% 0.012 55);
+  --color-bg: oklch(17% 0.008 55);
+  --color-bg-warm: oklch(21% 0.01 55);
+  --color-bg-well: oklch(24% 0.012 55);
+  --color-card: oklch(26% 0.01 55);
+  --color-text: oklch(93% 0.01 60);
+  --color-text-soft: oklch(80% 0.01 60);
+  --color-text-mute: oklch(68% 0.01 58); /* ≥ 4.5:1 sobre bg-warm */
+  --color-rule: oklch(31% 0.01 55);
+  --color-rule-strong: oklch(44% 0.012 55);
 
-  --color-surface-deep:      oklch(12% 0.006 50);
-  --color-surface-deeper:    oklch(8% 0.006 50);
-  --color-surface-text:      oklch(92% 0.012 60);
-  --color-surface-text-soft: oklch(72% 0.010 55);
-  --color-surface-rule:      oklch(24% 0.008 50);
+  --color-surface-deep: oklch(12% 0.006 50);
+  --color-surface-deeper: oklch(8% 0.006 50);
+  --color-surface-text: oklch(92% 0.012 60);
+  --color-surface-text-soft: oklch(72% 0.01 55);
+  --color-surface-rule: oklch(24% 0.008 50);
 
-  --color-orange-soft:       oklch(72% 0.15 55);
-  --color-orange-bright:     oklch(74% 0.18 50);
-  --color-orange-deep:       oklch(72% 0.17 50);    /* texto/CTA sobre oscuro: sube para leerse */
-  --color-orange-muted:      oklch(64% 0.12 50);
-  --color-orange-wash:       oklch(30% 0.06 55);
-  --color-orange-glow:       oklch(78% 0.20 50);
+  --color-orange-soft: oklch(72% 0.15 55);
+  --color-orange-bright: oklch(74% 0.18 50);
+  --color-orange-deep: oklch(72% 0.17 50); /* texto/CTA sobre oscuro: sube para leerse */
+  --color-orange-muted: oklch(64% 0.12 50);
+  --color-orange-wash: oklch(30% 0.06 55);
+  --color-orange-glow: oklch(78% 0.2 50);
 
-  --color-ok:                oklch(74% 0.12 150);
-  --color-ok-wash:           oklch(27% 0.045 150);
-  --color-danger:            oklch(74% 0.16 25);
-  --color-danger-wash:       oklch(27% 0.05 25);
-  --color-block:             oklch(80% 0.015 55);
-  --color-block-wash:        oklch(27% 0.012 55);
-  --color-unsure:            oklch(76% 0.11 265);
-  --color-unsure-wash:       oklch(27% 0.05 265);
+  --color-ok: oklch(74% 0.12 150);
+  --color-ok-wash: oklch(27% 0.045 150);
+  --color-danger: oklch(74% 0.16 25);
+  --color-danger-wash: oklch(27% 0.05 25);
+  --color-block: oklch(80% 0.015 55);
+  --color-block-wash: oklch(27% 0.012 55);
+  --color-unsure: oklch(76% 0.11 265);
+  --color-unsure-wash: oklch(27% 0.05 265);
 
-  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.35), 0 2px 8px oklch(0% 0 0 / 0.30);
-  --shadow-lift: 0 4px 10px oklch(0% 0 0 / 0.45), 0 10px 28px oklch(0% 0 0 / 0.40);
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.35), 0 2px 8px oklch(0% 0 0 / 0.3);
+  --shadow-lift: 0 4px 10px oklch(0% 0 0 / 0.45), 0 10px 28px oklch(0% 0 0 / 0.4);
   --shadow-panel: 0 8px 24px oklch(0% 0 0 / 0.5), 0 24px 64px oklch(0% 0 0 / 0.45);
 }

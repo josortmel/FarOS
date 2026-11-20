@@ -9,14 +9,30 @@
    de 14 px, objetivos táctiles de 44 px como mínimo.
    ============================================================ */
 
-.mob-only { display: none; }
+.mob-only {
+  display: none;
+}
 
-@media (max-width: 540px), (max-height: 500px) and (pointer: coarse), (hover: none) and (pointer: coarse) and (max-width: 1366px) {
-  .mob-only { display: revert; }
+@media (max-width: 540px),
+  (max-height: 500px) and (pointer: coarse),
+  (hover: none) and (pointer: coarse) and (max-width: 1366px) {
+  .mob-only {
+    display: revert;
+  }
   /* en el móvil nada baja de 14 px: la base a 16 y los tamaños pequeños de la app, al de 14 */
-  :root { --text-small: 0.875rem; --text-meta: 0.875rem; --text-micro: 0.875rem; }
-  html { font-size: 16px; }
-  html, body { height: 100%; overscroll-behavior: none; }
+  :root {
+    --text-small: 0.875rem;
+    --text-meta: 0.875rem;
+    --text-micro: 0.875rem;
+  }
+  html {
+    font-size: 16px;
+  }
+  html,
+  body {
+    height: 100%;
+    overscroll-behavior: none;
+  }
   body {
     height: 100dvh;
     padding-bottom: calc(64px + env(safe-area-inset-bottom));
@@ -25,289 +41,845 @@
 
   /* ---------- Agentes › Jobs: la fila del escritorio son cinco columnas (35 rem fijos) y aquí
      recortaba el coste y los botones. En el móvil, una ficha apilada con los botones debajo. */
-  .jobrow { grid-template-columns: 1fr; gap: var(--sp-2); }
-  .jobrow__actions { justify-content: flex-start; }
+  .jobrow {
+    grid-template-columns: 1fr;
+    gap: var(--sp-2);
+  }
+  .jobrow__actions {
+    justify-content: flex-start;
+  }
 
   /* #604: la banda de propuestas del calendario. En una fila, el rótulo se comía los 390 px y las
      propuestas quedaban fuera; aquí el rótulo va en su línea y las propuestas debajo, enteras. */
-  .cal__props { flex-wrap: wrap; padding: var(--sp-2) var(--sp-4); }
+  .cal__props {
+    flex-wrap: wrap;
+    padding: var(--sp-2) var(--sp-4);
+  }
   /* #924: en varias líneas y sin tope, cada propuesta sin fecha (se enseñan en todos los días)
      se comía ~66 px de la rejilla: con varias, a las horas no les quedaba sitio para arrastrar */
-  .cal__props { max-height: 24vh; overflow-y: auto; overscroll-behavior: contain; }
-  .cal__props-label { flex-basis: 100%; }
-  .cal__prop { max-width: 100%; }
+  .cal__props {
+    max-height: 24vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .cal__props-label {
+    flex-basis: 100%;
+  }
+  .cal__prop {
+    max-width: 100%;
+  }
 
   /* ---------- Cabecera: marca, estado y dos acciones ---------- */
   .topbar {
-    display: flex; align-items: center; gap: var(--sp-2);
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
     padding: calc(var(--sp-2) + env(safe-area-inset-top)) var(--sp-4) var(--sp-2);
     min-height: 52px;
   }
-  .topbar__brand { flex: 1; min-width: 0; gap: var(--sp-2); }
-  .topbar__name { font-size: 1.25rem; }
-  .topbar__conn #conn-label { display: none; }   /* el punto basta; el texto, en «Más» si hace falta */
-  .topbar__brand { flex-direction: row; align-items: center; }
-  .views--surface { display: none; }          /* las superficies viven abajo */
-  .topbar__actions { display: none; }         /* se abren con «Más» */
+  .topbar__brand {
+    flex: 1;
+    min-width: 0;
+    gap: var(--sp-2);
+  }
+  .topbar__name {
+    font-size: 1.25rem;
+  }
+  .topbar__conn #conn-label {
+    display: none;
+  } /* el punto basta; el texto, en «Más» si hace falta */
+  .topbar__brand {
+    flex-direction: row;
+    align-items: center;
+  }
+  .views--surface {
+    display: none;
+  } /* las superficies viven abajo */
+  .topbar__actions {
+    display: none;
+  } /* se abren con «Más» */
   .topbar__actions.is-open {
-    display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2);
-    position: fixed; z-index: 60; left: var(--sp-3); right: var(--sp-3);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--sp-2);
+    position: fixed;
+    z-index: 60;
+    left: var(--sp-3);
+    right: var(--sp-3);
     top: calc(56px + env(safe-area-inset-top));
-    padding: var(--sp-3); border-radius: var(--radius-panel);
-    background: var(--color-card); box-shadow: var(--shadow-panel);
+    padding: var(--sp-3);
+    border-radius: var(--radius-panel);
+    background: var(--color-card);
+    box-shadow: var(--shadow-panel);
   }
-  .topbar__actions.is-open .btn { min-height: 44px; justify-content: center; font-size: var(--text-body); }
-  .topbar__actions.is-open #btn-create { display: none; }   /* tiene su botón propio */
+  .topbar__actions.is-open .btn {
+    min-height: 44px;
+    justify-content: center;
+    font-size: var(--text-body);
+  }
+  .topbar__actions.is-open #btn-create {
+    display: none;
+  } /* tiene su botón propio */
   .mob-iconbtn {
-    width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center;
-    color: var(--color-text-soft); flex: none;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: var(--color-text-soft);
+    flex: none;
   }
-  .mob-iconbtn.is-primary { background: var(--color-orange-deep); color: var(--color-card); }
-  .mob-iconbtn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  .mob-iconbtn.is-primary {
+    background: var(--color-orange-deep);
+    color: var(--color-card);
+  }
+  .mob-iconbtn svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 
   /* ---------- Barras de filtros: una línea que se desliza ---------- */
   .boardbar {
-    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
-    padding: var(--sp-2) var(--sp-4); gap: var(--sp-2);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: var(--sp-2) var(--sp-4);
+    gap: var(--sp-2);
   }
-  .boardbar::-webkit-scrollbar, .projectbar::-webkit-scrollbar, .mob-states::-webkit-scrollbar { display: none; }
-  #mode-tabs { display: none; }                /* Kanban / Calendario están abajo */
-  .boardbar .views__tab { min-height: 40px; font-size: var(--text-small); white-space: nowrap; }
-  .boardbar .views__opt { min-height: 40px; width: 40px; flex: none; }   /* #1319 */
-  .cal__bar .btn, .cal__today { font-size: var(--text-small) !important; min-height: 44px; }
-  .boardpulse { display: none; }
+  .boardbar::-webkit-scrollbar,
+  .projectbar::-webkit-scrollbar,
+  .mob-states::-webkit-scrollbar {
+    display: none;
+  }
+  #mode-tabs {
+    display: none;
+  } /* Kanban / Calendario están abajo */
+  .boardbar .views__tab {
+    min-height: 40px;
+    font-size: var(--text-small);
+    white-space: nowrap;
+  }
+  .boardbar .views__opt {
+    min-height: 40px;
+    width: 40px;
+    flex: none;
+  } /* #1319 */
+  .cal__bar .btn,
+  .cal__today {
+    font-size: var(--text-small) !important;
+    min-height: 44px;
+  }
+  .boardpulse {
+    display: none;
+  }
   .projectbar {
-    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
-    padding: 0 var(--sp-4) var(--sp-2); gap: var(--sp-2);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 var(--sp-4) var(--sp-2);
+    gap: var(--sp-2);
   }
-  .projectbar > * { flex: none; min-height: 40px; }
+  .projectbar > * {
+    flex: none;
+    min-height: 40px;
+  }
 
   /* ---------- Estados del tablero: un carril de pestañas ---------- */
   .mob-states {
-    display: flex; gap: var(--sp-2); overflow-x: auto; scrollbar-width: none;
-    padding: var(--sp-1) var(--sp-4) var(--sp-2); flex: none;
+    display: flex;
+    gap: var(--sp-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: var(--sp-1) var(--sp-4) var(--sp-2);
+    flex: none;
     scroll-snap-type: x proximity;
   }
-  .mob-states[hidden] { display: none; }
-  .mob-states button {
-    flex: none; min-height: 40px; padding: 0 var(--sp-3); border-radius: var(--radius-pill);
-    border: 1.5px solid var(--color-rule-strong); background: var(--color-card);
-    font-size: var(--text-small); font-weight: 600; color: var(--color-text-soft);
-    display: inline-flex; align-items: center; gap: 0.5em; scroll-snap-align: start;
+  .mob-states[hidden] {
+    display: none;
   }
-  .mob-states button b { font-family: var(--font-mono); font-weight: 500; color: var(--color-text-mute); }
-  .mob-states button[aria-current="true"] { border-color: var(--color-orange-deep); background: var(--color-orange-wash); color: var(--color-orange-deep); }
-  .mob-states button[aria-current="true"] b { color: var(--color-orange-deep); }
+  .mob-states button {
+    flex: none;
+    min-height: 40px;
+    padding: 0 var(--sp-3);
+    border-radius: var(--radius-pill);
+    border: 1.5px solid var(--color-rule-strong);
+    background: var(--color-card);
+    font-size: var(--text-small);
+    font-weight: 600;
+    color: var(--color-text-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+    scroll-snap-align: start;
+  }
+  .mob-states button b {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--color-text-mute);
+  }
+  .mob-states button[aria-current='true'] {
+    border-color: var(--color-orange-deep);
+    background: var(--color-orange-wash);
+    color: var(--color-orange-deep);
+  }
+  .mob-states button[aria-current='true'] b {
+    color: var(--color-orange-deep);
+  }
 
   /* ---------- Tablero: una columna cada vez, deslizando ---------- */
   .board {
-    display: flex; gap: 0; padding: 0;
-    overflow-x: auto; overflow-y: hidden;
-    scroll-snap-type: x mandatory; scroll-padding-left: 0; scrollbar-width: none;
+    display: flex;
+    gap: 0;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: 0;
+    scrollbar-width: none;
   }
-  .board::-webkit-scrollbar { display: none; }
+  .board::-webkit-scrollbar {
+    display: none;
+  }
   .board > .col {
-    flex: 0 0 100%; min-width: 0; border-radius: 0; background: transparent;
-    scroll-snap-align: start; scroll-snap-stop: always;
+    flex: 0 0 100%;
+    min-width: 0;
+    border-radius: 0;
+    background: transparent;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
-  .col__head { display: none; }                /* el nombre ya está en el carril de arriba */
-  .col__body { padding: 0 var(--sp-4) var(--sp-4); gap: var(--sp-3); }
-  .card { padding: var(--sp-3) var(--sp-4); }
-  .card, .card * { font-size: max(var(--text-small), 1em); }
+  .col__head {
+    display: none;
+  } /* el nombre ya está en el carril de arriba */
+  .col__body {
+    padding: 0 var(--sp-4) var(--sp-4);
+    gap: var(--sp-3);
+  }
+  .card {
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .card,
+  .card * {
+    font-size: max(var(--text-small), 1em);
+  }
 
   /* ---------- Apartadas (bloqueadas…): plegadas debajo ---------- */
-  .laterals { padding: var(--sp-2) var(--sp-4); max-height: 40dvh; overflow-y: auto; }
+  .laterals {
+    padding: var(--sp-2) var(--sp-4);
+    max-height: 40dvh;
+    overflow-y: auto;
+  }
 
   /* ---------- Ficha de tarea: pantalla completa ---------- */
-  .panel { width: 100vw; top: env(safe-area-inset-top); transform: translateY(24px); }
-  .panel.is-open { transform: none; }
-  .panel__head { padding: var(--sp-3) var(--sp-4); }
-  .panel, .panel * { overflow-wrap: anywhere; }
+  .panel {
+    width: 100vw;
+    top: env(safe-area-inset-top);
+    transform: translateY(24px);
+  }
+  .panel.is-open {
+    transform: none;
+  }
+  .panel__head {
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .panel,
+  .panel * {
+    overflow-wrap: anywhere;
+  }
   /* la ficha entera se desplaza: con una descripción larga, la cabecera ya no se come la pantalla */
-  .panel { overflow-y: auto; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
-  .panel__body { flex: none; overflow: visible; }
-  .panel__close { width: 44px; height: 44px; font-size: 1.3rem; }
-  .panel__desc.mob-cut { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-  .mob-more { min-height: 44px; font-weight: 600; color: var(--color-orange-deep); }
-  .panel .btn { min-height: 44px; }
+  .panel {
+    overflow-y: auto;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  .panel__body {
+    flex: none;
+    overflow: visible;
+  }
+  .panel__close {
+    width: 44px;
+    height: 44px;
+    font-size: 1.3rem;
+  }
+  .panel__desc.mob-cut {
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .mob-more {
+    min-height: 44px;
+    font-weight: 600;
+    color: var(--color-orange-deep);
+  }
+  .panel .btn {
+    min-height: 44px;
+  }
   /* las acciones de la tarea, siempre a mano: una barra fija abajo de la ficha */
   .mob-panelbar {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 55;
-    display: flex; flex-wrap: wrap; gap: var(--sp-2);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 55;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-4) calc(var(--sp-2) + env(safe-area-inset-bottom));
-    background: var(--color-bg); border-top: 1px solid var(--color-rule); box-shadow: var(--shadow-panel);
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-rule);
+    box-shadow: var(--shadow-panel);
   }
-  .mob-panelbar[hidden] { display: none; }
-  .mob-panelbar .panel__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); width: 100%; }
-  .mob-panelbar .panel__actions .btn { flex: 1 1 auto; min-height: 48px; font-size: var(--text-body); }
+  .mob-panelbar[hidden] {
+    display: none;
+  }
+  .mob-panelbar .panel__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    width: 100%;
+  }
+  .mob-panelbar .panel__actions .btn {
+    flex: 1 1 auto;
+    min-height: 48px;
+    font-size: var(--text-body);
+  }
 
   /* ventanas emergentes: hoja a pantalla completa, campos a 16 px (iOS no hace zoom) */
-  .modal-root { padding: 0; align-items: stretch; }
-  .modal, .modal--sm, .modal--job, .modal--import {
-    width: 100vw; max-width: none; height: 100dvh; max-height: none; border-radius: 0;
+  .modal-root {
+    padding: 0;
+    align-items: stretch;
+  }
+  .modal,
+  .modal--sm,
+  .modal--job,
+  .modal--import {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
     padding: calc(var(--sp-4) + env(safe-area-inset-top)) var(--sp-4) calc(var(--sp-5) + env(safe-area-inset-bottom));
   }
-  .modal input, .modal textarea, .modal select, .modal-root input, .modal-root textarea, .modal-root select { font-size: 16px !important; min-height: 44px; max-width: 100%; }
-  .modal input[type="checkbox"], .modal input[type="radio"] { min-height: 0; width: 22px; height: 22px; }
-  .field-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .field-row-3 { grid-template-columns: minmax(0, 1fr); }
-  .modal--job .field-row { grid-template-columns: minmax(0, 1fr); }   /* harness y modelo, uno debajo de otro: se lee el modelo elegido */
-  .modal--job .field-row > .field > select { width: 100%; }
-  .modal--job .models-row { display: flex; gap: var(--sp-2); }
-  .modal--job .models-row select { flex: 1; min-width: 0; }
-  .modal--job .models-row .btn { min-width: 44px; }
-  .modal__footer { position: sticky; bottom: calc(-1 * var(--sp-5)); background: var(--color-bg); padding-block: var(--sp-3); }
-  .modal__footer .btn { min-height: 48px; flex: 1; }
+  .modal input,
+  .modal textarea,
+  .modal select,
+  .modal-root input,
+  .modal-root textarea,
+  .modal-root select {
+    font-size: 16px !important;
+    min-height: 44px;
+    max-width: 100%;
+  }
+  .modal input[type='checkbox'],
+  .modal input[type='radio'] {
+    min-height: 0;
+    width: 22px;
+    height: 22px;
+  }
+  .field-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .field-row-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .modal--job .field-row {
+    grid-template-columns: minmax(0, 1fr);
+  } /* harness y modelo, uno debajo de otro: se lee el modelo elegido */
+  .modal--job .field-row > .field > select {
+    width: 100%;
+  }
+  .modal--job .models-row {
+    display: flex;
+    gap: var(--sp-2);
+  }
+  .modal--job .models-row select {
+    flex: 1;
+    min-width: 0;
+  }
+  .modal--job .models-row .btn {
+    min-width: 44px;
+  }
+  .modal__footer {
+    position: sticky;
+    bottom: calc(-1 * var(--sp-5));
+    background: var(--color-bg);
+    padding-block: var(--sp-3);
+  }
+  .modal__footer .btn {
+    min-height: 48px;
+    flex: 1;
+  }
 
   /* #1318: importar plan — el textarea a todo el ancho, dianas de 44 px, y «Importar plan…» a la vista en la lista */
-  .ip__text { min-height: 180px; }
-  .ip__pick .btn { min-height: 44px; }
-  .ip__preview, .modal--import .field__error { font-size: 14px; }
-  .wfside__import { min-height: 44px; }
+  .ip__text {
+    min-height: 180px;
+  }
+  .ip__pick .btn {
+    min-height: 44px;
+  }
+  .ip__preview,
+  .modal--import .field__error {
+    font-size: 14px;
+  }
+  .wfside__import {
+    min-height: 44px;
+  }
 
   /* #1317: despachar el lote — cada fila apilada: casilla y título arriba, «a quién» debajo, a todo el ancho */
-  .bd__rows { max-height: none; overflow: visible; }
-  .bd__row { grid-template-columns: 44px minmax(0, 1fr); gap: var(--sp-2) var(--sp-1); padding: var(--sp-2); }
-  .bd__row input[type="checkbox"] { justify-self: center; }
-  .bd__what { min-height: 44px; justify-content: center; }
-  .bd__row select { grid-column: 1 / -1; }
-  #wf-dispatch-batch { min-height: 44px; position: sticky; right: 0; background: var(--color-bg); box-shadow: -8px 0 8px -4px var(--color-bg); }   /* la tira corre en horizontal: el botón no se queda fuera */
+  .bd__rows {
+    max-height: none;
+    overflow: visible;
+  }
+  .bd__row {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: var(--sp-2) var(--sp-1);
+    padding: var(--sp-2);
+  }
+  .bd__row input[type='checkbox'] {
+    justify-self: center;
+  }
+  .bd__what {
+    min-height: 44px;
+    justify-content: center;
+  }
+  .bd__row select {
+    grid-column: 1 / -1;
+  }
+  #wf-dispatch-batch {
+    min-height: 44px;
+    position: sticky;
+    right: 0;
+    background: var(--color-bg);
+    box-shadow: -8px 0 8px -4px var(--color-bg);
+  } /* la tira corre en horizontal: el botón no se queda fuera */
 
   /* ---------- Preguntas: superficie propia ---------- */
-  .mob-dec { flex: 1; overflow-y: auto; padding: var(--sp-3) var(--sp-4) var(--sp-5); }
-  .mob-dec[hidden] { display: none; }
-  .mob-dec .pane__head { display: none; }
-  .mob-dec__head { display: flex; align-items: baseline; justify-content: space-between; margin: var(--sp-2) 0 var(--sp-3); }
-  .mob-dec__head h1 { font-family: var(--font-display); font-size: 1.5rem; letter-spacing: -0.02em; }
-  .mob-dec__head span { font-family: var(--font-mono); font-size: var(--text-small); color: var(--color-text-mute); }
-  .mob-dec .dec { padding: var(--sp-4); border-radius: var(--radius-panel); }
-  .mob-dec .dec__title { font-size: 1.2rem; line-height: 1.25; }
-  .mob-dec .dec__context { font-size: var(--text-small); overflow-wrap: anywhere; }
-  .mob-dec .dec__opt { min-height: 56px; width: 100%; text-align: left; }
-  .mob-dec .dec__actions { flex-wrap: wrap; gap: var(--sp-2); }
-  .mob-dec .dec__confirm { flex: 1 1 100%; min-height: 48px; font-size: var(--text-body); }
-  .mob-dec .dec__defer { display: flex; gap: var(--sp-2); width: 100%; }
-  .mob-dec .dec__defer input { flex: 1; min-height: 44px; font-size: 16px; }
-  .mob-dec input, .mob-dec textarea { font-size: 16px; }    /* iOS no hace zoom a 16 px */
-  .mob-dec .dec__group, .mob-dec .dec__id, .mob-dec .dec__by, .mob-dec .dec__picked { font-size: var(--text-small); }
+  .mob-dec {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--sp-3) var(--sp-4) var(--sp-5);
+  }
+  .mob-dec[hidden] {
+    display: none;
+  }
+  .mob-dec .pane__head {
+    display: none;
+  }
+  .mob-dec__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: var(--sp-2) 0 var(--sp-3);
+  }
+  .mob-dec__head h1 {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+  }
+  .mob-dec__head span {
+    font-family: var(--font-mono);
+    font-size: var(--text-small);
+    color: var(--color-text-mute);
+  }
+  .mob-dec .dec {
+    padding: var(--sp-4);
+    border-radius: var(--radius-panel);
+  }
+  .mob-dec .dec__title {
+    font-size: 1.2rem;
+    line-height: 1.25;
+  }
+  .mob-dec .dec__context {
+    font-size: var(--text-small);
+    overflow-wrap: anywhere;
+  }
+  .mob-dec .dec__opt {
+    min-height: 56px;
+    width: 100%;
+    text-align: left;
+  }
+  .mob-dec .dec__actions {
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+  }
+  .mob-dec .dec__confirm {
+    flex: 1 1 100%;
+    min-height: 48px;
+    font-size: var(--text-body);
+  }
+  .mob-dec .dec__defer {
+    display: flex;
+    gap: var(--sp-2);
+    width: 100%;
+  }
+  .mob-dec .dec__defer input {
+    flex: 1;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .mob-dec input,
+  .mob-dec textarea {
+    font-size: 16px;
+  } /* iOS no hace zoom a 16 px */
+  .mob-dec .dec__group,
+  .mob-dec .dec__id,
+  .mob-dec .dec__by,
+  .mob-dec .dec__picked {
+    font-size: var(--text-small);
+  }
 
   /* ---------- Preguntas encendida: lo demás se aparta (app.js no se entera) ---------- */
-  body.mob-dec-on #board-bar, body.mob-dec-on #project-bar, body.mob-dec-on #board, body.mob-dec-on #laterals,
-  body.mob-dec-on #cal-root, body.mob-dec-on #wf-root, body.mob-dec-on #ag-root, body.mob-dec-on #lib-root, body.mob-dec-on #mob-states,
-  body.mob-dec-on #mob-lanes { display: none !important; }
+  body.mob-dec-on #board-bar,
+  body.mob-dec-on #project-bar,
+  body.mob-dec-on #board,
+  body.mob-dec-on #laterals,
+  body.mob-dec-on #cal-root,
+  body.mob-dec-on #wf-root,
+  body.mob-dec-on #ag-root,
+  body.mob-dec-on #lib-root,
+  body.mob-dec-on #mob-states,
+  body.mob-dec-on #mob-lanes {
+    display: none !important;
+  }
 
   /* ---------- Calendario: un carril (una persona) cada vez ---------- */
-  .cal__bar { flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); }
-  .cal__range { font-size: 1.1rem !important; line-height: 1.2; flex: 1; min-width: 0; }
-  .cal__date { display: none; }
-  .cal__navbtn { min-width: 44px; min-height: 44px; }
-  .day { --gutter: 60px; }
-  .day[data-mob-lane] .day__head, .day[data-mob-lane] .day__band, .day[data-mob-lane] .day__grid { grid-template-columns: var(--gutter) minmax(var(--mob-lane-min, 0px), 1fr); }
-  .day .is-mob-off { display: none !important; }
-  .day__lane-head { display: none; }            /* el nombre va en el carril de personas */
-  .day__corner { display: none; }
-  .day__head { display: none; }
+  .cal__bar {
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-4);
+  }
+  .cal__range {
+    font-size: 1.1rem !important;
+    line-height: 1.2;
+    flex: 1;
+    min-width: 0;
+  }
+  .cal__date {
+    display: none;
+  }
+  .cal__navbtn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .day {
+    --gutter: 60px;
+  }
+  .day[data-mob-lane] .day__head,
+  .day[data-mob-lane] .day__band,
+  .day[data-mob-lane] .day__grid {
+    grid-template-columns: var(--gutter) minmax(var(--mob-lane-min, 0px), 1fr);
+  }
+  .day .is-mob-off {
+    display: none !important;
+  }
+  .day__lane-head {
+    display: none;
+  } /* el nombre va en el carril de personas */
+  .day__corner {
+    display: none;
+  }
+  .day__head {
+    display: none;
+  }
   /* #924: el tope de la banda «sin hora» (34vh) es de la VENTANA, y aquí la cabecera, las
      pestañas y la barra de abajo ya se llevan media pantalla: con la banda llena (la casa
      siempre tiene recurrentes sin hora) a las horas les quedaban 154 px en el iPad y 33 en el
      móvil, y no se podía arrastrar a otra hora. El tope pasa a ser del propio calendario. */
-  .day__band, .week__band { max-height: min(34vh, 30%); }
+  .day__band,
+  .week__band {
+    max-height: min(34vh, 30%);
+  }
   .mob-lanes {
-    display: flex; gap: var(--sp-2); overflow-x: auto; scrollbar-width: none;
-    padding: var(--sp-1) var(--sp-4) var(--sp-2); flex: none;
+    display: flex;
+    gap: var(--sp-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: var(--sp-1) var(--sp-4) var(--sp-2);
+    flex: none;
   }
-  .mob-lanes::-webkit-scrollbar { display: none; }
-  .mob-lanes[hidden] { display: none; }
+  .mob-lanes::-webkit-scrollbar {
+    display: none;
+  }
+  .mob-lanes[hidden] {
+    display: none;
+  }
   .mob-lanes button {
-    flex: none; min-height: 40px; padding: 0 var(--sp-3); border-radius: var(--radius-pill);
-    border: 1.5px solid var(--color-rule-strong); background: var(--color-card);
-    font-size: var(--text-small); font-weight: 600; color: var(--color-text-soft);
-    display: inline-flex; align-items: center; gap: 0.5em;
+    flex: none;
+    min-height: 40px;
+    padding: 0 var(--sp-3);
+    border-radius: var(--radius-pill);
+    border: 1.5px solid var(--color-rule-strong);
+    background: var(--color-card);
+    font-size: var(--text-small);
+    font-weight: 600;
+    color: var(--color-text-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
   }
-  .mob-lanes button b { font-family: var(--font-mono); font-weight: 500; color: var(--color-text-mute); }
-  .mob-lanes button[aria-current="true"] { border-color: var(--color-orange-deep); background: var(--color-orange-wash); color: var(--color-orange-deep); }
+  .mob-lanes button b {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    color: var(--color-text-mute);
+  }
+  .mob-lanes button[aria-current='true'] {
+    border-color: var(--color-orange-deep);
+    background: var(--color-orange-wash);
+    color: var(--color-orange-deep);
+  }
 
   /* ---------- Mes: la rejilla arriba, el día elegido debajo ---------- */
-  .month { flex-direction: column; overflow-y: auto; height: auto; flex: 1; }
-  .month__grid, .month.is-open .month__grid { flex: none; padding: var(--sp-2) var(--sp-3); }
-  .month__cab { font-size: var(--text-small); }
-  .month__cab span { padding: 0; text-align: center; }
-  .month__row { flex: none; gap: 3px; margin-bottom: 3px; }
-  .month__cell, .month.is-open .month__cell { min-height: 52px; padding: 0.3rem 0.25rem; align-items: center; min-width: 0; overflow: hidden; }
-  .month__count { display: none; }              /* en 46 px no caben número y cuenta: hablan los puntos */
-  .month__dots { justify-content: center; gap: 2px; max-height: 18px; overflow: hidden; }
-  .month__dot, .month.is-open .month__dot { width: 7px; height: 7px; }
-  .month__more { display: none; }
-  .month__side { flex: none; border-left: 0; border-top: 1px solid var(--color-rule); animation: none; }
-  .month__side-head { flex-wrap: wrap; padding: var(--sp-3) var(--sp-4); }
+  .month {
+    flex-direction: column;
+    overflow-y: auto;
+    height: auto;
+    flex: 1;
+  }
+  .month__grid,
+  .month.is-open .month__grid {
+    flex: none;
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .month__cab {
+    font-size: var(--text-small);
+  }
+  .month__cab span {
+    padding: 0;
+    text-align: center;
+  }
+  .month__row {
+    flex: none;
+    gap: 3px;
+    margin-bottom: 3px;
+  }
+  .month__cell,
+  .month.is-open .month__cell {
+    min-height: 52px;
+    padding: 0.3rem 0.25rem;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .month__count {
+    display: none;
+  } /* en 46 px no caben número y cuenta: hablan los puntos */
+  .month__dots {
+    justify-content: center;
+    gap: 2px;
+    max-height: 18px;
+    overflow: hidden;
+  }
+  .month__dot,
+  .month.is-open .month__dot {
+    width: 7px;
+    height: 7px;
+  }
+  .month__more {
+    display: none;
+  }
+  .month__side {
+    flex: none;
+    border-left: 0;
+    border-top: 1px solid var(--color-rule);
+    animation: none;
+  }
+  .month__side-head {
+    flex-wrap: wrap;
+    padding: var(--sp-3) var(--sp-4);
+  }
 
   /* ---------- Semana: tres días a la vista, el resto deslizando ---------- */
-  .week { --gutter: 60px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-left: var(--gutter); }
-  .week > * { width: max-content; min-width: 100%; }
-  .week__head, .week__band, .week__grid { grid-template-columns: var(--gutter) repeat(var(--days), minmax(104px, 1fr)); }
-  .week__day-head { scroll-snap-align: start; }
+  .week {
+    --gutter: 60px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scroll-padding-left: var(--gutter);
+  }
+  .week > * {
+    width: max-content;
+    min-width: 100%;
+  }
+  .week__head,
+  .week__band,
+  .week__grid {
+    grid-template-columns: var(--gutter) repeat(var(--days), minmax(104px, 1fr));
+  }
+  .week__day-head {
+    scroll-snap-align: start;
+  }
 
   /* ---------- Año: dos meses por fila ---------- */
-  .year { overflow-y: auto; height: auto; flex: 1; }
-  .year__grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: var(--sp-4) var(--sp-3); padding: 0 var(--sp-3); }
+  .year {
+    overflow-y: auto;
+    height: auto;
+    flex: 1;
+  }
+  .year__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: var(--sp-4) var(--sp-3);
+    padding: 0 var(--sp-3);
+  }
 
   /* ---------- Workflows y Agentes: la lista lateral arriba ---------- */
-  .wf { flex-direction: column; overflow-y: auto; }
-  .wf__side { width: auto; max-height: none; border-right: 0; border-bottom: 1px solid var(--color-rule); }
-  .ag__bar { flex-wrap: nowrap; overflow-x: auto; }
-  .wf__bar .wf__empty { display: none; }        /* «elige en el menú de la izquierda»: en el móvil la lista está justo encima */
-  .ag .pane__head { flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
-  .ag .pane__head .pane__hint { max-width: none; }
-  .ag .pane__head .btn { align-self: stretch; min-height: 44px; }
+  .wf {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .wf__side {
+    width: auto;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-rule);
+  }
+  .ag__bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .wf__bar .wf__empty {
+    display: none;
+  } /* «elige en el menú de la izquierda»: en el móvil la lista está justo encima */
+  .ag .pane__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-1);
+  }
+  .ag .pane__head .pane__hint {
+    max-width: none;
+  }
+  .ag .pane__head .btn {
+    align-self: stretch;
+    min-height: 44px;
+  }
 
   /* ---------- Barra de abajo: al alcance del pulgar ---------- */
   .mob-tabs {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
     padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
-    background: var(--color-bg); border-top: 1px solid var(--color-rule);
+    background: var(--color-bg);
+    border-top: 1px solid var(--color-rule);
   }
   .mob-tabs button {
-    min-height: 56px; display: grid; justify-items: center; align-content: center; gap: 2px;
-    font-size: var(--text-small); font-weight: 500; color: var(--color-text-mute); position: relative;
+    min-height: 56px;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 2px;
+    font-size: var(--text-small);
+    font-weight: 500;
+    color: var(--color-text-mute);
+    position: relative;
   }
-  .mob-tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .mob-tabs button[aria-current="page"] { color: var(--color-orange-deep); font-weight: 600; }
+  .mob-tabs svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .mob-tabs button[aria-current='page'] {
+    color: var(--color-orange-deep);
+    font-weight: 600;
+  }
   .mob-tabs .mob-badge {
-    position: absolute; top: 4px; left: calc(50% + 4px); min-width: 22px; height: 22px; padding: 0 6px;
-    border-radius: var(--radius-pill); background: var(--color-orange-deep); color: var(--color-card);
-    font: 600 var(--text-small)/22px var(--font-body); text-align: center;
+    position: absolute;
+    top: 4px;
+    left: calc(50% + 4px);
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: var(--radius-pill);
+    background: var(--color-orange-deep);
+    color: var(--color-card);
+    font: 600 var(--text-small)/22px var(--font-body);
+    text-align: center;
   }
-  .mob-tabs .mob-badge:empty { display: none; }
+  .mob-tabs .mob-badge:empty {
+    display: none;
+  }
   /* #851: seis etiquetas a 14 px caben a 390 pero se pegan unas a otras; en el teléfono la Biblioteca va en «Más» */
-  .mob-tabs [data-k="lib"] { display: none; }
+  .mob-tabs [data-k='lib'] {
+    display: none;
+  }
 
   /* abajo y a lo ancho. top/transform/align vienen del escritorio (centrado arriba): sin
      anularlos, translateX(-50%) sacaba el aviso media anchura por la izquierda y se quedaba
      arriba, tapando el título de la ficha (16-oct, visto al guardar un motivo a 390 px). */
-  .toasts { top: auto; transform: none; align-items: stretch;
-            bottom: calc(72px + env(safe-area-inset-bottom)); left: var(--sp-3); right: var(--sp-3); }
-  .toast { max-width: none; }
+  .toasts {
+    top: auto;
+    transform: none;
+    align-items: stretch;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    left: var(--sp-3);
+    right: var(--sp-3);
+  }
+  .toast {
+    max-width: none;
+  }
   /* #499: en el móvil la hora va encima y el motivo sin sangría */
-  .entrega time { width: auto; flex-basis: 100%; }
-  .entrega__motivo { padding-left: 0; }
+  .entrega time {
+    width: auto;
+    flex-basis: 100%;
+  }
+  .entrega__motivo {
+    padding-left: 0;
+  }
 
   /* ---------- #1320 La lupa: pantalla completa, el campo a 16 px (iOS no hace zoom) ---------- */
-  .topbar__actions #btn-lupa { display: none; }   /* tiene su botón en la cabecera */
-  .lupa { padding: 0; align-items: stretch; }
+  .topbar__actions #btn-lupa {
+    display: none;
+  } /* tiene su botón en la cabecera */
+  .lupa {
+    padding: 0;
+    align-items: stretch;
+  }
   .lupa__box {
-    width: 100%; max-height: none; height: 100%; border-radius: 0; box-shadow: none;
+    width: 100%;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
     padding-top: env(safe-area-inset-top);
   }
-  .lupa__field { padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4); }
-  .lupa__input { font-size: 16px; }
-  .lupa__close {
-    display: block; min-height: 44px; padding: 0 var(--sp-3); border: 0; background: none;
-    font: inherit; font-size: var(--text-body); font-weight: 500; color: var(--color-orange-deep);
+  .lupa__field {
+    padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
   }
-  .lupa__list { flex: 1; padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom)); }
-  .lupa__row { grid-template-columns: 3.4rem minmax(0, 1fr); }
-  .lupa__keys { display: none; }
+  .lupa__input {
+    font-size: 16px;
+  }
+  .lupa__close {
+    display: block;
+    min-height: 44px;
+    padding: 0 var(--sp-3);
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: var(--text-body);
+    font-weight: 500;
+    color: var(--color-orange-deep);
+  }
+  .lupa__list {
+    flex: 1;
+    padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom));
+  }
+  .lupa__row {
+    grid-template-columns: 3.4rem minmax(0, 1fr);
+  }
+  .lupa__keys {
+    display: none;
+  }
 }
 
 /* Tableta táctil (iPad: 820 × 1180 en vertical, 1180 × 820 en horizontal; FarOS #773, 27-oct).
@@ -316,68 +888,179 @@
    y tres en horizontal, la ficha como hoja lateral y las ventanas centradas, no a pantalla entera.
    hover: none deja fuera los portátiles táctiles con ratón, que siguen siendo escritorio. */
 @media (hover: none) and (pointer: coarse) and (min-width: 541px) and (max-width: 1366px) and (min-height: 501px) {
-  .board { gap: var(--sp-3); padding: 0 var(--sp-4); scroll-padding-left: var(--sp-4); }
-  .board > .col { flex: 0 0 calc((100% - var(--sp-3)) / 2); border-radius: var(--radius-panel); background: var(--color-bg-warm); }
-  .col__body { padding: var(--sp-3); }
-  .mob-states, .mob-lanes, .boardbar, .projectbar { padding-inline: var(--sp-5); }
+  .board {
+    gap: var(--sp-3);
+    padding: 0 var(--sp-4);
+    scroll-padding-left: var(--sp-4);
+  }
+  .board > .col {
+    flex: 0 0 calc((100% - var(--sp-3)) / 2);
+    border-radius: var(--radius-panel);
+    background: var(--color-bg-warm);
+  }
+  .col__body {
+    padding: var(--sp-3);
+  }
+  .mob-states,
+  .mob-lanes,
+  .boardbar,
+  .projectbar {
+    padding-inline: var(--sp-5);
+  }
 
   /* la ficha: hoja a la derecha, el tablero se sigue viendo detrás; su barra de acciones, con ella */
-  .panel { width: min(560px, 70vw); left: auto; }
-  .mob-panelbar { left: auto; width: min(560px, 70vw); }
+  .panel {
+    width: min(560px, 70vw);
+    left: auto;
+  }
+  .mob-panelbar {
+    left: auto;
+    width: min(560px, 70vw);
+  }
 
   /* ventanas emergentes: centradas y con su ancho de escritorio */
-  .modal-root { padding: var(--sp-5); align-items: center; }
-  .modal, .modal--sm, .modal--job, .modal--import {
-    width: min(680px, 100%); height: auto; max-height: 88dvh; border-radius: var(--radius-panel);
+  .modal-root {
+    padding: var(--sp-5);
+    align-items: center;
+  }
+  .modal,
+  .modal--sm,
+  .modal--job,
+  .modal--import {
+    width: min(680px, 100%);
+    height: auto;
+    max-height: 88dvh;
+    border-radius: var(--radius-panel);
     padding: var(--sp-5);
   }
-  .modal--sm { width: min(480px, 100%); }
-  .modal__footer { bottom: calc(-1 * var(--sp-5)); }
+  .modal--sm {
+    width: min(480px, 100%);
+  }
+  .modal__footer {
+    bottom: calc(-1 * var(--sp-5));
+  }
 
   /* Preguntas: una columna de lectura, no de pared a pared */
-  .mob-dec { width: 100%; max-width: 760px; margin-inline: auto; }
+  .mob-dec {
+    width: 100%;
+    max-width: 760px;
+    margin-inline: auto;
+  }
 
   /* barra de abajo: icono y nombre en línea, que a este ancho sobra sitio */
-  .mob-tabs { padding-inline: max(var(--sp-5), calc((100vw - 900px) / 2)); grid-template-columns: repeat(6, 1fr); }
-  .mob-tabs [data-k="lib"] { display: flex; }
-  .topbar__actions #mob-lib { display: none; }
-  .mob-tabs button { display: flex; align-items: center; justify-content: center; gap: 8px; }
-  .mob-tabs .mob-badge { position: static; order: 3; }
+  .mob-tabs {
+    padding-inline: max(var(--sp-5), calc((100vw - 900px) / 2));
+    grid-template-columns: repeat(6, 1fr);
+  }
+  .mob-tabs [data-k='lib'] {
+    display: flex;
+  }
+  .topbar__actions #mob-lib {
+    display: none;
+  }
+  .mob-tabs button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .mob-tabs .mob-badge {
+    position: static;
+    order: 3;
+  }
 
-  .toasts { left: auto; right: var(--sp-5); width: min(480px, 60vw); }
+  .toasts {
+    left: auto;
+    right: var(--sp-5);
+    width: min(480px, 60vw);
+  }
 }
 /* iPad en horizontal: tres columnas, y Workflows/Agentes con la lista al lado como en el escritorio */
 @media (hover: none) and (pointer: coarse) and (min-width: 1000px) and (max-width: 1366px) and (min-height: 501px) {
-  .board > .col { flex-basis: calc((100% - 2 * var(--sp-3)) / 3); }
-  .wf { flex-direction: row; overflow-y: hidden; }
-  .wf__side { width: 300px; border-right: 1px solid var(--color-rule); border-bottom: 0; }
+  .board > .col {
+    flex-basis: calc((100% - 2 * var(--sp-3)) / 3);
+  }
+  .wf {
+    flex-direction: row;
+    overflow-y: hidden;
+  }
+  .wf__side {
+    width: 300px;
+    border-right: 1px solid var(--color-rule);
+    border-bottom: 0;
+  }
   /* con 820 de alto, las apartadas no pueden comerse medio tablero */
-  .laterals { max-height: 28dvh; }
+  .laterals {
+    max-height: 28dvh;
+  }
   /* el día con todas las personas (mobile.js no lo parte en carriles a este ancho) */
-  .day__head { display: grid; }
-  .day__lane-head { display: flex; }
-  .day__corner { display: block; }
-  .mob-lanes { display: none !important; }
+  .day__head {
+    display: grid;
+  }
+  .day__lane-head {
+    display: flex;
+  }
+  .day__corner {
+    display: block;
+  }
+  .mob-lanes {
+    display: none !important;
+  }
 }
 
 /* iPhone en horizontal (812 × 375): la altura es lo escaso. Los filtros se quedan en vertical;
    aquí se ve el trabajo. Cabecera y barra de abajo más bajas, etiquetas al lado del icono. */
 @media (max-height: 500px) and (pointer: coarse) {
-  .topbar { min-height: 44px; padding-block: 2px; }
-  .boardbar, .projectbar { display: none !important; }
-  .mob-states, .mob-lanes { padding-block: 4px; }
-  body { padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
-  .mob-tabs button { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; }
-  .mob-tabs .mob-badge { position: static; order: 3; }
+  .topbar {
+    min-height: 44px;
+    padding-block: 2px;
+  }
+  .boardbar,
+  .projectbar {
+    display: none !important;
+  }
+  .mob-states,
+  .mob-lanes {
+    padding-block: 4px;
+  }
+  body {
+    padding-bottom: calc(48px + env(safe-area-inset-bottom));
+  }
+  .mob-tabs button {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .mob-tabs .mob-badge {
+    position: static;
+    order: 3;
+  }
 }
 
 /* Biblioteca (#851): dedos de 44 px y 16 px en la búsqueda, o iOS acerca la página al enfocarla */
-@media (max-width: 540px), (max-height: 500px) and (pointer: coarse), (hover: none) and (pointer: coarse) and (max-width: 1366px) {
-  .lib__search { min-height: 44px; font-size: 1rem; }
-  .lib__tabs .views__tab { min-height: 44px; }
-  .lib__read-head { padding: var(--sp-2) var(--sp-3); }
+@media (max-width: 540px),
+  (max-height: 500px) and (pointer: coarse),
+  (hover: none) and (pointer: coarse) and (max-width: 1366px) {
+  .lib__search {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+  .lib__tabs .views__tab {
+    min-height: 44px;
+  }
+  .lib__read-head {
+    padding: var(--sp-2) var(--sp-3);
+  }
 }
 @media (max-width: 540px) {
-  .lib__bar { padding: var(--sp-2) var(--sp-3); }
-  .lib__search { flex: 1 1 100%; max-width: none; order: -1; }
+  .lib__bar {
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .lib__search {
+    flex: 1 1 100%;
+    max-width: none;
+    order: -1;
+  }
 }

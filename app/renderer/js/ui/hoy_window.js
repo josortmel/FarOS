@@ -7,8 +7,8 @@
 import { t as tr } from '../i18n.js';
 
 const KEYS = [
-  ['overdue',     'Atrasadas'],
-  ['due_today',   'Las de hoy'],
+  ['overdue', 'Atrasadas'],
+  ['due_today', 'Las de hoy'],
   ['in_progress', 'Empezadas'],
 ];
 const TODOS = { overdue: true, due_today: true, in_progress: true };
@@ -31,7 +31,8 @@ function pintaBoton() {
 function colocar() {
   if (!pop || pop.hidden || !btn) return;
   const r = btn.getBoundingClientRect();
-  const w = pop.offsetWidth, vw = document.documentElement.clientWidth;
+  const w = pop.offsetWidth,
+    vw = document.documentElement.clientWidth;
   pop.style.top = `${Math.round(r.bottom + 8)}px`;
   pop.style.left = `${Math.round(Math.max(8, Math.min(r.left, vw - w - 8)))}px`;
 }
@@ -59,8 +60,11 @@ async function abrir(api) {
   /* lo guardado manda: si otro lo cambió desde fuera, se ve al abrir */
   try {
     win = normaliza((await api.settings())?.today_window);
-    pintaBoton(); pintaPanel();
-  } catch { /* sin lectura se queda lo último conocido */ }
+    pintaBoton();
+    pintaPanel();
+  } catch {
+    /* sin lectura se queda lo último conocido */
+  }
 }
 
 function construir() {
@@ -72,8 +76,10 @@ function construir() {
   pop.hidden = true;
   pop.innerHTML = `
     <p class="hoypop__title">Qué sale en Hoy</p>
-    ${KEYS.map(([k, txt]) => `
-      <label class="hoypop__row"><input type="checkbox" data-k="${k}"><span>${txt}</span></label>`).join('')}
+    ${KEYS.map(
+      ([k, txt]) => `
+      <label class="hoypop__row"><input type="checkbox" data-k="${k}"><span>${txt}</span></label>`,
+    ).join('')}
     <p class="hoypop__note">Las propuestas y las que esperan verificación salen siempre.</p>`;
   document.body.appendChild(pop);
 }
@@ -85,12 +91,19 @@ export function initHoyWindow({ api, apply, fail }) {
   pintaBoton();
   /* api() aún no está conectada cuando se llama a init: se lee la primera vez que el botón se pinta en Hoy */
   leer = async () => {
-    try { win = normaliza((await api().settings())?.today_window); leido = true; pintaBoton(); } catch { leido = false; /* se reintenta al repintar */ }
+    try {
+      win = normaliza((await api().settings())?.today_window);
+      leido = true;
+      pintaBoton();
+    } catch {
+      leido = false; /* se reintenta al repintar */
+    }
   };
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (pop.hidden) abrir(api()); else cerrarHoyWindow();
+    if (pop.hidden) abrir(api());
+    else cerrarHoyWindow();
   });
   pop.addEventListener('change', async (e) => {
     const i = e.target.closest('input[data-k]');
@@ -101,7 +114,9 @@ export function initHoyWindow({ api, apply, fail }) {
     try {
       await apply({ ...win });
     } catch (err) {
-      win = antes; pintaBoton(); pintaPanel();
+      win = antes;
+      pintaBoton();
+      pintaPanel();
       fail(err);
     }
   });
@@ -109,9 +124,16 @@ export function initHoyWindow({ api, apply, fail }) {
     if (pop.hidden || pop.contains(e.target) || btn.contains(e.target)) return;
     cerrarHoyWindow();
   });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); cerrarHoyWindow({ devolverFoco: true }); }
-  }, true);
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key === 'Escape' && !pop.hidden) {
+        e.stopPropagation();
+        cerrarHoyWindow({ devolverFoco: true });
+      }
+    },
+    true,
+  );
   pop.addEventListener('focusout', (e) => {
     const a = e.relatedTarget;
     if (a && !pop.contains(a) && a !== btn) cerrarHoyWindow();
@@ -124,6 +146,9 @@ export function renderHoyWindow(state) {
   if (!btn) return;
   const ver = state.view === 'today' && state.boardMode !== 'calendar';
   btn.hidden = !ver;
-  if (ver && !leido) { leido = true; leer().then(() => {}); }
+  if (ver && !leido) {
+    leido = true;
+    leer().then(() => {});
+  }
   if (!ver) cerrarHoyWindow();
 }

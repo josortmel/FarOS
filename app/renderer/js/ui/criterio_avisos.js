@@ -17,9 +17,9 @@ import { VLEVEL } from '../transitions.js';
 /* el genérico de cada punto, por si el texto del motor cambia (el punto 2 tiene dos casos) */
 const POR_PUNTO = {
   '2-vacio': 'Sin criterio: quien verifique no tiene contra qué medir.',
-  '2': 'Pide algo que un juez automático no puede comprobar.',
-  '4': 'Habla de la suite sin el comando exacto.',
-  '6': 'Dice que algo queda arreglado sin pedir el rojo en el padre.',
+  2: 'Pide algo que un juez automático no puede comprobar.',
+  4: 'Habla de la suite sin el comando exacto.',
+  6: 'Dice que algo queda arreglado sin pedir el rojo en el padre.',
 };
 
 /* el motor nombra el nivel por su código («peer»); en pantalla, el nombre que enseña el selector
@@ -51,9 +51,13 @@ export const avisosDe = (id) => porTarea.get(Number(id)) ?? [];
    de nueva tarea, donde lo natural sería pensar que no se creó). Lista vacía = nada. */
 export function notaHTML(avisos, criterio, { guardada = false } = {}) {
   if (!avisos?.length) return '';
-  const items = avisos.map(a => `
+  const items = avisos
+    .map(
+      (a) => `
       <li><span class="crit-note__punto">${esc(tr('Punto'))} ${esc(String(a.punto))}</span>
-        <span class="crit-note__texto">${esc(textoAviso(a, criterio))}</span></li>`).join('');
+        <span class="crit-note__texto">${esc(textoAviso(a, criterio))}</span></li>`,
+    )
+    .join('');
   return `
     <div class="crit-note" role="note" data-i18n-skip>
       <p class="crit-note__head">${esc(tr(guardada ? 'La tarea ya está guardada. Una nota sobre el criterio:' : 'Una nota sobre el criterio:'))}</p>

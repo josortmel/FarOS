@@ -6,37 +6,46 @@
    ============================================================ */
 
 import { TRANSITIONS, COLUMNS } from '../transitions.js';
-import { t as tb } from '../i18n.js';  // #262
+import { t as tb } from '../i18n.js'; // #262
 import { fmtWhen, fmtDate, fmtWhenScheduled, esc, projectColor } from '../util.js';
 import { STATUS_LABEL } from '../transitions.js';
 
 let handlers = null; // { onOpen, onDrop, onOpenJob }
 let dragTicket = null; // { id, status }
 
-export function initBoard(h) { handlers = h; }
+export function initBoard(h) {
+  handlers = h;
+}
 
 /* ---------------- tarjeta ---------------- */
 
 function runGlyph(status) {
   switch (status) {
-    case 'ok':        return { g: '✓', cls: 'ok',        label: 'run ok' };
-    case 'error':     return { g: '✕', cls: 'error',     label: 'run con error' };
-    case 'timeout':   return { g: '✕', cls: 'timeout',   label: 'run agotó el tiempo' };
-    case 'running':   return { g: '●', cls: 'running',   label: 'run en curso' };
-    case 'cancelled': return { g: '⊘', cls: 'cancelled', label: 'run cancelado' };
-    case 'uncertain': return { g: '?', cls: 'uncertain', label: 'run incierto: lo resuelve una persona' };  // #470
-    default:          return { g: '▸', cls: 'none',      label: 'sin runs' };
+    case 'ok':
+      return { g: '✓', cls: 'ok', label: 'run ok' };
+    case 'error':
+      return { g: '✕', cls: 'error', label: 'run con error' };
+    case 'timeout':
+      return { g: '✕', cls: 'timeout', label: 'run agotó el tiempo' };
+    case 'running':
+      return { g: '●', cls: 'running', label: 'run en curso' };
+    case 'cancelled':
+      return { g: '⊘', cls: 'cancelled', label: 'run cancelado' };
+    case 'uncertain':
+      return { g: '?', cls: 'uncertain', label: 'run incierto: lo resuelve una persona' }; // #470
+    default:
+      return { g: '▸', cls: 'none', label: 'sin runs' };
   }
 }
 
 export function renderCard(t, board, { draggable = true } = {}) {
-  const proj = board.projects.find(p => p.id === t.project_id);
+  const proj = board.projects.find((p) => p.id === t.project_id);
   const el = document.createElement('article');
   el.className = 'card';
   el.dataset.id = t.id;
   el.tabIndex = 0;
   el.setAttribute('role', 'button');
-  el.setAttribute('aria-label', 'abrir detalle');  // #262: el titulo ya va dentro de la tarjeta
+  el.setAttribute('aria-label', 'abrir detalle'); // #262: el titulo ya va dentro de la tarjeta
 
   /* fila superior: proyecto + badges */
   const top = document.createElement('div');
@@ -53,9 +62,13 @@ export function renderCard(t, board, { draggable = true } = {}) {
     : '<span class="card__project card__project--none"></span>';
 
   const badges = [];
-  if (t.priority === 'alta') badges.push(`<span class="badge badge--prio" title="${esc(tb('prioridad alta'))}">${esc(tb('! alta'))}</span>`);
+  if (t.priority === 'alta')
+    badges.push(`<span class="badge badge--prio" title="${esc(tb('prioridad alta'))}">${esc(tb('! alta'))}</span>`);
   if (t.cadence_days) badges.push(`<span class="badge badge--recur">↻ ${t.cadence_days} d</span>`);
-  if (t.due_state === 'overdue') badges.push(`<span class="badge badge--overdue">${esc(tb('▲ vencida'))}${t.due_at ? ' · ' + fmtDate(t.due_at) : ''}</span>`);
+  if (t.due_state === 'overdue')
+    badges.push(
+      `<span class="badge badge--overdue">${esc(tb('▲ vencida'))}${t.due_at ? ' · ' + fmtDate(t.due_at) : ''}</span>`,
+    );
   else if (t.due_state === 'due') badges.push(`<span class="badge badge--due">${esc(tb('● hoy'))}</span>`);
   else if (t.due_at) badges.push(`<span class="badge badge--recur">${fmtDate(t.due_at)}</span>`);
   if (t.status === 'blocked') badges.push(`<span class="badge badge--blocked">${esc(tb('⛔ bloqueada'))}</span>`);
@@ -82,8 +95,11 @@ export function renderCard(t, board, { draggable = true } = {}) {
     const meta = document.createElement('div');
     meta.className = 'card__meta';
     /* #481: quien se ha quedado la verificación, a la vista en la tarjeta */
-    meta.innerHTML = `<span>${esc(who)}</span>${t.verify_claimed_by && !t.closed_at
-      ? `<span class="card__claim">${esc(tb('verifica'))} <b>${esc(t.verify_claimed_by)}</b></span>` : ''}`;
+    meta.innerHTML = `<span>${esc(who)}</span>${
+      t.verify_claimed_by && !t.closed_at
+        ? `<span class="card__claim">${esc(tb('verifica'))} <b>${esc(t.verify_claimed_by)}</b></span>`
+        : ''
+    }`;
     el.appendChild(meta);
   }
 
@@ -100,17 +116,23 @@ export function renderCard(t, board, { draggable = true } = {}) {
   /* T1.14 — brazo automático: la manual vinculada a un job enseña su último run
      y su veredicto; el job vive en Agentes, aquí solo se ve el brazo */
   if (t.linked_job) {
-    const lj = t.linked_job; const lr = lj.last_run;
-    const { g, cls, label } = runGlyph(lr?.status === 'ok' && lr?.verdict ? ({ pass: 'ok', uncertain: 'uncertain' }[lr.verdict] ?? 'error') : lr?.status);  // #470
+    const lj = t.linked_job;
+    const lr = lj.last_run;
+    const { g, cls, label } = runGlyph(
+      lr?.status === 'ok' && lr?.verdict ? ({ pass: 'ok', uncertain: 'uncertain' }[lr.verdict] ?? 'error') : lr?.status,
+    ); // #470
     const arm = document.createElement('button');
     arm.className = 'card__arm';
     arm.type = 'button';
-    arm.title = 'ver el job en Agentes';  // #262
-    arm.setAttribute('aria-label', 'brazo automático: ver el job en Agentes');  // #262
+    arm.title = 'ver el job en Agentes'; // #262
+    arm.setAttribute('aria-label', 'brazo automático: ver el job en Agentes'); // #262
     arm.innerHTML = `<span class="card__run-glyph card__run-glyph--${cls}" title="${label}">${g}</span>
       <span class="card__arm-text"><span class="card__arm-tag">brazo automático</span> · ${esc(lj.name)}${lr ? ` · run ${lr.id} ${esc(lr.status)}${lr.verdict ? ' · ' + esc(tb({ pass: 'pasa', fail: 'falla', uncertain: 'incierto' }[lr.verdict] ?? lr.verdict)) : ''}` : ' · sin runs'}</span>
       <span class="card__arm-go">Agentes →</span>`;
-    arm.addEventListener('click', (e) => { e.stopPropagation(); handlers.onOpenJob?.(lj.id); });
+    arm.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handlers.onOpenJob?.(lj.id);
+    });
     el.appendChild(arm);
   }
 
@@ -121,15 +143,20 @@ export function renderCard(t, board, { draggable = true } = {}) {
   if (when || lc) {
     const tm = document.createElement('div');
     tm.className = 'card__time';
-    if (when) tm.innerHTML += `<span class="card__when">${t.cadence_days && !t.scheduled_at ? '↻' : '📅'} ${esc(when)}</span>`;
-    if (lc) tm.innerHTML += `<span class="card__change">→ ${esc(tb(STATUS_LABEL[lc.to] ?? lc.to))} · ${fmtWhen(lc.at)}${lc.by ? ' · ' + esc(lc.by) : ''}</span>`;
+    if (when)
+      tm.innerHTML += `<span class="card__when">${t.cadence_days && !t.scheduled_at ? '↻' : '📅'} ${esc(when)}</span>`;
+    if (lc)
+      tm.innerHTML += `<span class="card__change">→ ${esc(tb(STATUS_LABEL[lc.to] ?? lc.to))} · ${fmtWhen(lc.at)}${lc.by ? ' · ' + esc(lc.by) : ''}</span>`;
     el.appendChild(tm);
   }
 
   /* interacción */
   el.addEventListener('click', () => handlers.onOpen(t.id));
   el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handlers.onOpen(t.id); }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handlers.onOpen(t.id);
+    }
   });
 
   if (draggable) makeDraggable(el, t);
@@ -150,7 +177,7 @@ export function makeDraggable(el, t) {
   el.addEventListener('dragend', () => {
     el.classList.remove('is-dragging');
     dragTicket = null;
-    document.querySelectorAll('.col').forEach(c => c.classList.remove('is-drop-ok', 'is-drop-no'));
+    document.querySelectorAll('.col').forEach((c) => c.classList.remove('is-drop-ok', 'is-drop-no'));
   });
 }
 
@@ -214,24 +241,28 @@ function flipFrom(prevRects, selector = BOARD_CARDS) {
   if (reducedMotion.matches) return;
   requestAnimationFrame(() => {
     let newIdx = 0;
-    document.querySelectorAll(selector).forEach(c => {
+    document.querySelectorAll(selector).forEach((c) => {
       const prev = prevRects.get(c.dataset.id);
       if (!prev) {
         // tarjeta nueva: entrada breve (escalonada solo en el primer pintado)
         const delay = firstPaint ? Math.min(newIdx++ * 22, 260) : 0;
         c.animate(
-          [{ opacity: 0, transform: 'translateY(7px)' }, { opacity: 1, transform: 'none' }],
-          { duration: 230, delay, easing: 'cubic-bezier(0.16,1,0.3,1)', fill: 'backwards' }
+          [
+            { opacity: 0, transform: 'translateY(7px)' },
+            { opacity: 1, transform: 'none' },
+          ],
+          { duration: 230, delay, easing: 'cubic-bezier(0.16,1,0.3,1)', fill: 'backwards' },
         );
         return;
       }
       const now = c.getBoundingClientRect();
-      const dx = prev.left - now.left, dy = prev.top - now.top;
+      const dx = prev.left - now.left,
+        dy = prev.top - now.top;
       if (dx || dy) {
-        c.animate(
-          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-          { duration: 300, easing: 'cubic-bezier(0.16,1,0.3,1)' }
-        );
+        c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+          duration: 300,
+          easing: 'cubic-bezier(0.16,1,0.3,1)',
+        });
       }
     });
     firstPaint = false;
@@ -240,8 +271,7 @@ function flipFrom(prevRects, selector = BOARD_CARDS) {
 
 export function captureRects(selector = BOARD_CARDS) {
   const m = new Map();
-  document.querySelectorAll(selector)
-    .forEach(c => m.set(c.dataset.id, c.getBoundingClientRect()));
+  document.querySelectorAll(selector).forEach((c) => m.set(c.dataset.id, c.getBoundingClientRect()));
   return m;
 }
 
@@ -255,7 +285,7 @@ export function renderBoard(state) {
 
   /* T1.14: el Tablero es de los agentes con nombre; las agénticas legacy
      (kind=agentic) viven en Agentes y aquí no se pintan */
-  const visible = (arr) => (arr ?? []).filter(t => t.kind !== 'agentic');
+  const visible = (arr) => (arr ?? []).filter((t) => t.kind !== 'agentic');
   const total = COLUMNS.reduce((n, c) => n + visible(board.columns[c.status]).length, 0);
   /* #285: vacío NO es pantalla en blanco. Las cinco columnas SON el producto —el ciclo
      propuesta → verificada—, así que se pintan igual, cada una con su propio vacío, y
@@ -268,24 +298,27 @@ export function renderBoard(state) {
     /* #388: a quien acaba de llegar no le sirve «cambia de vista» —no hay ninguna a la
        que cambiar—: necesita saber cómo entra la primera tarea. `started` lo calcula el
        daemon sobre toda la base; si no viene (daemon antiguo), el aviso de siempre. */
-    empty.innerHTML = board.started === false
-      ? `<b>Aún no hay tareas.</b> <span>Crea la primera con «Nueva tarea», o pide a un agente que la proponga por MCP: llegará a Propuestas y decides tú si se acepta.</span>`
-      : `<b>Nada en esta vista.</b> <span>Cambia de vista o crea una tarea con «Nueva tarea».</span>`;
+    empty.innerHTML =
+      board.started === false
+        ? `<b>Aún no hay tareas.</b> <span>Crea la primera con «Nueva tarea», o pide a un agente que la proponga por MCP: llegará a Propuestas y decides tú si se acepta.</span>`
+        : `<b>Nada en esta vista.</b> <span>Cambia de vista o crea una tarea con «Nueva tarea».</span>`;
     root.appendChild(empty);
   }
 
   // ¿hay brazo automático trabajando? — la columna En curso lo dice con un punto vivo
   const allTickets = [
-    ...COLUMNS.flatMap(c => visible(board.columns[c.status])),
+    ...COLUMNS.flatMap((c) => visible(board.columns[c.status])),
     ...Object.values(board.laterals ?? {}).flatMap(visible),
   ];
-  const running = allTickets.filter(t => t.linked_job?.last_run?.status === 'running').length;
+  const running = allTickets.filter((t) => t.linked_job?.last_run?.status === 'running').length;
 
   for (const def of COLUMNS) {
     const tickets = visible(board.columns[def.status]);
-    const live = def.status === 'in_progress' && running
-      ? `<span class="col__live" title="${running} run${running > 1 ? 's' : ''} en ejecución">●</span>` : '';
-    const cards = tickets.map(t => renderCard(t, board));
+    const live =
+      def.status === 'in_progress' && running
+        ? `<span class="col__live" title="${running} run${running > 1 ? 's' : ''} en ejecución">●</span>`
+        : '';
+    const cards = tickets.map((t) => renderCard(t, board));
     root.appendChild(buildStateColumn(def, cards, { onDrop: handlers.onDrop, live }));
   }
 }
@@ -301,22 +334,30 @@ const lateralAbierto = { por_ubicar: false, blocked: false, rejected: true, expi
 export function renderLaterals(state) {
   const root = document.getElementById('laterals');
   const board = state.board;
-  if (!board) { root.hidden = true; return; }
+  if (!board) {
+    root.hidden = true;
+    return;
+  }
   const groups = [
-    ['por_ubicar', 'Por ubicar'],   // #364: sin fecha; la coloca su dueño
+    ['por_ubicar', 'Por ubicar'], // #364: sin fecha; la coloca su dueño
     ['blocked', 'Bloqueadas'],
     ['rejected', 'Rechazadas'],
     ['expired', 'Expiradas'],
-  ].map(([k, label]) => [k, label, (board.laterals[k] ?? []).filter(t => t.kind !== 'agentic')]).filter(([, , arr]) => arr.length);
+  ]
+    .map(([k, label]) => [k, label, (board.laterals[k] ?? []).filter((t) => t.kind !== 'agentic')])
+    .filter(([, , arr]) => arr.length);
 
-  if (!groups.length) { root.hidden = true; return; }
+  if (!groups.length) {
+    root.hidden = true;
+    return;
+  }
   root.hidden = false;
   root.innerHTML = '';
 
   for (const [key, label, arr] of groups) {
     const head = document.createElement('div');
     head.className = 'laterals__head';
-    head.innerHTML = `<span class="laterals__title">${esc(tb(label))} · ${arr.length}</span>`;  // #262
+    head.innerHTML = `<span class="laterals__title">${esc(tb(label))} · ${arr.length}</span>`; // #262
 
     const toggle = document.createElement('button');
     toggle.className = 'laterals__toggle';
@@ -324,7 +365,10 @@ export function renderLaterals(state) {
     toggle.textContent = abierto ? tb('ocultar ▾') : tb('mostrar ▸');
     toggle.setAttribute('aria-expanded', String(abierto));
     toggle.dataset.lateral = key;
-    toggle.addEventListener('click', () => { lateralAbierto[key] = !abierto; renderLaterals(state); });
+    toggle.addEventListener('click', () => {
+      lateralAbierto[key] = !abierto;
+      renderLaterals(state);
+    });
     head.appendChild(toggle);
     root.appendChild(head);
 

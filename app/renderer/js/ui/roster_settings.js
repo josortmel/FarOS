@@ -15,7 +15,9 @@
 import { esc } from '../util.js';
 
 let handlers = null; // { onAdd, onRenameStart, onRenameCancel, onRename, onSuspend, onReactivate, onDelete }
-export function initRoster(h) { handlers = h; }
+export function initRoster(h) {
+  handlers = h;
+}
 
 /* Los borradores viven fuera del estado a propósito: teclear no repinta, y si un
    repintado llega por otro lado (SSE) el texto a medio escribir no se pierde. */
@@ -23,12 +25,13 @@ let draftAlta = '';
 let draftNombre = { de: null, texto: '' };
 
 const ORIGEN = {
-  file:    'Se guarda en roster.json y vale al momento, sin reiniciar.',
+  file: 'Se guarda en roster.json y vale al momento, sin reiniciar.',
   default: 'Es la lista de ejemplo. Al primer cambio se guarda en roster.json.',
 };
 
 function cuenta(a) {
-  const open = a.open_tickets ?? 0, total = a.total_tickets ?? 0;
+  const open = a.open_tickets ?? 0,
+    total = a.total_tickets ?? 0;
   if (!total) return 'sin tareas';
   if (!open) return `${total} en total, ninguna abierta`;
   return `${open} ${open === 1 ? 'abierta' : 'abiertas'} · ${total} en total`;
@@ -45,7 +48,10 @@ export function renderRoster(body, state) {
   root.className = 'settings__sec roster';
   root.setAttribute('aria-labelledby', 'roster-h');
 
-  if (r === undefined) { body.appendChild(root); return; }   // aún cargando: sin parpadeo de «vacío»
+  if (r === undefined) {
+    body.appendChild(root);
+    return;
+  } // aún cargando: sin parpadeo de «vacío»
   if (r === null) {
     root.innerHTML = `
       <h3 class="settings__sub" id="roster-h">Agentes</h3>
@@ -57,18 +63,24 @@ export function renderRoster(body, state) {
   const editable = r.editable && r.source !== 'env';
   root.innerHTML = `
     <h3 class="settings__sub" id="roster-h">Agentes</h3>
-    ${editable
-      ? `<p class="settings__lead">Quién puede tener tareas. ${ORIGEN[r.source] ?? ''}</p>`
-      : `<p class="roster__fixed" role="note">La lista la fija la variable de entorno <code>${esc(r.env_var ?? 'FAROS_AGENTS')}</code>: desde aquí no se puede cambiar.</p>`}
+    ${
+      editable
+        ? `<p class="settings__lead">Quién puede tener tareas. ${ORIGEN[r.source] ?? ''}</p>`
+        : `<p class="roster__fixed" role="note">La lista la fija la variable de entorno <code>${esc(r.env_var ?? 'FAROS_AGENTS')}</code>: desde aquí no se puede cambiar.</p>`
+    }
     <div class="roster__list" id="roster-list"></div>
-    ${editable ? `
+    ${
+      editable
+        ? `
     <form class="roster__add" id="roster-add" novalidate>
       <label class="sr-only" for="roster-new">Nombre del agente nuevo</label>
       <input type="text" id="roster-new" class="roster__input" maxlength="40" autocomplete="off"
              placeholder="nombre del agente nuevo" value="${esc(draftAlta)}">
       <button type="submit" class="btn btn--primary btn--sm">Añadir agente</button>
     </form>
-    ${errorDe(state, '__add')}` : ''}
+    ${errorDe(state, '__add')}`
+        : ''
+    }
     <div class="roster__sus" id="roster-sus" hidden>
       <h4 class="roster__sus-h">Suspendidos</h4>
       <p class="settings__lead">No reciben tareas nuevas ni salen en los selectores. Sus tareas cerradas los siguen nombrando.</p>
@@ -84,7 +96,9 @@ export function renderRoster(body, state) {
 
   if (editable) {
     const inp = root.querySelector('#roster-new');
-    inp.addEventListener('input', (e) => { draftAlta = e.target.value; });
+    inp.addEventListener('input', (e) => {
+      draftAlta = e.target.value;
+    });
     root.querySelector('#roster-add').addEventListener('submit', async (e) => {
       e.preventDefault();
       const ok = await handlers.onAdd(draftAlta.trim());
@@ -95,9 +109,14 @@ export function renderRoster(body, state) {
 
   /* el foco va donde se está escribiendo: al renombrar, a su campo con el cursor al
      final; tras un error de alta, de vuelta al campo de alta */
-  const foco = root.querySelector('#roster-rename')
-    ?? (state.rosterError?.where === '__add' ? root.querySelector('#roster-new') : null);
-  if (foco) { foco.focus(); const p = foco.value.length; foco.setSelectionRange(p, p); }
+  const foco =
+    root.querySelector('#roster-rename') ??
+    (state.rosterError?.where === '__add' ? root.querySelector('#roster-new') : null);
+  if (foco) {
+    foco.focus();
+    const p = foco.value.length;
+    foco.setSelectionRange(p, p);
+  }
 }
 
 /* Una fila. Activo: Renombrar + Suspender (o Borrar, si nunca tuvo tareas: un nombre
@@ -121,7 +140,9 @@ function fila(a, r, state, editable) {
       <p class="rosterrow__note">Sus tareas, abiertas y cerradas, pasan al nombre nuevo.</p>
       ${errorDe(state, a.name)}`;
     const inp = row.querySelector('#roster-rename');
-    inp.addEventListener('input', (e) => { draftNombre.texto = e.target.value; });
+    inp.addEventListener('input', (e) => {
+      draftNombre.texto = e.target.value;
+    });
     row.querySelector('form').addEventListener('submit', (e) => {
       e.preventDefault();
       handlers.onRename(a, draftNombre.texto.trim());
@@ -131,21 +152,29 @@ function fila(a, r, state, editable) {
       handlers.onRenameCancel();
     });
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { e.stopPropagation(); draftNombre = { de: null, texto: '' }; handlers.onRenameCancel(); }
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        draftNombre = { de: null, texto: '' };
+        handlers.onRenameCancel();
+      }
     });
     return row;
   }
 
   let acts = '';
   if (esDueno) acts = '<span class="rosterrow__lock">el dueño no se renombra ni se suspende</span>';
-  else if (editable && a.suspended) acts = `
+  else if (editable && a.suspended)
+    acts = `
     <button type="button" class="btn btn--ghost btn--sm" data-rename>Renombrar</button>
     <button type="button" class="btn btn--ghost btn--sm" data-reactivate>Reactivar</button>`;
-  else if (editable) acts = `
+  else if (editable)
+    acts = `
     <button type="button" class="btn btn--ghost btn--sm" data-rename>Renombrar</button>
-    ${(a.total_tickets ?? 0)
-      ? '<button type="button" class="btn btn--danger btn--sm" data-suspend>Suspender</button>'
-      : '<button type="button" class="btn btn--danger btn--sm" data-delete>Borrar</button>'}`;
+    ${
+      (a.total_tickets ?? 0)
+        ? '<button type="button" class="btn btn--danger btn--sm" data-suspend>Suspender</button>'
+        : '<button type="button" class="btn btn--danger btn--sm" data-delete>Borrar</button>'
+    }`;
   row.innerHTML = `
     <div class="rosterrow__main">
       <span class="rosterrow__name" data-i18n-skip>${esc(a.name)}</span>
@@ -163,4 +192,6 @@ function fila(a, r, state, editable) {
 }
 
 /* tras guardar un nombre, el borrador ya no vale */
-export function clearRenameDraft() { draftNombre = { de: null, texto: '' }; }
+export function clearRenameDraft() {
+  draftNombre = { de: null, texto: '' };
+}

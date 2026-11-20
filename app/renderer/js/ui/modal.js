@@ -7,9 +7,9 @@
 
 import { esc } from '../util.js';
 import { fechaDiaMes, applyI18n, t as tr } from '../i18n.js';
-import { VLEVEL } from '../transitions.js';   // #574
-import { openModal } from './shell.js';        // #357
-import { notaHTML } from './criterio_avisos.js';   // #1136
+import { VLEVEL } from '../transitions.js'; // #574
+import { openModal } from './shell.js'; // #357
+import { notaHTML } from './criterio_avisos.js'; // #1136
 
 /* #357: openShell, close y wireCancel viven en shell.js (una sola pieza para todas las ventanas,
    también la de job_modal.js). La historia del #302 está allí. */
@@ -19,15 +19,15 @@ import { notaHTML } from './criterio_avisos.js';   // #1136
 /* v3.2 T2.1: el próximo día laborable, que es el ancla que usa el motor al crear */
 function nextWorkday(from = new Date()) {
   const d = new Date(from);
-  d.setDate(d.getDate() + 1);                                   // mañana…
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);  // …y si cae en finde, al lunes
+  d.setDate(d.getDate() + 1); // mañana…
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1); // …y si cae en finde, al lunes
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /* Un error del motor, bajo SU campo. Si no dice cuál, arriba del todo y visible. */
 function showFieldError(modal, field, message) {
-  modal.querySelectorAll('.field__error').forEach(e => e.remove());
-  modal.querySelectorAll('.field.is-bad').forEach(e => e.classList.remove('is-bad'));
+  modal.querySelectorAll('.field__error').forEach((e) => e.remove());
+  modal.querySelectorAll('.field.is-bad').forEach((e) => e.classList.remove('is-bad'));
   const input = field ? modal.querySelector(`[data-field="${CSS.escape(field)}"]`) : null;
   const box = document.createElement('p');
   box.className = 'field__error';
@@ -52,15 +52,23 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
        la tarea creada y no «cancelado»: la tarea existe aunque el criterio lleve una nota */
     let guardada = null;
     const resolve = (v) => resolve0(v ?? guardada);
-    const projOpts = projects.filter(p => !p.archived)
-      .map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const projOpts = projects
+      .filter((p) => !p.archived)
+      .map((p) => `<option value="${p.id}">${esc(p.name)}</option>`)
+      .join('');
     // #574: el nombre del nivel, no su código (el value sigue siendo el código)
     const vlevels = (meta.verification_levels ?? ['self', 'peer', 'auto'])
-      .map(v => `<option value="${esc(v)}"${v === (meta.defaults.verification_level ?? 'auto') ? ' selected' : ''}>${esc(VLEVEL[v]?.[0] ?? v)}</option>`).join('');
+      .map(
+        (v) =>
+          `<option value="${esc(v)}"${v === (meta.defaults.verification_level ?? 'auto') ? ' selected' : ''}>${esc(VLEVEL[v]?.[0] ?? v)}</option>`,
+      )
+      .join('');
     const agentOpts = ['', ...(agents ?? [])]
-      .map(a => `<option value="${esc(a)}">${a ? esc(a) : 'sin responsable'}</option>`).join('');
+      .map((a) => `<option value="${esc(a)}">${a ? esc(a) : 'sin responsable'}</option>`)
+      .join('');
 
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">Nueva tarea</h2>
       <p class="hint" style="margin:-0.6rem 0 var(--sp-3)">Tarea para un agente con nombre. Lo automatizado con LLM se crea en <b>Agentes → Nuevo job</b>.</p>
 
@@ -141,8 +149,9 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
           <button type="submit" class="btn btn--primary">Crear tarea</button>
         </div>
       </form>
-    `, resolve);
-
+    `,
+      resolve,
+    );
 
     const allday = modal.querySelector('#f-allday');
     const timeF = modal.querySelector('#f-time');
@@ -151,7 +160,10 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
     const whenTxt = modal.querySelector('#f-when-txt');
     /* #262: fecha entera a Intl — el «de» del espanol no existe en ingles */
     const pintaDia = () => {
-      if (!whenF.value) { whenTxt.textContent = 'sin día: lo pone el motor'; return; }
+      if (!whenF.value) {
+        whenTxt.textContent = 'sin día: lo pone el motor';
+        return;
+      }
       const [y, m, d] = whenF.value.split('-').map(Number);
       const dt = new Date(y, m - 1, d);
       whenTxt.textContent = fechaDiaMes(dt);
@@ -161,7 +173,9 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
     /* #574: debajo del nivel, qué pasa con él (tr: se escribe después del recorrido de i18n) */
     const vlevelF = modal.querySelector('#f-vlevel');
     const vlevelTxt = modal.querySelector('#f-vlevel-txt');
-    const pintaNivel = () => { vlevelTxt.textContent = tr(VLEVEL[vlevelF.value]?.[1] ?? ''); };
+    const pintaNivel = () => {
+      vlevelTxt.textContent = tr(VLEVEL[vlevelF.value]?.[1] ?? '');
+    };
     vlevelF.addEventListener('change', pintaNivel);
     pintaNivel();
     allday.addEventListener('change', () => {
@@ -183,8 +197,12 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
         verification_level: v('#f-vlevel'),
         kind: 'manual', // T1.14: el Tablero solo crea manuales
       };
-      for (const [key, val] of [['description', v('#f-desc')], ['due_at', v('#f-due')],
-                                ['owner', v('#f-owner')], ['verify_criteria', v('#f-criteria')]]) {
+      for (const [key, val] of [
+        ['description', v('#f-desc')],
+        ['due_at', v('#f-due')],
+        ['owner', v('#f-owner')],
+        ['verify_criteria', v('#f-criteria')],
+      ]) {
         if (val) ticket[key] = val;
       }
       /* T2.1: un select vacío daba `project_id: 0` y el motor contestaba «proyecto #0 no
@@ -202,16 +220,26 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
 
       /* Sin onSubmit se comporta como antes (resolver el ticket y cerrar): así los
          llamantes viejos y los tests de fixtures siguen funcionando. */
-      if (typeof onSubmit !== 'function') { modal.finish(ticket); return; }
+      if (typeof onSubmit !== 'function') {
+        modal.finish(ticket);
+        return;
+      }
 
       const btn = modal.querySelector('#task-form button[type=submit]');
-      if (guardada) { await guardarCriterio(btn); return; }   // #1136: segunda vuelta, la tarea ya existe
+      if (guardada) {
+        await guardarCriterio(btn);
+        return;
+      } // #1136: segunda vuelta, la tarea ya existe
       const label = btn.textContent;
-      btn.disabled = true; btn.textContent = 'Creando…';
+      btn.disabled = true;
+      btn.textContent = 'Creando…';
       try {
         const created = await onSubmit(ticket);
         const avisos = created?.criterion_warnings ?? [];
-        if (!avisos.length || typeof onPatch !== 'function') { modal.finish(created ?? ticket); return; }
+        if (!avisos.length || typeof onPatch !== 'function') {
+          modal.finish(created ?? ticket);
+          return;
+        }
         guardada = created;
         modoNota(avisos);
         return;
@@ -221,7 +249,7 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
         showFieldError(modal, err?.field ?? null, err?.reason ?? err?.message ?? String(err));
       } finally {
         btn.disabled = false;
-        if (!guardada) btn.textContent = label;   // en modo nota el botón ya dice otra cosa
+        if (!guardada) btn.textContent = label; // en modo nota el botón ya dice otra cosa
       }
     });
 
@@ -231,35 +259,40 @@ export function createTaskModal(meta, projects, agents, onSubmit, onPatch) {
     function pintarNota(avisos) {
       const caja = modal.querySelector('#f-crit-note');
       caja.innerHTML = notaHTML(avisos, modal.querySelector('#f-criteria').value, { guardada: true });
-      caja.firstElementChild?.scrollIntoView({ block: 'nearest' });   // en escritorio quedaba cortada al fondo del diálogo
+      caja.firstElementChild?.scrollIntoView({ block: 'nearest' }); // en escritorio quedaba cortada al fondo del diálogo
     }
     function modoNota(avisos) {
       modal.querySelector('#task-form').classList.add('is-saved');
-      modal.querySelectorAll('#task-form input, #task-form select, #task-form textarea').forEach(el => {
+      modal.querySelectorAll('#task-form input, #task-form select, #task-form textarea').forEach((el) => {
         if (el.id !== 'f-criteria' && el.id !== 'f-vlevel') el.disabled = true;
       });
       pintarNota(avisos);
       const ok = modal.querySelector('#task-form button[type=submit]');
       ok.textContent = tr('Guardar el criterio');
       const cancel = modal.querySelector('#task-form [data-cancel]');
-      cancel.textContent = tr('Dejarlo así');       // y cerrar devuelve la tarea (resolve de arriba)
+      cancel.textContent = tr('Dejarlo así'); // y cerrar devuelve la tarea (resolve de arriba)
       modal.querySelector('#f-criteria').focus();
     }
     async function guardarCriterio(btn) {
       const tk = guardada.ticket ?? guardada;
       const criterio = modal.querySelector('#f-criteria').value.trim();
       const patch = { verify_criteria: criterio, verification_level: modal.querySelector('#f-vlevel').value };
-      btn.disabled = true; btn.textContent = tr('Guardando…');
+      btn.disabled = true;
+      btn.textContent = tr('Guardando…');
       try {
         const res = await onPatch(tk.id, patch);
         const avisos = res?.criterion_warnings ?? [];
         guardada = { ...guardada, criterion_warnings: avisos };
-        if (!avisos.length) { modal.finish(guardada); return; }
+        if (!avisos.length) {
+          modal.finish(guardada);
+          return;
+        }
         pintarNota(avisos);
       } catch (err) {
         showFieldError(modal, err?.field ?? 'verify_criteria', err?.reason ?? err?.message ?? String(err));
       } finally {
-        btn.disabled = false; btn.textContent = tr('Guardar el criterio');
+        btn.disabled = false;
+        btn.textContent = tr('Guardar el criterio');
       }
     }
   });
@@ -278,20 +311,31 @@ const EV_NAMES = {
 /* #601: lo escrito se guarda por tarea hasta que completar sale bien: si el motor rechaza la
    evidencia (un «proof» mal formado, un repo no admitido), al volver a abrir el diálogo sigue ahí */
 const evDrafts = new Map();
-export function clearEvidenceDraft(id) { evDrafts.delete(id); }
+export function clearEvidenceDraft(id) {
+  evDrafts.delete(id);
+}
 
 function proofPlantilla(repos) {
-  return JSON.stringify({ repo: repos[0] ?? '', commit: '', prueba: 'python -m pytest tests/…', rojo_en_padre: true }, null, 2);
+  return JSON.stringify(
+    { repo: repos[0] ?? '', commit: '', prueba: 'python -m pytest tests/…', rojo_en_padre: true },
+    null,
+    2,
+  );
 }
 
 export function evidenceDialog(meta, ticket, { proofRepos = [] } = {}) {
   return new Promise((resolve) => {
     const draft = evDrafts.get(ticket.id);
     const types = (meta.evidence_types ?? ['file_path', 'command_output', 'memory_id', 'peer_attestation'])
-      .filter(t => t !== 'run_output') // run_output lo pone el runner, no la mano
-      .map(t => `<option value="${esc(t)}"${draft?.evidence_type === t ? ' selected' : ''}>${esc(tr(EV_NAMES[t] ?? t))}</option>`).join('');
+      .filter((t) => t !== 'run_output') // run_output lo pone el runner, no la mano
+      .map(
+        (t) =>
+          `<option value="${esc(t)}"${draft?.evidence_type === t ? ' selected' : ''}>${esc(tr(EV_NAMES[t] ?? t))}</option>`,
+      )
+      .join('');
 
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">Completar «${esc(ticket.title)}»</h2>
       <p style="font-size:var(--text-small);color:var(--color-text-soft);margin-bottom:var(--sp-3);">
         Completar exige evidencia. Sin evidencia el motor no acepta «hecha».
@@ -316,7 +360,10 @@ export function evidenceDialog(meta, ticket, { proofRepos = [] } = {}) {
           <button type="submit" class="btn btn--primary">Completar</button>
         </div>
       </form>
-    `, resolve, { variant: 'sm' });
+    `,
+      resolve,
+      { variant: 'sm' },
+    );
 
     /* #601: «proof» es un JSON (repo, commit, prueba, rojo_en_padre…): un cuadro de varias líneas con la
        plantilla y lo que el código comprueba antes del juez. Los demás tipos, una línea. */
@@ -326,9 +373,16 @@ export function evidenceDialog(meta, ticket, { proofRepos = [] } = {}) {
       const proof = tipo === 'proof';
       if ((old.tagName === 'TEXTAREA') !== proof) {
         const nuevo = document.createElement(proof ? 'textarea' : 'input');
-        nuevo.id = 'ev-value'; nuevo.required = true;
-        if (proof) { nuevo.rows = 7; nuevo.className = 'mono'; nuevo.spellcheck = false; }
-        else { nuevo.type = 'text'; nuevo.placeholder = old.placeholder || 'ruta, salida de comando, id…'; }
+        nuevo.id = 'ev-value';
+        nuevo.required = true;
+        if (proof) {
+          nuevo.rows = 7;
+          nuevo.className = 'mono';
+          nuevo.spellcheck = false;
+        } else {
+          nuevo.type = 'text';
+          nuevo.placeholder = old.placeholder || 'ruta, salida de comando, id…';
+        }
         old.replaceWith(nuevo);
       }
       const el = modal.querySelector('#ev-value');
@@ -336,9 +390,11 @@ export function evidenceDialog(meta, ticket, { proofRepos = [] } = {}) {
       else if (proof && !el.value.trim()) el.value = proofPlantilla(proofRepos);
       hint.hidden = !proof;
       hint.textContent = proof
-        ? `${tr('Antes que el juez, y en una copia sin claves, el código comprueba que el commit existe y está en master, que los ficheros existen y que la prueba sale con 0; con «rojo_en_padre», además, que esa misma prueba falla sobre el código del commit anterior.')} ${proofRepos.length
-            ? `${tr('Repos admitidos:')} ${proofRepos.join(' · ')}`
-            : tr('No hay ningún repo admitido todavía: añádelo en Agentes › Ajustes.')}`
+        ? `${tr('Antes que el juez, y en una copia sin claves, el código comprueba que el commit existe y está en master, que los ficheros existen y que la prueba sale con 0; con «rojo_en_padre», además, que esa misma prueba falla sobre el código del commit anterior.')} ${
+            proofRepos.length
+              ? `${tr('Repos admitidos:')} ${proofRepos.join(' · ')}`
+              : tr('No hay ningún repo admitido todavía: añádelo en Agentes › Ajustes.')
+          }`
         : '';
     };
     modal.querySelector('#ev-type').addEventListener('change', (e) => ponValor(e.target.value, null));
@@ -360,9 +416,14 @@ export function evidenceDialog(meta, ticket, { proofRepos = [] } = {}) {
 
 /* ================= motivo (bloquear / rechazar) ================= */
 
-export function reasonDialog(title, cta, { min = 1, hint = 'por qué — quedará en el historial', value = '', tone = 'danger' } = {}) {
+export function reasonDialog(
+  title,
+  cta,
+  { min = 1, hint = 'por qué — quedará en el historial', value = '', tone = 'danger' } = {},
+) {
   return new Promise((resolve) => {
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">${esc(title)}</h2>
       <form id="rs-form">
         <div class="field">
@@ -374,13 +435,22 @@ export function reasonDialog(title, cta, { min = 1, hint = 'por qué — quedar�
           <button type="submit" class="btn btn--${tone === 'danger' ? 'danger' : 'primary'}" disabled>${esc(cta)}</button>
         </div>
       </form>
-    `, resolve, { variant: 'sm' });
+    `,
+      resolve,
+      { variant: 'sm' },
+    );
 
     const ta = modal.querySelector('#rs-note');
     const ok = modal.querySelector('button[type=submit]');
     /* #482: al cambiar un motivo se parte del que hay, para corregirlo y no reescribirlo a ciegas */
-    if (value) { ta.value = value; ok.disabled = value.trim().length < min; ta.select(); }
-    ta.addEventListener('input', () => { ok.disabled = ta.value.trim().length < min; }); // sin motivo no se envía
+    if (value) {
+      ta.value = value;
+      ok.disabled = value.trim().length < min;
+      ta.select();
+    }
+    ta.addEventListener('input', () => {
+      ok.disabled = ta.value.trim().length < min;
+    }); // sin motivo no se envía
     modal.querySelector('#rs-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const note = ta.value.trim();
@@ -397,7 +467,8 @@ export function reasonDialog(title, cta, { min = 1, hint = 'por qué — quedar�
 export function projectDialog(project = null) {
   const editing = Boolean(project);
   return new Promise((resolve) => {
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">${editing ? 'Editar proyecto' : 'Nuevo proyecto'}</h2>
       <form id="pj-form">
         <div class="field">
@@ -415,7 +486,10 @@ export function projectDialog(project = null) {
           <button type="submit" class="btn btn--primary">${editing ? 'Guardar' : 'Crear proyecto'}</button>
         </div>
       </form>
-    `, resolve, { variant: 'sm' });
+    `,
+      resolve,
+      { variant: 'sm' },
+    );
 
     if (editing) {
       modal.querySelector('[data-archive]').addEventListener('click', () => {
@@ -437,8 +511,10 @@ export function projectDialog(project = null) {
 export function dispatchDialog(t, agents, suggested) {
   return new Promise((resolve) => {
     const opts = agents
-      .map(a => `<option value="${esc(a)}"${a === suggested ? ' selected' : ''}>${esc(a)}</option>`).join('');
-    const modal = openModal(`
+      .map((a) => `<option value="${esc(a)}"${a === suggested ? ' selected' : ''}>${esc(a)}</option>`)
+      .join('');
+    const modal = openModal(
+      `
       <h2 class="modal__title">Despachar «${esc(t.plan_key ?? t.title)}»</h2>
       <form id="dp-form">
         <div class="field">
@@ -456,7 +532,10 @@ export function dispatchDialog(t, agents, suggested) {
           <button type="submit" class="btn btn--primary">Despachar</button>
         </div>
       </form>
-    `, resolve, { variant: 'sm' });
+    `,
+      resolve,
+      { variant: 'sm' },
+    );
 
     modal.querySelector('#dp-form').addEventListener('submit', (e) => {
       e.preventDefault();
@@ -476,12 +555,18 @@ export function dispatchDialog(t, agents, suggested) {
    se escribe entera, con la tarea por su clave y su título. Lo crudo se enseña debajo, como detalle.
    Una frase ENTERA por caso (el catálogo casa la cadena completa; sin trozos pegados). */
 const YA_NO_LISTA = {
-  proposed: (n) => `Ya no está lista: «${n}» está propuesta (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
-  in_progress: (n) => `Ya no está lista: «${n}» está en curso (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
-  done: (n) => `Ya no está lista: «${n}» está hecha (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
-  verified: (n) => `Ya no está lista: «${n}» está verificada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
-  rejected: (n) => `Ya no está lista: «${n}» está rechazada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
-  expired: (n) => `Ya no está lista: «${n}» está expirada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  proposed: (n) =>
+    `Ya no está lista: «${n}» está propuesta (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  in_progress: (n) =>
+    `Ya no está lista: «${n}» está en curso (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  done: (n) =>
+    `Ya no está lista: «${n}» está hecha (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  verified: (n) =>
+    `Ya no está lista: «${n}» está verificada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  rejected: (n) =>
+    `Ya no está lista: «${n}» está rechazada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
+  expired: (n) =>
+    `Ya no está lista: «${n}» está expirada (alguien la ha movido mientras tenías esto abierto). Quítala del lote y vuelve a despachar.`,
 };
 const WF_NO_ACTIVO = {
   paused: 'El workflow está en pausa: no se despacha.',
@@ -510,12 +595,14 @@ const tituloLimpio = (t) => (t.plan_key ? t.title.replace(`[${t.plan_key}] `, ''
 export function batchDispatchDialog(tickets, agents, submit, errorText = (e) => String(e?.reason ?? e?.message ?? e)) {
   return new Promise((resolve) => {
     const n0 = tickets.length;
-    const peers = [...new Set([...agents, ...tickets.map(t => t.suggested_agent).filter(Boolean)])];
-    const rows = tickets.map((t, i) => {
-      const sug = t.suggested_agent || '';
-      const opts = (sug ? '' : `<option value="" disabled selected>elige a quién</option>`)
-        + peers.map(a => `<option value="${esc(a)}"${a === sug ? ' selected' : ''}>${esc(a)}</option>`).join('');
-      return `
+    const peers = [...new Set([...agents, ...tickets.map((t) => t.suggested_agent).filter(Boolean)])];
+    const rows = tickets
+      .map((t, i) => {
+        const sug = t.suggested_agent || '';
+        const opts =
+          (sug ? '' : `<option value="" disabled selected>elige a quién</option>`) +
+          peers.map((a) => `<option value="${esc(a)}"${a === sug ? ' selected' : ''}>${esc(a)}</option>`).join('');
+        return `
         <div class="bd__row" role="group" aria-label="${esc(t.plan_key ?? t.title)}" data-i="${i}">
           <input type="checkbox" id="bd-ck-${i}" ${sug ? 'checked' : 'disabled'}>
           <label class="bd__what" for="bd-ck-${i}">
@@ -524,8 +611,10 @@ export function batchDispatchDialog(tickets, agents, submit, errorText = (e) => 
           </label>
           <select id="bd-to-${i}" aria-label="A quién">${opts}</select>
         </div>`;
-    }).join('');
-    const modal = openModal(`
+      })
+      .join('');
+    const modal = openModal(
+      `
       <h2 class="modal__title">${n0 === 1 ? 'Despachar 1 tarea lista' : `Despachar ${n0} tareas listas`}</h2>
       <form id="bd-form">
         <div class="bd__rows">${rows}</div>
@@ -540,15 +629,19 @@ export function batchDispatchDialog(tickets, agents, submit, errorText = (e) => 
           <button type="submit" class="btn btn--primary" id="bd-go"></button>
         </div>
       </form>
-    `, resolve, { variant: 'batch' });
+    `,
+      resolve,
+      { variant: 'batch' },
+    );
 
     const go = modal.querySelector('#bd-go');
     const err = modal.querySelector('#bd-err');
     const row = (i) => ({
-      ck: modal.querySelector(`#bd-ck-${i}`), sel: modal.querySelector(`#bd-to-${i}`),
+      ck: modal.querySelector(`#bd-ck-${i}`),
+      sel: modal.querySelector(`#bd-to-${i}`),
       el: modal.querySelector(`.bd__row[data-i="${i}"]`),
     });
-    const chosen = () => tickets.map((t, i) => ({ t, i, ...row(i) })).filter(r => r.ck.checked && r.sel.value);
+    const chosen = () => tickets.map((t, i) => ({ t, i, ...row(i) })).filter((r) => r.ck.checked && r.sel.value);
     let busy = false;
     const refresh = () => {
       const n = chosen().length;
@@ -558,10 +651,18 @@ export function batchDispatchDialog(tickets, agents, submit, errorText = (e) => 
     };
     tickets.forEach((_, i) => {
       const { ck, sel } = row(i);
-      sel.addEventListener('change', () => { ck.disabled = !sel.value; ck.checked = !!sel.value; refresh(); });
+      sel.addEventListener('change', () => {
+        ck.disabled = !sel.value;
+        ck.checked = !!sel.value;
+        refresh();
+      });
       ck.addEventListener('change', () => {
         /* quitar la culpable es un toque: desmarcar basta, y el aviso de esa fila se va */
-        if (!ck.checked && err.dataset.row === String(i)) { err.hidden = true; row(i).el.classList.remove('is-bad'); delete err.dataset.row; }
+        if (!ck.checked && err.dataset.row === String(i)) {
+          err.hidden = true;
+          row(i).el.classList.remove('is-bad');
+          delete err.dataset.row;
+        }
         refresh();
       });
     });
@@ -571,26 +672,32 @@ export function batchDispatchDialog(tickets, agents, submit, errorText = (e) => 
       e.preventDefault();
       const picked = chosen();
       if (busy || !picked.length) return;
-      busy = true; refresh();
+      busy = true;
+      refresh();
       err.hidden = true;
-      modal.querySelectorAll('.bd__row.is-bad').forEach(r => r.classList.remove('is-bad'));
+      modal.querySelectorAll('.bd__row.is-bad').forEach((r) => r.classList.remove('is-bad'));
       const note = modal.querySelector('#bd-note').value.trim();
-      const items = picked.map(r => ({ ticket_id: r.t.id, to: r.sel.value, ...(note ? { note } : {}) }));
+      const items = picked.map((r) => ({ ticket_id: r.t.id, to: r.sel.value, ...(note ? { note } : {}) }));
       try {
         const res = await submit(items, note || null);
         modal.finish(res ?? true);
       } catch (ex) {
-        busy = false; refresh();
+        busy = false;
+        refresh();
         /* «items[i] (ticket #N)»: i es la posición en LO ENVIADO → la fila culpable */
         const raw = String(ex?.reason ?? ex?.message ?? '');
         const m = /items\[(\d+)\]/.exec(raw);
         const bad = m ? picked[Number(m[1])] : null;
         const nombre = bad ? `${bad.t.plan_key ?? `#${bad.t.id}`} · ${tituloLimpio(bad.t)}` : null;
         /* arriba la frase humana; debajo, lo que dijo el motor, pequeño y en mono */
-        err.innerHTML = `<div class="bd__why">${esc(tr(batchErrorSentence(raw, nombre)))}</div>`
-          + `<div class="bd__raw" data-i18n-skip>${esc(errorText(ex))}</div>`;
+        err.innerHTML =
+          `<div class="bd__why">${esc(tr(batchErrorSentence(raw, nombre)))}</div>` +
+          `<div class="bd__raw" data-i18n-skip>${esc(errorText(ex))}</div>`;
         err.hidden = false;
-        if (bad) { bad.el.classList.add('is-bad'); err.dataset.row = String(bad.i); } else delete err.dataset.row;
+        if (bad) {
+          bad.el.classList.add('is-bad');
+          err.dataset.row = String(bad.i);
+        } else delete err.dataset.row;
         applyI18n(err);
       }
     });
@@ -612,18 +719,23 @@ export function importPlanErrorSentence(raw) {
 /* El texto, leído en el navegador: {vacio} | {error:{msg,line,col}} | {plan}. */
 export function parsePlanText(text) {
   if (!text.trim()) return { vacio: true };
-  try { return { plan: JSON.parse(text) }; }
-  catch (ex) {
+  try {
+    return { plan: JSON.parse(text) };
+  } catch (ex) {
     const full = String(ex?.message ?? ex);
-    let line = null, col = null;
+    let line = null,
+      col = null;
     const lc = /line (\d+) column (\d+)/.exec(full);
-    if (lc) { line = Number(lc[1]); col = Number(lc[2]); }
-    else {
+    if (lc) {
+      line = Number(lc[1]);
+      col = Number(lc[2]);
+    } else {
       /* «Unexpected end of JSON input» no trae posición: es el final del texto */
       const pos = /position (\d+)/.exec(full) ?? (/end of JSON/i.test(full) ? [null, text.length] : null);
       if (pos) {
         const antes = text.slice(0, Number(pos[1])).split('\n');
-        line = antes.length; col = antes[antes.length - 1].length + 1;
+        line = antes.length;
+        col = antes[antes.length - 1].length + 1;
       }
     }
     return { error: { msg: full.replace(/\s*\(line \d+ column \d+\)/, ''), line, col } };
@@ -634,7 +746,8 @@ export function parsePlanText(text) {
    enseña el motivo encima del pie. Resuelve el resultado de submit o null si se cancela. */
 export function importPlanDialog(submit, errorText = (e) => String(e?.reason ?? e?.message ?? e)) {
   return new Promise((resolve) => {
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">Importar plan</h2>
       <form id="ip-form" novalidate>
         <div class="ip__pick">
@@ -660,32 +773,45 @@ export function importPlanDialog(submit, errorText = (e) => String(e?.reason ?? 
           <button type="submit" class="btn btn--primary" id="ip-go" disabled>Importar</button>
         </div>
       </form>
-    `, resolve, { variant: 'import' });
+    `,
+      resolve,
+      { variant: 'import' },
+    );
 
     const q = (s) => modal.querySelector(s);
-    const text = q('#ip-text'), parseBox = q('#ip-parse'), preview = q('#ip-preview'), err = q('#ip-err'), go = q('#ip-go');
-    let plan = null, busy = false;
-    const refresh = () => { go.disabled = busy || plan == null; };
+    const text = q('#ip-text'),
+      parseBox = q('#ip-parse'),
+      preview = q('#ip-preview'),
+      err = q('#ip-err'),
+      go = q('#ip-go');
+    let plan = null,
+      busy = false;
+    const refresh = () => {
+      go.disabled = busy || plan == null;
+    };
 
     const onText = () => {
       err.hidden = true;
       const r = parsePlanText(text.value);
       plan = r.plan ?? null;
-      parseBox.hidden = !r.error; preview.hidden = !('plan' in r);
+      parseBox.hidden = !r.error;
+      preview.hidden = !('plan' in r);
       text.closest('.field').classList.toggle('is-bad', !!r.error);
       if (r.error) {
-        const pos = r.error.line != null
-          ? ` <span>${esc(tr(`línea ${r.error.line}, columna ${r.error.col}`))}</span>` : '';
+        const pos =
+          r.error.line != null ? ` <span>${esc(tr(`línea ${r.error.line}, columna ${r.error.col}`))}</span>` : '';
         parseBox.innerHTML = `<span>El texto no es un JSON válido:</span> <span data-i18n-skip>${esc(r.error.msg)}</span>${pos}`;
         applyI18n(parseBox);
       } else if (plan !== null) {
         const o = plan && typeof plan === 'object' && !Array.isArray(plan) ? plan : {};
         const nombre = String(o.workflow?.name ?? '').trim() || '(sin nombre)';
-        const f = Array.isArray(o.phases) ? o.phases.length : 0, n = Array.isArray(o.tasks) ? o.tasks.length : 0;
+        const f = Array.isArray(o.phases) ? o.phases.length : 0,
+          n = Array.isArray(o.tasks) ? o.tasks.length : 0;
         const coord = String(o.workflow?.coordinator ?? '').trim();
-        preview.innerHTML = `<b data-i18n-skip>«${esc(nombre)}»</b> · <span>${f === 1 ? '1 fase' : `${f} fases`}</span> · `
-          + `<span>${n === 1 ? '1 tarea' : `${n} tareas`}</span> · `
-          + (coord ? `<span>coordina</span> <b data-i18n-skip>${esc(coord)}</b>` : '<span>coordina tú</span>');
+        preview.innerHTML =
+          `<b data-i18n-skip>«${esc(nombre)}»</b> · <span>${f === 1 ? '1 fase' : `${f} fases`}</span> · ` +
+          `<span>${n === 1 ? '1 tarea' : `${n} tareas`}</span> · ` +
+          (coord ? `<span>coordina</span> <b data-i18n-skip>${esc(coord)}</b>` : '<span>coordina tú</span>');
         applyI18n(preview);
       }
       refresh();
@@ -696,26 +822,33 @@ export function importPlanDialog(submit, errorText = (e) => String(e?.reason ?? 
     q('#ip-file').addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      try { text.value = await file.text(); }
-      catch (ex) { text.value = ''; }
-      e.target.value = '';          // elegir el mismo fichero otra vez vuelve a leerlo
+      try {
+        text.value = await file.text();
+      } catch {
+        text.value = '';
+      }
+      e.target.value = ''; // elegir el mismo fichero otra vez vuelve a leerlo
       onText();
     });
 
     q('#ip-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (busy || plan == null) return;
-      busy = true; refresh(); err.hidden = true;
+      busy = true;
+      refresh();
+      err.hidden = true;
       const repo_root = q('#ip-repo').value.trim() || undefined;
       try {
         const res = await submit({ plan, repo_root });
         modal.finish(res ?? true);
       } catch (ex) {
-        busy = false; refresh();
+        busy = false;
+        refresh();
         const raw = String(ex?.reason ?? ex?.message ?? '');
         /* arriba la frase humana; debajo, lo que dijo el motor, pequeño y en mono */
-        err.innerHTML = `<div class="bd__why">${esc(tr(importPlanErrorSentence(raw)))}</div>`
-          + `<div class="bd__raw" data-i18n-skip>${esc(errorText(ex))}</div>`;
+        err.innerHTML =
+          `<div class="bd__why">${esc(tr(importPlanErrorSentence(raw)))}</div>` +
+          `<div class="bd__raw" data-i18n-skip>${esc(errorText(ex))}</div>`;
         err.hidden = false;
         applyI18n(err);
         err.scrollIntoView({ block: 'nearest' });
@@ -739,28 +872,39 @@ export function importPlanDialog(submit, errorText = (e) => String(e?.reason ?? 
 export function suspendAgentDialog(agent, others) {
   const n = agent.open_tickets ?? 0;
   return new Promise((resolve) => {
-    const opts = `<option value="" disabled selected>elige a quién</option>`
-      + others.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
-    const modal = openModal(`
+    const opts =
+      `<option value="" disabled selected>elige a quién</option>` +
+      others.map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+    const modal = openModal(
+      `
       <h2 class="modal__title">Suspender a «${esc(agent.name)}»</h2>
       <form id="ra-form">
-        ${n ? `
+        ${
+          n
+            ? `
         <p class="roster-dlg__lead">«${esc(agent.name)}» tiene ${n} ${n === 1 ? 'tarea abierta' : 'tareas abiertas'}.</p>
         <div class="field">
           <label for="ra-to">Pasan a</label>
           <select id="ra-to">${opts}</select>
-        </div>` : `
-        <p class="roster-dlg__lead">«${esc(agent.name)}» no tiene tareas abiertas.</p>`}
+        </div>`
+            : `
+        <p class="roster-dlg__lead">«${esc(agent.name)}» no tiene tareas abiertas.</p>`
+        }
         <p class="hint">Deja de aparecer en los selectores y no recibe tareas nuevas. Sigue en la lista y sus tareas cerradas lo siguen nombrando. Se puede reactivar.</p>
         <div class="modal__footer">
           <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
           <button type="submit" class="btn btn--danger"${n ? ' disabled' : ''}>Suspender</button>
         </div>
       </form>
-    `, resolve, { variant: 'sm' });
+    `,
+      resolve,
+      { variant: 'sm' },
+    );
 
     const sel = modal.querySelector('#ra-to');
-    sel?.addEventListener('change', () => { modal.querySelector('button[type=submit]').disabled = !sel.value; });
+    sel?.addEventListener('change', () => {
+      modal.querySelector('button[type=submit]').disabled = !sel.value;
+    });
     modal.querySelector('#ra-form').addEventListener('submit', (e) => {
       e.preventDefault();
       if (n && !sel.value) return;
@@ -774,7 +918,8 @@ export function suspendAgentDialog(agent, others) {
    true o null. Con historia, el motor da 409 y la fila ofrece Suspender en su lugar. */
 export function deleteAgentDialog(agent) {
   return new Promise((resolve) => {
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">Borrar a «${esc(agent.name)}»</h2>
       <form id="da-form">
         <p class="roster-dlg__lead">«${esc(agent.name)}» no ha tenido nunca ninguna tarea.</p>
@@ -784,8 +929,14 @@ export function deleteAgentDialog(agent) {
           <button type="submit" class="btn btn--danger">Borrar</button>
         </div>
       </form>
-    `, resolve, { variant: 'sm' });
-    modal.querySelector('#da-form').addEventListener('submit', (e) => { e.preventDefault(); modal.finish(true); });
+    `,
+      resolve,
+      { variant: 'sm' },
+    );
+    modal.querySelector('#da-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      modal.finish(true);
+    });
   });
 }
 
@@ -793,20 +944,29 @@ export function deleteAgentDialog(agent) {
    queda sin clave hasta que se marque otra. Resuelve true o null. */
 export function deleteCredentialDialog(c, usoTexto) {
   return new Promise((resolve) => {
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">Borrar la clave «${esc(c.name)}»</h2>
       <form id="dc-form">
-        ${c.in_use
-          ? `<p class="roster-dlg__lead">${esc(usoTexto)}</p>
+        ${
+          c.in_use
+            ? `<p class="roster-dlg__lead">${esc(usoTexto)}</p>
              <p class="hint">Al borrarla, FarOS se queda sin esa clave hasta que marques otra.</p>`
-          : '<p class="roster-dlg__lead">Se borra de la lista. Si la necesitas otra vez, la vuelves a pegar.</p>'}
+            : '<p class="roster-dlg__lead">Se borra de la lista. Si la necesitas otra vez, la vuelves a pegar.</p>'
+        }
         <div class="modal__footer">
           <button type="button" class="btn btn--ghost" data-cancel>Cancelar</button>
           <button type="submit" class="btn btn--danger">Borrar</button>
         </div>
       </form>
-    `, resolve, { variant: 'sm' });
-    modal.querySelector('#dc-form').addEventListener('submit', (e) => { e.preventDefault(); modal.finish(true); });
+    `,
+      resolve,
+      { variant: 'sm' },
+    );
+    modal.querySelector('#dc-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      modal.finish(true);
+    });
   });
 }
 
@@ -814,7 +974,8 @@ export function deleteCredentialDialog(c, usoTexto) {
 
 export function handoffComposer(draftContent, workflowName) {
   return new Promise((resolve) => {
-    const modal = openModal(`
+    const modal = openModal(
+      `
       <h2 class="modal__title">Handoff — ${esc(workflowName)}</h2>
       <p class="hint" style="margin-bottom:var(--sp-3);">
         El borrador lo redacta el motor desde el estado real. Edita la sección
@@ -829,7 +990,9 @@ export function handoffComposer(draftContent, workflowName) {
           <button type="submit" class="btn btn--primary">Guardar handoff</button>
         </div>
       </form>
-    `, resolve);
+    `,
+      resolve,
+    );
     modal.querySelector('#ho-content').value = draftContent ?? '';
 
     modal.querySelector('#ho-form').addEventListener('submit', (e) => {

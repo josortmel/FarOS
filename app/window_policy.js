@@ -14,7 +14,7 @@ function puedeNavegar(url, indexUrl) {
 // al navegador del sistema (shell.openExternal) y lo demás se descarta.
 function abrirFuera(url) {
   try {
-    return new URL(url).protocol === "https:";
+    return new URL(url).protocol === 'https:';
   } catch {
     return false;
   }
@@ -25,10 +25,13 @@ function abrirFuera(url) {
 // habla con el origen del daemon. EcoDB, el relay y el resto quedan fuera.
 function peticionLocalPermitida(url, baseUrl) {
   let u;
-  try { u = new URL(url); } catch { return true; }
-  if (u.protocol !== "http:" && u.protocol !== "https:" &&
-      u.protocol !== "ws:" && u.protocol !== "wss:") return true;
-  if (u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return true;
+  try {
+    u = new URL(url);
+  } catch {
+    return true;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:' && u.protocol !== 'ws:' && u.protocol !== 'wss:') return true;
+  if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') return true;
   return u.origin === new URL(baseUrl).origin;
 }
 

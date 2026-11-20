@@ -24,30 +24,35 @@ import { esc, fmtDate } from '../util.js';
 import { toast } from './toast.js';
 
 const CLASES = [
-  ['revista', 'Revista'], ['lectura', 'Lecturas'], ['informe', 'Informes'], ['faro', 'Faro'],
-  ['resultado', 'Resultados'], ['documentacion', 'Documentación'],
+  ['revista', 'Revista'],
+  ['lectura', 'Lecturas'],
+  ['informe', 'Informes'],
+  ['faro', 'Faro'],
+  ['resultado', 'Resultados'],
+  ['documentacion', 'Documentación'],
 ];
-const nombreClase = c => tr(CLASES.find(([k]) => k === c)?.[1] ?? c);
+const nombreClase = (c) => tr(CLASES.find(([k]) => k === c)?.[1] ?? c);
 const LIMITE = 500;
 const SANDBOX = 'allow-popups allow-popups-to-escape-sandbox';
 const CSP = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'";
 const RUTA = /^#\/biblioteca(?:\/(?:revista\/([^/]+)|(\d+)))?$/;
 const ANCHO = matchMedia('(min-width: 900px)');
-const FUERA = '<svg class="lib__out" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M10 6H6a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-4"/></svg>';
+const FUERA =
+  '<svg class="lib__out" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M10 6H6a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-4"/></svg>';
 
-const $ = s => document.querySelector(s);
-const attr = s => esc(s).replace(/"/g, '&quot;');
-const enlaceFuera = u => (/^https:\/\//.test(u ?? '') ? u : null);
+const $ = (s) => document.querySelector(s);
+const attr = (s) => esc(s).replace(/"/g, '&quot;');
+const enlaceFuera = (u) => (/^https:\/\//.test(u ?? '') ? u : null);
 
 let montada = false;
 let clase = 'revista';
 let q = '';
-let abierto = null;       // la entrada que se está leyendo
-let pedidoLista = 0;      // la última respuesta manda: dos pulsaciones seguidas no se pisan
+let abierto = null; // la entrada que se está leyendo
+let pedidoLista = 0; // la última respuesta manda: dos pulsaciones seguidas no se pisan
 let pedidoVisor = 0;
 let espera = null;
 let idioma = getLang();
-let cargados = [];        // lo que hay en la lista, página a página
+let cargados = []; // lo que hay en la lista, página a página
 let hayMas = false;
 
 export function rutaBiblioteca() {
@@ -61,7 +66,7 @@ export function rutaBiblioteca() {
    Con los valores ya resueltos: dentro del visor no existen los tokens y font-src no deja cargar Geist. */
 function estiloLectura(d) {
   const cs = getComputedStyle(document.documentElement);
-  const v = n => cs.getPropertyValue(n).trim();
+  const v = (n) => cs.getPropertyValue(n).trim();
   const s = d.createElement('style');
   s.textContent = `html{color-scheme:${document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'};background:${v('--color-bg')}}
 body{max-width:68ch;margin:0 auto;padding:32px 24px 64px;color:${v('--color-text')};font:18px/1.65 ui-sans-serif,system-ui,sans-serif;overflow-wrap:anywhere}
@@ -73,7 +78,7 @@ code{font-size:.9em}table{border-collapse:collapse;display:block;overflow-x:auto
   return s;
 }
 
-const esTexto = it => /\.md$/i.test(it?.ruta ?? '') && !it?.html_publicado;
+const esTexto = (it) => /\.md$/i.test(it?.ruta ?? '') && !it?.html_publicado;
 
 export function prepararVisor(html, it) {
   const d = new DOMParser().parseFromString(html, 'text/html');
@@ -84,7 +89,10 @@ export function prepararVisor(html, it) {
   d.head.prepend(m);
   for (const a of d.querySelectorAll('a[href^="#"]')) a.setAttribute('href', `about:srcdoc${a.getAttribute('href')}`);
   /* un enlace externo sin target navega dentro del visor y muere contra el frame-src de la app */
-  for (const a of d.querySelectorAll('a[href^="http:" i], a[href^="https:" i]')) { a.target = '_blank'; a.rel = 'noopener'; }
+  for (const a of d.querySelectorAll('a[href^="http:" i], a[href^="https:" i]')) {
+    a.target = '_blank';
+    a.rel = 'noopener';
+  }
   return `<!doctype html>${d.documentElement.outerHTML}`;
 }
 
@@ -103,7 +111,7 @@ function montar() {
       <div class="lib__list" id="lib-list"></div>
       <section class="lib__read" id="lib-read" aria-label="Documento"></section>
     </div>`;
-  root.querySelector('.lib__tabs').addEventListener('click', e => {
+  root.querySelector('.lib__tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-clase]');
     if (!b) return;
     clase = b.dataset.clase;
@@ -111,11 +119,14 @@ function montar() {
     $('#lib-q').value = '';
     cargarLista();
   });
-  $('#lib-q').addEventListener('input', e => {
+  $('#lib-q').addEventListener('input', (e) => {
     clearTimeout(espera);
-    espera = setTimeout(() => { q = e.target.value.trim(); cargarLista(); }, 250);
+    espera = setTimeout(() => {
+      q = e.target.value.trim();
+      cargarLista();
+    }, 250);
   });
-  $('#lib-list').addEventListener('click', e => {
+  $('#lib-list').addEventListener('click', (e) => {
     if (e.target.closest('[data-reintentar]')) cargarLista();
     if (e.target.closest('[data-mas]')) cargarMas();
   });
@@ -123,7 +134,7 @@ function montar() {
 }
 
 function marcarPestana() {
-  document.querySelectorAll('.lib__tabs [data-clase]').forEach(b => {
+  document.querySelectorAll('.lib__tabs [data-clase]').forEach((b) => {
     b.classList.toggle('is-active', !q && b.dataset.clase === clase);
   });
   document.querySelector('.lib__tabs .is-active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -143,18 +154,22 @@ function fila(i) {
 function porMeses(items) {
   const mes = new Intl.DateTimeFormat(locale(), { month: 'long', year: 'numeric' });
   let actual = null;
-  return items.map(i => {
-    const m = i.fecha ? mes.format(new Date(`${i.fecha.slice(0, 10)}T00:00:00`)) : tr('Sin fecha');
-    const titulo = m !== actual ? `<h2 class="lib__month">${esc(m)}</h2>` : '';
-    actual = m;
-    return titulo + fila(i);
-  }).join('');
+  return items
+    .map((i) => {
+      const m = i.fecha ? mes.format(new Date(`${i.fecha.slice(0, 10)}T00:00:00`)) : tr('Sin fecha');
+      const titulo = m !== actual ? `<h2 class="lib__month">${esc(m)}</h2>` : '';
+      actual = m;
+      return titulo + fila(i);
+    })
+    .join('');
 }
 
 const filtro = (offset = 0) => ({ ...(q ? { q } : { clase }), limite: LIMITE, offset });
 
 function pintarLista() {
-  const mas = hayMas ? `<button type="button" class="btn btn--ghost lib__more" data-mas>${tr('Ver más antiguos')}</button>` : '';
+  const mas = hayMas
+    ? `<button type="button" class="btn btn--ghost lib__more" data-mas>${tr('Ver más antiguos')}</button>`
+    : '';
   $('#lib-list').innerHTML = (q ? cargados.map(fila).join('') : porMeses(cargados)) + mas;
 }
 
@@ -202,7 +217,10 @@ async function cargarLista() {
 }
 
 function cabecera(it) {
-  const bits = [it.fecha && fmtDate(it.fecha), it.clase && nombreClase(it.clase), it.proyecto].filter(Boolean).map(esc).join(' · ');
+  const bits = [it.fecha && fmtDate(it.fecha), it.clase && nombreClase(it.clase), it.proyecto]
+    .filter(Boolean)
+    .map(esc)
+    .join(' · ');
   return `<header class="lib__read-head">
     <a class="lib__back" href="#/biblioteca" aria-label="${tr('Volver')}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></a>
     <div class="lib__read-title"><h1>${esc(it.titulo)}</h1><p>${bits}</p></div>
@@ -210,10 +228,11 @@ function cabecera(it) {
 }
 
 function marcarFila() {
-  document.querySelectorAll('.lib__row').forEach(r => {
+  document.querySelectorAll('.lib__row').forEach((r) => {
     const open = Number(r.dataset.id) === abierto?.id;
     r.classList.toggle('is-open', open);
-    if (open) r.setAttribute('aria-current', 'true'); else r.removeAttribute('aria-current');
+    if (open) r.setAttribute('aria-current', 'true');
+    else r.removeAttribute('aria-current');
   });
 }
 
@@ -244,9 +263,17 @@ async function leer(it) {
   if (n !== pedidoVisor) return;
   if (typeof r !== 'string') {
     const fuera = enlaceFuera(r.abrir);
-    read.innerHTML = cabecera(it) + (fuera
-      ? aviso('Este informe tiene partes interactivas y se abre aparte.', `<a class="btn btn--primary" href="${attr(fuera)}" target="_blank" rel="noopener">Abrir en otra pestaña</a>`)
-      : aviso('Este informe no está publicado y no se puede abrir desde aquí. Sigue en su carpeta.', `<code class="lib__path">${esc(it.ruta)}</code>`));
+    read.innerHTML =
+      cabecera(it) +
+      (fuera
+        ? aviso(
+            'Este informe tiene partes interactivas y se abre aparte.',
+            `<a class="btn btn--primary" href="${attr(fuera)}" target="_blank" rel="noopener">Abrir en otra pestaña</a>`,
+          )
+        : aviso(
+            'Este informe no está publicado y no se puede abrir desde aquí. Sigue en su carpeta.',
+            `<code class="lib__path">${esc(it.ruta)}</code>`,
+          ));
     applyI18n(read);
     return;
   }
@@ -281,12 +308,17 @@ async function aplicarRuta() {
   } catch {
     abierto = null;
     $('#lib-root').dataset.leyendo = '';
-    $('#lib-read').innerHTML = cabecera({ titulo: 'Biblioteca' }) + aviso('Este documento no se puede abrir: ha cambiado de sitio o ya no está.');
+    $('#lib-read').innerHTML =
+      cabecera({ titulo: 'Biblioteca' }) +
+      aviso('Este documento no se puede abrir: ha cambiado de sitio o ya no está.');
     applyI18n($('#lib-read'));
     return;
   }
   /* con una búsqueda abierta la lista no es de una clase: abrir un resultado no la toca */
-  if (!q && it.clase !== clase) { clase = it.clase; cargarLista(); }
+  if (!q && it.clase !== clase) {
+    clase = it.clase;
+    cargarLista();
+  }
   await leer(it);
 }
 

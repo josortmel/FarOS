@@ -1,0 +1,6 @@
+# #1361: lo que prettier no toca. node_modules ya lo ignora solo.
+dist/
+assets/
+# npm los reescribe a su manera: si prettier también, cada npm install deja un diff.
+package.json
+package-lock.json

@@ -9,10 +9,21 @@
    ============================================================ */
 
 import { esc } from '../util.js';
-import { renderChip, isClosed, isOverdue, toMin, makeDraggable, getDrag, clearDropMarks, markPending } from './calendar_day.js';
+import {
+  renderChip,
+  isClosed,
+  isOverdue,
+  toMin,
+  makeDraggable,
+  getDrag,
+  clearDropMarks,
+  markPending,
+} from './calendar_day.js';
 
 let handlers = null; // { onOpen, onSchedule, onStamp, todayISO, onSelectDay(dateISO|null), onOpenDay(dateISO) }
-export function initMonth(h) { handlers = h; }
+export function initMonth(h) {
+  handlers = h;
+}
 
 /* #262/#264 (Prima): la cabecera del mes llevaba los dias clavados en espanol
    mientras calendar_week ya usaba diaCorto(). Es VISIBLE EN UNA CAPTURA: un README
@@ -26,17 +37,23 @@ const diasCab = () => [1, 2, 3, 4, 5, 6, 0].map(diaCorto);
 import { fechaDiaMes, diaCorto } from '../i18n.js';
 const MAX_DOTS = 8;
 
-function iso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function iso(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 /* las semanas del mes, de lunes a domingo, con los días de fuera del mes en gris */
 export function monthWeeks(year, month) {
   const first = new Date(year, month, 1);
-  const start = new Date(first); start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+  const start = new Date(first);
+  start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
   const weeks = [];
   const d = new Date(start);
   do {
     const w = [];
-    for (let i = 0; i < 7; i++) { w.push({ iso: iso(d), inMonth: d.getMonth() === month }); d.setDate(d.getDate() + 1); }
+    for (let i = 0; i < 7; i++) {
+      w.push({ iso: iso(d), inMonth: d.getMonth() === month });
+      d.setDate(d.getDate() + 1);
+    }
     weeks.push(w);
   } while (d.getMonth() === month);
   return weeks;
@@ -87,7 +104,10 @@ export function renderMonth(body, state, range) {
   const weeks = monthWeeks(anchor.getFullYear(), anchor.getMonth());
   const items = data.items ?? [];
   const byDay = new Map();
-  for (const it of items) { if (!byDay.has(it.date)) byDay.set(it.date, []); byDay.get(it.date).push(it); }
+  for (const it of items) {
+    if (!byDay.has(it.date)) byDay.set(it.date, []);
+    byDay.get(it.date).push(it);
+  }
   const today = handlers.todayISO();
   const sel = state.calDaySel && state.calDaySel >= range.from && state.calDaySel <= range.to ? state.calDaySel : null;
 
@@ -98,7 +118,9 @@ export function renderMonth(body, state, range) {
   const grid = document.createElement('div');
   grid.className = 'month__grid';
   grid.setAttribute('role', 'grid');
-  grid.innerHTML = `<div class="month__cab">${diasCab().map(d => `<span>${d}</span>`).join('')}</div>`;
+  grid.innerHTML = `<div class="month__cab">${diasCab()
+    .map((d) => `<span>${d}</span>`)
+    .join('')}</div>`;
   for (const w of weeks) {
     const row = document.createElement('div');
     row.className = 'month__row';
@@ -109,7 +131,10 @@ export function renderMonth(body, state, range) {
       cell.className = `month__cell${inMonth ? '' : ' is-out'}${d === today ? ' is-today' : ''}${d === sel ? ' is-sel' : ''}${d < today ? ' is-past' : ''}`;
       cell.dataset.date = d;
       cell.setAttribute('aria-label', `${d}: ${list.length ? list.length + ' tareas' : 'sin tareas'}`);
-      const dots = list.slice(0, MAX_DOTS).map(it => `<i class="month__dot month__dot--${dotClass(it)}"></i>`).join('');
+      const dots = list
+        .slice(0, MAX_DOTS)
+        .map((it) => `<i class="month__dot month__dot--${dotClass(it)}"></i>`)
+        .join('');
       const more = list.length > MAX_DOTS ? `<em class="month__more">+${list.length - MAX_DOTS}</em>` : '';
       const overdue = list.filter(isOverdue).length;
       cell.innerHTML = `
@@ -130,9 +155,15 @@ export function renderMonth(body, state, range) {
     const side = document.createElement('aside');
     side.className = 'month__side';
     const d = new Date(sel + 'T00:00:00');
-    const list = (byDay.get(sel) ?? []).slice().sort((a, b) =>
-      Number(isClosed(a)) - Number(isClosed(b)) || Number(a.ghost) - Number(b.ghost)
-      || (toMin(a.start) ?? -1) - (toMin(b.start) ?? -1) || a.ticket_id - b.ticket_id);
+    const list = (byDay.get(sel) ?? [])
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(isClosed(a)) - Number(isClosed(b)) ||
+          Number(a.ghost) - Number(b.ghost) ||
+          (toMin(a.start) ?? -1) - (toMin(b.start) ?? -1) ||
+          a.ticket_id - b.ticket_id,
+      );
     side.innerHTML = `
       <div class="month__side-head">
         <h3 class="month__side-title">${esc(fechaDiaMes(d))}${sel === today ? ' <span class="month__side-today">hoy</span>' : ''}</h3>
@@ -144,8 +175,16 @@ export function renderMonth(body, state, range) {
     const ul = side.querySelector('.month__side-list');
     for (const it of list) {
       const chip = renderChip(it);
-      if (it.start) chip.querySelector('.day__chip-meta').insertAdjacentHTML('afterbegin', `<b class="day__chip-hour">${esc(it.start)}${it.end ? '–' + esc(it.end) : ''}</b>`);
-      chip.querySelector('.day__chip-meta').insertAdjacentHTML('beforeend', `<span class="day__chip-owner">${esc(it.owner ?? '')}</span>`);
+      if (it.start)
+        chip
+          .querySelector('.day__chip-meta')
+          .insertAdjacentHTML(
+            'afterbegin',
+            `<b class="day__chip-hour">${esc(it.start)}${it.end ? '–' + esc(it.end) : ''}</b>`,
+          );
+      chip
+        .querySelector('.day__chip-meta')
+        .insertAdjacentHTML('beforeend', `<span class="day__chip-owner">${esc(it.owner ?? '')}</span>`);
       /* T3.3 (el dueño §2): desde la lista del día se arrastra a otro día de la rejilla —
          mismo contrato que Semana (recurrente: solo la próxima; programada: todo el día) */
       if (!it.ghost && !isClosed(it)) makeDraggable(chip, it);

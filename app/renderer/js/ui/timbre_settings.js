@@ -12,7 +12,9 @@ import { esc } from '../util.js';
 import { t as tr, locale } from '../i18n.js';
 
 let handlers = null; // { onTimbre(bool), onFecha('YYYY-MM-DD'), onQuitarSilencio(agente) }
-export function initTimbreSettings(h) { handlers = h; }
+export function initTimbreSettings(h) {
+  handlers = h;
+}
 
 const hoy = () => {
   const d = new Date();
@@ -25,7 +27,9 @@ function hastaCuando(h) {
   if (h === 'siempre') return [tr('hasta que se lo quite')];
   const d = new Date(h);
   if (Number.isNaN(d.getTime())) return [String(h)];
-  const manana = new Date(); manana.setHours(0, 0, 0, 0); manana.setDate(manana.getDate() + 1);
+  const manana = new Date();
+  manana.setHours(0, 0, 0, 0);
+  manana.setDate(manana.getDate() + 1);
   if (d.getTime() === manana.getTime()) return [tr('hasta mañana')];
   const hora = d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
   if (d.toDateString() === new Date().toDateString()) return [tr('hasta las'), hora];
@@ -38,14 +42,17 @@ function silenciados(sil) {
   return `
     <div class="timbre__silencios">
       <h4 class="timbre__titulo">${esc(tr('Silenciados'))}</h4>
-      <ul class="timbre__sil-lista">${quien.map(a => {
-        const [txt, cuando] = hastaCuando(sil[a]);
-        return `
+      <ul class="timbre__sil-lista">${quien
+        .map((a) => {
+          const [txt, cuando] = hastaCuando(sil[a]);
+          return `
         <li class="timbre__sil">
           <span class="timbre__agente">${esc(a)}</span>
           <span class="timbre__res"><span>${esc(txt)}</span>${cuando ? ` <span>${esc(cuando)}</span>` : ''}</span>
           <button type="button" class="btn btn--ghost btn--sm" data-quitar="${esc(a)}">${esc(tr('Quitar'))}</button>
-        </li>`; }).join('')}
+        </li>`;
+        })
+        .join('')}
       </ul>
     </div>`;
 }
@@ -60,7 +67,7 @@ function resultado(r) {
 
 export function renderTimbreSetting(body, state) {
   const tb = state.timbre;
-  if (tb == null) return;   // daemon sin /api/timbre (anterior a la 3.3.32): no se pinta
+  if (tb == null) return; // daemon sin /api/timbre (anterior a la 3.3.32): no se pinta
   const on = !!tb.activo;
   const fecha = tb.fecha || hoy();
   const esHoy = fecha === hoy();
@@ -87,22 +94,32 @@ export function renderTimbreSetting(body, state) {
         <input type="date" id="timbre-fecha" value="${esc(fecha)}" max="${esc(hoy())}">
       </label>
     </div>
-    ${avisos.length ? `<ol class="timbre__lista">${avisos.map(fila).join('')}</ol>`
-      : `<p class="timbre__vacio">${esc(esHoy ? tr('Hoy no ha sonado nada todavía.') : tr('Ese día no sonó nada.'))}</p>`}`;
+    ${
+      avisos.length
+        ? `<ol class="timbre__lista">${avisos.map(fila).join('')}</ol>`
+        : `<p class="timbre__vacio">${esc(esHoy ? tr('Hoy no ha sonado nada todavía.') : tr('Ese día no sonó nada.'))}</p>`
+    }`;
 
   const sw = root.querySelector('#timbre-sw');
   sw.addEventListener('change', () => handlers?.onTimbre(sw.checked));
   const fe = root.querySelector('#timbre-fecha');
-  fe.addEventListener('change', () => { if (fe.value) handlers?.onFecha(fe.value); });
-  root.querySelectorAll('[data-quitar]').forEach(b =>
-    b.addEventListener('click', () => handlers?.onQuitarSilencio(b.dataset.quitar)));
+  fe.addEventListener('change', () => {
+    if (fe.value) handlers?.onFecha(fe.value);
+  });
+  root
+    .querySelectorAll('[data-quitar]')
+    .forEach((b) => b.addEventListener('click', () => handlers?.onQuitarSilencio(b.dataset.quitar)));
   body.appendChild(root);
 }
 
 function fila(a) {
   const r = resultado(a.resultado);
-  const tareas = (a.tareas || []).map(t =>
-    `<li><span class="mono">${esc(t.inicio || '')}</span> <span class="timbre__tarea">${esc(t.titulo || '')}</span></li>`).join('');
+  const tareas = (a.tareas || [])
+    .map(
+      (t) =>
+        `<li><span class="mono">${esc(t.inicio || '')}</span> <span class="timbre__tarea">${esc(t.titulo || '')}</span></li>`,
+    )
+    .join('');
   return `
     <li class="timbre__fila is-${r.cls}">
       <time class="timbre__hora mono" datetime="${esc(a.hora || '')}">${esc(hhmm(a.hora))}</time>
