@@ -15,13 +15,13 @@ con el último run; un hueco de varios días lanza UNA vez, no cada ventana.
 from __future__ import annotations
 
 import re
-from datetime import datetime, date, time as dtime, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as dtime
 
 from .service import TicketError
 
 TYPES = {"manual", "once", "recurring", "weekly"}
 _HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
-WEEKDAY_NAMES = ["L", "M", "X", "J", "V", "S", "D"]
 WEEKDAY_LONG = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 

@@ -11,18 +11,18 @@ Diseño: Hilo/Documentacion/diseno_499_claves_bajo_demanda.md.
 import hashlib
 import json
 import os
-import socket
 import sqlite3
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from faros import api, credentials as cr, db, mcp_server, service as s
+from faros import api, db, mcp_server
+from faros import credentials as cr
+from faros import service as s
 
 SECRETO = "otra-" + "a1b2c3d4e5f6" * 3
 LANZADOR = Path(__file__).resolve().parent.parent / "tools" / "faros_con_claves.py"
@@ -50,6 +50,7 @@ def _clave(conn, nombre="X_API_KEY", valor=SECRETO, entregable=True):
 
 # ------------------------------------------------------------------ entregable: solo lo marca el dueño
 
+
 def test_por_defecto_no_es_entregable(conn):
     assert cr.create(conn, "owner", "X", "otra", "v")["deliverable"] is False
 
@@ -62,6 +63,7 @@ def test_solo_el_dueno_de_la_casa_la_marca_entregable(conn):
 
 # ------------------------------------------------------------------ la entrega
 
+
 def test_entrega_por_nombre_y_queda_registrada_sin_el_valor(conn):
     _clave(conn)
     res = cr.deliver(conn, "x_api_key", requested_by="mcp:x-twitter", purpose="arrancar el MCP de X")
@@ -72,17 +74,21 @@ def test_entrega_por_nombre_y_queda_registrada_sin_el_valor(conn):
     assert SECRETO not in volcado
 
 
-@pytest.mark.parametrize("caso,status,code", [
-    ("no_existe", 404, "credential.not_found"),
-    ("no_entregable", 403, "credential.not_deliverable"),
-    ("vacia", 409, "credential.value_empty"),
-])
+@pytest.mark.parametrize(
+    "caso,status,code",
+    [
+        ("no_existe", 404, "credential.not_found"),
+        ("no_entregable", 403, "credential.not_deliverable"),
+        ("vacia", 409, "credential.value_empty"),
+    ],
+)
 def test_lo_que_no_se_entrega_se_niega_y_tambien_se_registra(conn, caso, status, code):
     if caso == "no_entregable":
         _clave(conn, entregable=False)
     elif caso == "vacia":
         c = _clave(conn)
-        conn.execute("UPDATE credentials SET value = '' WHERE id = ?", (c["id"],)); conn.commit()
+        conn.execute("UPDATE credentials SET value = '' WHERE id = ?", (c["id"],))
+        conn.commit()
     e = _err(cr.deliver, conn, "X_API_KEY", requested_by="mcp:x", purpose="p")
     assert (e.status, e.code) == (status, code)
     [fila] = cr.deliveries(conn)
@@ -98,7 +104,9 @@ def test_quien_y_para_que_son_obligatorios_y_cortos(conn):
 
 def test_el_backup_lleva_el_registro_pero_nunca_valores(conn, tmp_path, monkeypatch):
     from datetime import datetime
+
     from faros import backup
+
     monkeypatch.setenv("AGENTICOS_BACKUP_DIR", str(tmp_path))
     _clave(conn)
     cr.deliver(conn, "X_API_KEY", requested_by="mcp:x", purpose="p")
@@ -113,6 +121,7 @@ def test_el_mcp_de_faros_no_tiene_herramienta_para_pedir_valores():
 
 def asyncio_run(coro):
     import asyncio
+
     return asyncio.run(coro)
 
 
@@ -136,18 +145,26 @@ def test_api_entrega_niega_y_lista_el_registro(client):
     cli, c = client
     _clave(c)
     _clave(c, "NO_ENTREGABLE", "otro-valor", entregable=False)
-    ok = cli.post("/api/credentials/deliver", headers=H,
-                  json={"name": "X_API_KEY", "requested_by": "mcp:x", "purpose": "arrancar"})
+    ok = cli.post(
+        "/api/credentials/deliver",
+        headers=H,
+        json={"name": "X_API_KEY", "requested_by": "mcp:x", "purpose": "arrancar"},
+    )
     assert ok.status_code == 200 and ok.json()["value"] == SECRETO
-    no = cli.post("/api/credentials/deliver", headers=H,
-                  json={"name": "NO_ENTREGABLE", "requested_by": "mcp:x", "purpose": "arrancar"})
+    no = cli.post(
+        "/api/credentials/deliver",
+        headers=H,
+        json={"name": "NO_ENTREGABLE", "requested_by": "mcp:x", "purpose": "arrancar"},
+    )
     assert no.status_code == 403 and "otro-valor" not in no.text
     reg = cli.get("/api/credentials/deliveries", headers=H)
     assert reg.status_code == 200 and [r["ok"] for r in reg.json()] == [False, True]
     assert SECRETO not in reg.text
     lista = cli.get("/api/credentials", headers=H)
     assert SECRETO not in lista.text and {r["name"]: r["deliverable"] for r in lista.json()} == {
-        "X_API_KEY": True, "NO_ENTREGABLE": False}
+        "X_API_KEY": True,
+        "NO_ENTREGABLE": False,
+    }
 
 
 def test_api_sin_token_no_entrega(client):
@@ -159,9 +176,11 @@ def test_api_sin_token_no_entrega(client):
 
 # ------------------------------------------------------------------ el lanzador, contra un daemon de mentira
 
-HIJO = ("import hashlib, os, sys; v = os.environ.get('X_TOKEN', ''); "
-        "print('sha=' + hashlib.sha256(v.encode()).hexdigest()); print('argv=' + repr(sys.argv)); "
-        "sys.exit(7)")
+HIJO = (
+    "import hashlib, os, sys; v = os.environ.get('X_TOKEN', ''); "
+    "print('sha=' + hashlib.sha256(v.encode()).hexdigest()); print('argv=' + repr(sys.argv)); "
+    "sys.exit(7)"
+)
 
 
 class _Daemon:
@@ -169,6 +188,7 @@ class _Daemon:
 
     def __init__(self, tmp_path, entregar=True):
         import http.server
+
         self.peticiones = []
         outer = self
 
@@ -179,11 +199,16 @@ class _Daemon:
                 if entregar and body["name"] == "X_API_KEY":
                     data, code = {"name": "X_API_KEY", "value": SECRETO}, 200
                 else:
-                    data, code = {"error": "forbidden", "code": "credential.not_deliverable",
-                                  "reason": "no es entregable"}, 403
+                    data, code = (
+                        {"error": "forbidden", "code": "credential.not_deliverable", "reason": "no es entregable"},
+                        403,
+                    )
                 raw = json.dumps(data).encode()
-                self.send_response(code); self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
 
             def log_message(self, *a):
                 pass
@@ -212,10 +237,10 @@ def _lanzar(d, *claves):
 def test_lanzador_mete_la_clave_solo_en_el_entorno_del_hijo(tmp_path):
     d = _Daemon(tmp_path)
     r = _lanzar(d, "X_API_KEY=X_TOKEN")
-    assert r.returncode == 7                                           # el código del hijo, tal cual
+    assert r.returncode == 7  # el código del hijo, tal cual
     assert f"sha={hashlib.sha256(SECRETO.encode()).hexdigest()}" in r.stdout
-    assert SECRETO not in r.stdout and SECRETO not in r.stderr        # ni el hijo ni el lanzador lo enseñan
-    assert SECRETO not in r.stdout.split("argv=")[1]                   # ni va en la línea de comandos del hijo
+    assert SECRETO not in r.stdout and SECRETO not in r.stderr  # ni el hijo ni el lanzador lo enseñan
+    assert SECRETO not in r.stdout.split("argv=")[1]  # ni va en la línea de comandos del hijo
     tok, body = d.peticiones[0]
     assert tok == "tok-lanzador" and body["name"] == "X_API_KEY" and body["purpose"] == "test 499"
     d.srv.shutdown()
@@ -231,7 +256,8 @@ def test_lanzador_si_una_clave_se_niega_no_arranca_el_hijo(tmp_path):
 
 def test_lanzador_sin_daemon_lo_dice_y_no_arranca(tmp_path):
     d = _Daemon(tmp_path)
-    d.srv.shutdown(); d.srv.server_close()
+    d.srv.shutdown()
+    d.srv.server_close()
     r = _lanzar(d, "X_API_KEY=X_TOKEN")
     assert r.returncode == 2 and "sha=" not in r.stdout and "FarOS" in r.stderr
 
@@ -241,22 +267,34 @@ def test_lanzador_sin_daemon_lo_dice_y_no_arranca(tmp_path):
 # #658: el hijo escribe su stderr en UTF-8 explícito y el test lo lee en UTF-8. Con `sys.stderr.write` y
 # `text=True` el resultado dependía del entorno: con PYTHONIOENCODING=utf-8 el hijo escribía UTF-8 y el test
 # lo descodificaba con el locale (cp1252), y «línea» llegaba como «lÃ­nea» sin que el lanzador tocara un byte.
-HIJO_CHIVATO = ("import os, sys; v = os.environ['X_TOKEN']; "
-                "print('stdout:' + v, flush=True); "
-                "sys.stderr.buffer.write(('error de auth con clave ' + v + '\\nsegunda línea sin clave\\n').encode('utf-8')); "
-                "sys.stderr.buffer.write(('final sin salto ' + v).encode('utf-8')); sys.exit(3)")
+HIJO_CHIVATO = (
+    "import os, sys; v = os.environ['X_TOKEN']; "
+    "print('stdout:' + v, flush=True); "
+    "sys.stderr.buffer.write(('error de auth con clave ' + v + '\\nsegunda línea sin clave\\n').encode('utf-8')); "
+    "sys.stderr.buffer.write(('final sin salto ' + v).encode('utf-8')); sys.exit(3)"
+)
 
 
 def test_lanzador_enmascara_la_clave_en_el_stderr_del_hijo_y_no_toca_stdout(tmp_path):
     d = _Daemon(tmp_path)
-    args = [sys.executable, str(LANZADOR), "--clave", "X_API_KEY=X_TOKEN", "--para", "test 577", "--",
-            sys.executable, "-c", HIJO_CHIVATO]
+    args = [
+        sys.executable,
+        str(LANZADOR),
+        "--clave",
+        "X_API_KEY=X_TOKEN",
+        "--para",
+        "test 577",
+        "--",
+        sys.executable,
+        "-c",
+        HIJO_CHIVATO,
+    ]
     r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", env=d.env(), timeout=60)
     assert r.returncode == 3
     assert SECRETO not in r.stderr
     assert "error de auth con clave ****" in r.stderr and "segunda línea sin clave" in r.stderr
     assert "final sin salto ****" in r.stderr
-    assert "stdout:" + SECRETO in r.stdout          # stdout es el canal del protocolo MCP: pasa tal cual
+    assert "stdout:" + SECRETO in r.stdout  # stdout es el canal del protocolo MCP: pasa tal cual
     d.srv.shutdown()
 
 
@@ -266,8 +304,18 @@ def test_lanzador_pasa_el_stderr_del_hijo_byte_a_byte(tmp_path, codificacion):
     d = _Daemon(tmp_path)
     linea = "línea con tildes y eñes: añoranza, camión, pingüino\n".encode(codificacion)
     hijo = f"import sys; sys.stderr.buffer.write({linea!r}); sys.stderr.buffer.flush()"
-    args = [sys.executable, str(LANZADOR), "--clave", "X_API_KEY=X_TOKEN", "--para", "test 658", "--",
-            sys.executable, "-c", hijo]
+    args = [
+        sys.executable,
+        str(LANZADOR),
+        "--clave",
+        "X_API_KEY=X_TOKEN",
+        "--para",
+        "test 658",
+        "--",
+        sys.executable,
+        "-c",
+        hijo,
+    ]
     r = subprocess.run(args, capture_output=True, env=d.env(), timeout=60)
     assert r.returncode == 0
     assert r.stderr == linea
@@ -276,9 +324,11 @@ def test_lanzador_pasa_el_stderr_del_hijo_byte_a_byte(tmp_path, codificacion):
 
 # ------------------------------------------------------------------ revisión de Prima (16-oct): detección y valores en las etiquetas
 
+
 @pytest.fixture
 def avisos(monkeypatch):
     from faros import notify
+
     enviados = []
     monkeypatch.setattr(notify, "telegram", lambda conn, text: enviados.append(text) or True)
     return enviados
@@ -305,8 +355,10 @@ def test_una_peticion_negada_nueva_tambien_avisa(conn, avisos):
 
 def test_un_aviso_que_falla_no_tumba_la_entrega(conn, monkeypatch):
     from faros import notify
+
     def peta(conn, text):
         raise RuntimeError("telegram caído")
+
     monkeypatch.setattr(notify, "telegram", peta)
     _clave(conn)
     assert cr.deliver(conn, "X_API_KEY", requested_by="mcp:x", purpose="p")["value"] == SECRETO
@@ -314,8 +366,10 @@ def test_un_aviso_que_falla_no_tumba_la_entrega(conn, monkeypatch):
 
 def test_una_clave_pegada_en_purpose_o_requested_by_se_rechaza_sin_registrarla(conn, avisos):
     _clave(conn)
-    for campos in ({"requested_by": "mcp:x", "purpose": "usar " + SECRETO},
-                   {"requested_by": "mcp " + SECRETO, "purpose": "p"}):
+    for campos in (
+        {"requested_by": "mcp:x", "purpose": "usar " + SECRETO},
+        {"requested_by": "mcp " + SECRETO, "purpose": "p"},
+    ):
         e = _err(cr.deliver, conn, "X_API_KEY", **campos)
         assert e.code == "credential.value_in_label" and SECRETO not in str(e)
     assert cr.deliveries(conn) == [] and avisos == []

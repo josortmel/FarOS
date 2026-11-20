@@ -9,7 +9,8 @@ abre FarOS por primera vez y no tiene ninguna vista a la que cambiar. board() de
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 
 
 @pytest.fixture
@@ -47,6 +48,11 @@ def test_388_rechazar_lo_unico_que_habia_no_devuelve_la_bienvenida(conn):
 
 
 def test_388_las_agenticas_no_cuentan_como_empezar_el_tablero(conn):
-    _propose(conn, title="Resumen de correo", kind="agentic", verification_level="auto",
-             job={"prompt": "di hola", "model": "haiku"})
+    _propose(
+        conn,
+        title="Resumen de correo",
+        kind="agentic",
+        verification_level="auto",
+        job={"prompt": "di hola", "model": "haiku"},
+    )
     assert s.board(conn)["started"] is False

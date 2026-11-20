@@ -1,10 +1,13 @@
 """T5.6 (v3.1): registro de MCP — CRUD, búsqueda, import local, materialización por run."""
+
 import json
 from pathlib import Path
 
 import pytest
 
-from faros import db, jobs as jm, mcp_registry as reg, runner
+from faros import db, runner
+from faros import jobs as jm
+from faros import mcp_registry as reg
 from faros.service import TicketError
 
 
@@ -16,8 +19,17 @@ def conn():
 
 
 def test_create_masks_secrets_and_search(conn):
-    s = reg.create(conn, "alice", {"name": "gmail", "command": "node", "args": ["dist/index.js"],
-                                  "env": {"GMAIL_TOKEN": "abc123"}, "note": "correo de owner"})
+    s = reg.create(
+        conn,
+        "alice",
+        {
+            "name": "gmail",
+            "command": "node",
+            "args": ["dist/index.js"],
+            "env": {"GMAIL_TOKEN": "abc123"},
+            "note": "correo de owner",
+        },
+    )
     assert s["env"] == {"GMAIL_TOKEN": "••••"} and s["source"] == "manual" and s["enabled"] is True
     raw = reg.get(conn, s["id"], reveal=True)
     assert raw["env"] == {"GMAIL_TOKEN": "abc123"}
@@ -48,10 +60,17 @@ def test_update_keeps_secret_when_masked(conn):
 
 def test_import_local_upsert_and_manual_not_overwritten(conn, tmp_path):
     cj = tmp_path / "claude.json"
-    cj.write_text(json.dumps({"mcpServers": {
-        "ecodb": {"command": "python", "args": ["-m", "ecodb"], "env": {"ECODB_KEY": "k1"}},
-        "remote": {"type": "http", "url": "https://x/mcp"},
-    }}), encoding="utf-8")
+    cj.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "ecodb": {"command": "python", "args": ["-m", "ecodb"], "env": {"ECODB_KEY": "k1"}},
+                    "remote": {"type": "http", "url": "https://x/mcp"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     res = reg.import_local(conn, "alice", cj)
     assert res["imported"] == 2 and res["names"] == ["ecodb", "remote"]
     e = reg.get_by_name(conn, "ecodb", reveal=True)
@@ -84,15 +103,21 @@ def test_job_mcp_servers_must_exist(conn):
 
 def test_materialize_writes_config_and_allowlist(conn, tmp_path):
     reg.create(conn, "alice", {"name": "gmail", "command": "node", "args": ["i.js"], "env": {"T": "s3cr3t"}})
-    reg.create(conn, "alice", {"name": "remote", "transport": "http", "url": "https://x/mcp",
-                              "headers": {"Authorization": "Bearer zz"}})
+    reg.create(
+        conn,
+        "alice",
+        {"name": "remote", "transport": "http", "url": "https://x/mcp", "headers": {"Authorization": "Bearer zz"}},
+    )
     j = jm.create_job(conn, "alice", "job", "x", mcp_servers=["gmail", "remote"], inherit_mcp=["agenticos"])
     job = jm.get_job(conn, j["id"])
     j2, path = reg.materialize(conn, job, tmp_path)
     cfg = json.loads(Path(path).read_text(encoding="utf-8"))
     assert cfg["mcpServers"]["gmail"] == {"command": "node", "args": ["i.js"], "env": {"T": "s3cr3t"}}
-    assert cfg["mcpServers"]["remote"] == {"type": "http", "url": "https://x/mcp",
-                                           "headers": {"Authorization": "Bearer zz"}}
+    assert cfg["mcpServers"]["remote"] == {
+        "type": "http",
+        "url": "https://x/mcp",
+        "headers": {"Authorization": "Bearer zz"},
+    }
     assert j2["mcp_config"] == str(path)
     assert json.loads(j2["inherit_mcp"]) == ["agenticos", "gmail", "remote"]
     adapter = runner.get_adapter("claude-cli")
@@ -114,9 +139,11 @@ def test_materialize_disabled_server_fails(conn, tmp_path):
 
 def test_backup_scrubs_mcp_env(conn, tmp_path):
     from faros import backup
+
     reg.create(conn, "alice", {"name": "gmail", "command": "node", "env": {"T": "s3cr3t"}})
     dest = tmp_path / "copy.db"
     import sqlite3
+
     out = sqlite3.connect(str(dest))
     conn.backup(out)
     out.close()

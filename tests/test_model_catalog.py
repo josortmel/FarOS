@@ -1,7 +1,9 @@
 """T5.4 (v3.1): catálogo de modelos concretos por familia, caché del refresco, validación en jobs."""
+
 import pytest
 
-from faros import db, jobs as jm, settings
+from faros import db, settings
+from faros import jobs as jm
 from faros.harness import model_catalog as mc
 from faros.service import TicketError
 
@@ -19,7 +21,10 @@ def test_seed_has_families_and_measured_flags():
     assert by["opus"].alias_of == "claude-opus-5-5" and by["opus"].family == "opus"
     # #491: medido el 16-oct con claude -p --model <alias> (modelUsage, CLI 2.1.296)
     assert {a: by[a].alias_of for a in ("haiku", "sonnet", "fable")} == {
-        "haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "fable": "claude-fable-5-1"}
+        "haiku": "claude-haiku-5-5",
+        "sonnet": "claude-sonnet-5-5",
+        "fable": "claude-fable-5-1",
+    }
     assert all(by[i].validated is True for i in ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"))
     assert by["claude-opus-4-6"].validated is True and by["claude-opus-4-6"].source == "measured"
     assert by["claude-sonnet-4-6"].validated is None and by["claude-sonnet-4-6"].source == "seed"
@@ -32,17 +37,22 @@ def test_seed_has_families_and_measured_flags():
 
 def test_merge_cache_marks_rejected_and_adds_unknown():
     entries = mc.seed_entries(["opus"])
-    cache = {"at": "2026-09-04T12:00", "models": {
-        "claude-sonnet-4-6": {"validated": False, "validated_at": "2026-09-04T12:00"},
-        "claude-opus-6": {"validated": True, "validated_at": "2026-09-04T12:00"}}}
+    cache = {
+        "at": "2026-09-04T12:00",
+        "models": {
+            "claude-sonnet-4-6": {"validated": False, "validated_at": "2026-09-04T12:00"},
+            "claude-opus-6": {"validated": True, "validated_at": "2026-09-04T12:00"},
+        },
+    }
     merged = {e.id: e for e in mc.merge_cache(entries, cache)}
     assert merged["claude-sonnet-4-6"].validated is False
     assert merged["claude-opus-6"].validated is True and merged["claude-opus-6"].family == "opus"
 
 
 def test_is_acceptable():
-    entries = mc.merge_cache(mc.seed_entries(["opus"]),
-                             {"at": "x", "models": {"claude-sonnet-4-6": {"validated": False}}})
+    entries = mc.merge_cache(
+        mc.seed_entries(["opus"]), {"at": "x", "models": {"claude-sonnet-4-6": {"validated": False}}}
+    )
     assert mc.is_acceptable("opus", entries)[0]
     assert mc.is_acceptable("claude-opus-4-6", entries)[0]
     assert mc.is_acceptable("claude-nuevo-9", entries) == (True, "forma válida, sin sondar")
@@ -57,8 +67,16 @@ def test_job_model_validated_against_catalog(conn):
     assert jm.get_job(conn, j["id"])["model"] == "claude-opus-4-6"
     with pytest.raises(TicketError, match="desconocido"):
         jm.create_job(conn, "alice", "mal", "x", model="gpt-5")
-    settings.patch(conn, "alice", {"model_catalog": {"at": "2026-09-04T12:00", "models": {
-        "claude-sonnet-4-6": {"validated": False, "validated_at": "2026-09-04T12:00"}}}})
+    settings.patch(
+        conn,
+        "alice",
+        {
+            "model_catalog": {
+                "at": "2026-09-04T12:00",
+                "models": {"claude-sonnet-4-6": {"validated": False, "validated_at": "2026-09-04T12:00"}},
+            }
+        },
+    )
     with pytest.raises(TicketError, match="rechazó"):
         jm.update_job(conn, "alice", j["id"], model="claude-sonnet-4-6")
     # opencode no pasa por el catálogo de claude
@@ -72,6 +90,7 @@ def test_run_probe_and_refresh_async_serialize():
     assert calls == ["a", "b"]
     saved = {}
     import time
+
     started = mc.refresh_async("claude", ["a"], lambda exe, m: True, lambda r: saved.update(r))
     assert started
     for _ in range(50):

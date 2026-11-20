@@ -8,7 +8,8 @@ import threading
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 from faros.service import TicketError
 
 CRITERIO_OTRO = "Lo verifica otra persona, no quien lo hace."
@@ -22,11 +23,19 @@ def conn():
 
 
 def _tarea(conn, owner="alice", nivel="self", criterio=None):
-    return s.propose_ticket(conn, owner, "Arreglar el scheduler", owner=owner, auto_accept=True,
-                            verification_level=nivel, verify_criteria=criterio)
+    return s.propose_ticket(
+        conn,
+        owner,
+        "Arreglar el scheduler",
+        owner=owner,
+        auto_accept=True,
+        verification_level=nivel,
+        verify_criteria=criterio,
+    )
 
 
 # ------------------------------------------------------------------ #414
+
 
 def test_subir_el_nivel_de_self_a_peer_lo_puede_hacer_la_duena(conn):
     t = _tarea(conn)["ticket"]
@@ -70,6 +79,7 @@ def test_avisa_al_completar_una_self_cuyo_criterio_pide_a_otro(conn):
 
 def test_mcp_update_ticket_lleva_el_nivel(monkeypatch):
     from faros import mcp_server as m
+
     sent = {}
     monkeypatch.setattr(m, "_call", lambda method, path, **kw: sent.update(method=method, path=path, **kw) or {"ok": 1})
     m.update_ticket("carol", 7, verification_level="peer")
@@ -77,6 +87,7 @@ def test_mcp_update_ticket_lleva_el_nivel(monkeypatch):
 
 
 # ------------------------------------------------------------------ #481
+
 
 def _hecha_peer(conn, owner="alice"):
     t = _tarea(conn, owner=owner, nivel="peer")["ticket"]
@@ -87,7 +98,7 @@ def _hecha_peer(conn, owner="alice"):
 def test_apuntarse_y_el_segundo_recibe_quien_la_tiene(conn):
     tid = _hecha_peer(conn)
     assert s.claim_verification(conn, "bob", tid)["verify_claimed_by"] == "bob"
-    assert s.claim_verification(conn, "bob", tid)["verify_claimed_by"] == "bob"   # idempotente
+    assert s.claim_verification(conn, "bob", tid)["verify_claimed_by"] == "bob"  # idempotente
     with pytest.raises(TicketError) as e:
         s.claim_verification(conn, "carol", tid)
     assert e.value.code == "verify.already_claimed" and "bob" in str(e.value)
@@ -107,7 +118,7 @@ def test_verificar_una_cogida_por_otro_no_se_puede_y_soltarla_si(conn):
         s.verify_ticket(conn, "carol", tid, "pass")
     assert e.value.code == "verify.claimed_by_other"
     with pytest.raises(TicketError):
-        s.release_verification(conn, "carol", tid)                     # no es suya
+        s.release_verification(conn, "carol", tid)  # no es suya
     assert s.release_verification(conn, "bob", tid)["verify_claimed_by"] is None
     assert s.claim_verification(conn, "carol", tid)["verify_claimed_by"] == "carol"
     assert s.verify_ticket(conn, "carol", tid, "pass")["status"] == "verified"
@@ -144,23 +155,35 @@ def test_dos_a_la_vez_solo_uno_la_consigue(tmp_path):
     hilos = [threading.Thread(target=coger, args=(q,)) for q in ("bob", "carol")]
     [h.start() for h in hilos]
     [h.join() for h in hilos]
-    assert sorted(resultados.values()) in (["bob", "verify.already_claimed"],
-                                           ["carol", "verify.already_claimed"]), resultados
+    assert sorted(resultados.values()) in (["bob", "verify.already_claimed"], ["carol", "verify.already_claimed"]), (
+        resultados
+    )
 
 
 def test_por_la_api_el_segundo_recibe_409_con_quien_la_tiene(tmp_path, monkeypatch):
     import sqlite3
+
     from fastapi.testclient import TestClient
+
     from faros import api
+
     monkeypatch.setattr(api, "load_token", lambda: "t-481")
     db.connect(tmp_path / "t.db").close()
     c = sqlite3.connect(str(tmp_path / "t.db"), check_same_thread=False)
     c.row_factory = sqlite3.Row
     cli, h = TestClient(api.create_app(c)), {"X-FarOS-Token": "t-481"}
     try:
-        tid = cli.post("/api/tickets", headers=h, json={
-            "agent": "owner", "title": "por api", "owner": "alice", "verification_level": "peer",
-            "scheduled_at": "2031-03-05T10:00"}).json()["ticket"]["id"]
+        tid = cli.post(
+            "/api/tickets",
+            headers=h,
+            json={
+                "agent": "owner",
+                "title": "por api",
+                "owner": "alice",
+                "verification_level": "peer",
+                "scheduled_at": "2031-03-05T10:00",
+            },
+        ).json()["ticket"]["id"]
         r = cli.post(f"/api/tickets/{tid}/transition", headers=h, json={"agent": "bob", "action": "claim"})
         assert r.status_code == 200 and r.json()["verify_claimed_by"] == "bob"
         r = cli.post(f"/api/tickets/{tid}/transition", headers=h, json={"agent": "carol", "action": "claim"})

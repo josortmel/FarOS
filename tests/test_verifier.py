@@ -4,7 +4,8 @@ import asyncio
 
 import pytest
 
-from faros import db, jobs, service as s, verifier, runner, harness
+from faros import db, harness, jobs, runner, verifier
+from faros import service as s
 
 
 @pytest.fixture
@@ -20,26 +21,29 @@ def _fake_judge(verdicts):
     async def judge(prompt, model=None, read_dirs=None, read_files=None):
         calls.append(prompt)
         return verdicts.pop(0)
+
     return judge, calls
 
 
 def _manual(conn):
-    return s.propose_ticket(conn, "owner", "Leer el correo", auto_accept=True,
-                            verification_level="peer")["ticket"]
+    return s.propose_ticket(conn, "owner", "Leer el correo", auto_accept=True, verification_level="peer")["ticket"]
 
 
 def test_sweep_runs_sets_verdict_and_completes_linked_only_on_pass(conn, monkeypatch):
     t = _manual(conn)
-    j = jobs.create_job(conn, "owner", "Correo", "resume", ticket_id=t["id"],
-                        verify_criteria="hay un resumen con remitentes")
-    r1 = jobs.create_run(conn, j["id"]); jobs.finish_run(conn, r1["id"], "ok", result_summary="nada")
+    j = jobs.create_job(
+        conn, "owner", "Correo", "resume", ticket_id=t["id"], verify_criteria="hay un resumen con remitentes"
+    )
+    r1 = jobs.create_run(conn, j["id"])
+    jobs.finish_run(conn, r1["id"], "ok", result_summary="nada")
     judge, calls = _fake_judge([{"verdict": "fail", "reason": "no lista remitentes"}])
     monkeypatch.setattr(verifier, "_judge", judge)
     res = asyncio.run(verifier.sweep_runs(conn))
     assert res["swept"] == 1 and [f["run_id"] for f in res["failed"]] == [r1["id"]]
     assert "Correo (job #" in calls[0] and "hay un resumen con remitentes" in calls[0] and "nada" in calls[0]
     assert s._as_dict(conn, s._get(conn, t["id"]))["status"] == "in_progress"
-    r2 = jobs.create_run(conn, j["id"]); jobs.finish_run(conn, r2["id"], "ok", result_summary="De: Ana...")
+    r2 = jobs.create_run(conn, j["id"])
+    jobs.finish_run(conn, r2["id"], "ok", result_summary="De: Ana...")
     judge, _ = _fake_judge([{"verdict": "pass", "reason": "resumen con remitentes"}])
     monkeypatch.setattr(verifier, "_judge", judge)
     res = asyncio.run(verifier.sweep_runs(conn))
@@ -51,21 +55,29 @@ def test_sweep_runs_sets_verdict_and_completes_linked_only_on_pass(conn, monkeyp
 
 def test_sweep_runs_respects_verify_level_none_and_disabled(conn, monkeypatch):
     from faros import settings
+
     j = jobs.create_job(conn, "owner", "Sin juez", "x", verify_level="none")
-    r = jobs.create_run(conn, j["id"]); jobs.finish_run(conn, r["id"], "ok")
+    r = jobs.create_run(conn, j["id"])
+    jobs.finish_run(conn, r["id"], "ok")
     judge, calls = _fake_judge([])
     monkeypatch.setattr(verifier, "_judge", judge)
     assert asyncio.run(verifier.sweep_runs(conn))["swept"] == 0 and calls == []
     j2 = jobs.create_job(conn, "owner", "Con juez", "x")
-    r2 = jobs.create_run(conn, j2["id"]); jobs.finish_run(conn, r2["id"], "ok")
+    r2 = jobs.create_run(conn, j2["id"])
+    jobs.finish_run(conn, r2["id"], "ok")
     settings.patch(conn, "owner", {"verifier_enabled": False})
     assert asyncio.run(verifier.sweep_runs(conn)).get("disabled") is True and calls == []
 
 
 def test_preamble_composed_and_sent_via_append_system_prompt(conn):
-    j = jobs.create_job(conn, "owner", "Resumen de correo", "resume mis correos",
-                        schedule={"type": "weekly", "weekdays": [0, 2, 4], "at": ["08:00"]},
-                        verify_criteria="lista con remitente y asunto")
+    j = jobs.create_job(
+        conn,
+        "owner",
+        "Resumen de correo",
+        "resume mis correos",
+        schedule={"type": "weekly", "weekdays": [0, 2, 4], "at": ["08:00"]},
+        verify_criteria="lista con remitente y asunto",
+    )
     text = runner.compose_preamble(j, 42)
     assert "«Resumen de correo»" in text and "run #42" in text
     assert "lunes, miércoles, viernes a las 08:00" in text and "remitente y asunto" in text

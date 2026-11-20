@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from faros import db, service as s, verifier
+from faros import db, verifier
 
 
 class _Proc:
@@ -15,8 +15,9 @@ class _Proc:
 
     async def communicate(self, data):
         _Proc.prompt = data.decode("utf-8")
-        return json.dumps({"type": "result", "is_error": False,
-                           "structured_output": {"verdict": "pass", "reason": "visto en x.md:1"}}).encode(), b""
+        return json.dumps(
+            {"type": "result", "is_error": False, "structured_output": {"verdict": "pass", "reason": "visto en x.md:1"}}
+        ).encode(), b""
 
 
 @pytest.fixture
@@ -26,6 +27,7 @@ def lanzado(monkeypatch):
     async def fake_exec(*cmd, **kw):
         visto["cmd"], visto["cwd"] = list(cmd), kw.get("cwd")
         return _Proc()
+
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
     return visto
 

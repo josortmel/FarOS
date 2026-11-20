@@ -14,7 +14,9 @@ import json
 
 import pytest
 
-from faros import db, roster, roster_admin as ra, service as s
+from faros import db, roster
+from faros import roster_admin as ra
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -43,8 +45,9 @@ def conn(home):
 
 
 def _hecha(conn, owner="alice", nivel="peer"):
-    t = s.propose_ticket(conn, owner, "Arreglar el scheduler", owner=owner, auto_accept=True,
-                         verification_level=nivel)["ticket"]
+    t = s.propose_ticket(conn, owner, "Arreglar el scheduler", owner=owner, auto_accept=True, verification_level=nivel)[
+        "ticket"
+    ]
     s.start_ticket(conn, owner, t["id"])
     s.complete_ticket(conn, owner, t["id"], "command_output", "pytest: 12 passed")
     return t["id"]

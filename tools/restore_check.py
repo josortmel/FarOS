@@ -9,21 +9,19 @@ Exit 0 = all good, exit 1 = mismatch or corruption.
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from faros.db import connect, DEFAULT_DB
 from faros.backup import verify_backup
+from faros.db import DEFAULT_DB, connect
 
 
 def main():
     parser = argparse.ArgumentParser(description="Verify a FarOS backup.")
     parser.add_argument("--check", required=True, help="Path to backup .db file")
-    parser.add_argument("--db", default=None,
-                        help=f"Production DB (default: $AGENTICOS_DB or {DEFAULT_DB})")
+    parser.add_argument("--db", default=None, help=f"Production DB (default: $AGENTICOS_DB or {DEFAULT_DB})")
     args = parser.parse_args()
 
     prod_conn = connect(args.db)
@@ -34,8 +32,10 @@ def main():
         print(f"FAIL: {result}")
         sys.exit(1)
 
-    print(f"OK: integrity={result['integrity']}, "
-          f"tickets={result['backup_tickets']} (production={result['production_tickets']})")
+    print(
+        f"OK: integrity={result['integrity']}, "
+        f"tickets={result['backup_tickets']} (production={result['production_tickets']})"
+    )
     sys.exit(0)
 
 

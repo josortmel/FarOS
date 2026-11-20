@@ -20,6 +20,7 @@ esconde de quien vaya a buscarlas a propósito. Solo se entregan las que el due�
 cada petición queda registrada.
 Solo stdlib: lo lanza el Python del sistema desde cualquier .mcp.json.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,9 +54,12 @@ def _fallo(msg: str) -> "None":
 
 def _pedir(nombre: str, token: str, quien: str, para: str) -> str:
     cuerpo = json.dumps({"name": nombre, "requested_by": quien, "purpose": para}).encode("utf-8")
-    req = urllib.request.Request(f"http://127.0.0.1:{_puerto()}/api/credentials/deliver", data=cuerpo,
-                                 method="POST", headers={"Content-Type": "application/json",
-                                                         "X-FarOS-Token": token})
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{_puerto()}/api/credentials/deliver",
+        data=cuerpo,
+        method="POST",
+        headers={"Content-Type": "application/json", "X-FarOS-Token": token},
+    )
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return json.loads(r.read())["value"]
@@ -66,7 +70,9 @@ def _pedir(nombre: str, token: str, quien: str, para: str) -> str:
             motivo = e.reason
         _fallo(f"FarOS no entrega «{nombre}» (HTTP {e.code}): {motivo}")
     except (urllib.error.URLError, OSError) as e:
-        _fallo(f"no se puede hablar con FarOS en el puerto {_puerto()} ({type(e).__name__}); ¿está el daemon arrancado?")
+        _fallo(
+            f"no se puede hablar con FarOS en el puerto {_puerto()} ({type(e).__name__}); ¿está el daemon arrancado?"
+        )
 
 
 def main(argv: list[str]) -> int:
@@ -78,7 +84,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--para", required=True)
     p.add_argument("--quien")
     a = p.parse_args(argv[:corte])
-    cmd = argv[corte + 1:]
+    cmd = argv[corte + 1 :]
     if not cmd:
         _fallo("después de «--» va el comando")
     if not a.clave:
@@ -106,8 +112,9 @@ def main(argv: list[str]) -> int:
         hijo = subprocess.Popen([ejecutable, *cmd[1:]], env=env, stderr=subprocess.PIPE)
     except OSError as e:
         _fallo(f"no se puede arrancar {cmd[0]!r}: {e.strerror or type(e).__name__}")
-    hilo = threading.Thread(target=_enmascarar, args=(hijo.stderr, [v.encode("utf-8") for v in valores if v]),
-                            daemon=True)
+    hilo = threading.Thread(
+        target=_enmascarar, args=(hijo.stderr, [v.encode("utf-8") for v in valores if v]), daemon=True
+    )
     hilo.start()
     codigo = hijo.wait()
     hilo.join(timeout=5)

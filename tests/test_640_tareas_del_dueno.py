@@ -8,7 +8,8 @@ agente siguen siendo de su dueña.
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 from faros.service import HOUSE_OWNER, TicketError
 
 
@@ -20,8 +21,9 @@ def conn():
 
 
 def _tarea(conn, owner, nivel="self"):
-    t = s.propose_ticket(conn, HOUSE_OWNER, "Lectura conjunta", owner=owner, verification_level=nivel,
-                         scheduled_at="2031-03-05T10:00")["ticket"]
+    t = s.propose_ticket(
+        conn, HOUSE_OWNER, "Lectura conjunta", owner=owner, verification_level=nivel, scheduled_at="2031-03-05T10:00"
+    )["ticket"]
     s.accept_ticket(conn, HOUSE_OWNER, t["id"])
     return t["id"]
 

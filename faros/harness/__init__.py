@@ -7,7 +7,21 @@ describe como installed=False, no rompe el arranque.
 
 from __future__ import annotations
 
-from .base import HarnessAdapter, ModelInfo, RunResult, Capabilities, BILLING_MODES, COST_KINDS
+from .base import BILLING_MODES, COST_KINDS, Capabilities, HarnessAdapter, ModelInfo, RunResult
+
+# Lo que el paquete ofrece hacia fuera (las clases base se reexportan a propósito).
+__all__ = [
+    "BILLING_MODES",
+    "COST_KINDS",
+    "Capabilities",
+    "HarnessAdapter",
+    "ModelInfo",
+    "RunResult",
+    "all_adapters",
+    "get",
+    "names",
+    "register",
+]
 
 _FACTORIES: dict[str, type] = {}
 _INSTANCES: dict[str, HarnessAdapter] = {}
@@ -56,12 +70,15 @@ class _Missing(HarnessAdapter):
 
 
 from . import claude_cli as _claude  # noqa: E402  (registro al importar)
+
 register(_claude.ClaudeCliAdapter)
 from . import claude_cli_deepseek as _claude_ds  # noqa: E402  (#463)
+
 register(_claude_ds.ClaudeCliDeepSeekAdapter)
 
 try:  # T1.4 (Prima): adapter opencode; si no existe aún, no pasa nada
     from . import opencode as _opencode  # noqa: E402
+
     register(_opencode.OpenCodeAdapter)
 except ImportError:
     pass

@@ -18,13 +18,20 @@ def conn():
 
 
 def _job(conn, at):
-    return jobs.create_job(conn, agent="owner", name="Revista", prompt="haz la revista",
-                           schedule={"type": "recurring", "every_days": 1, "at": at})
+    return jobs.create_job(
+        conn,
+        agent="owner",
+        name="Revista",
+        prompt="haz la revista",
+        schedule={"type": "recurring", "every_days": 1, "at": at},
+    )
 
 
 def _run(conn, job_id, when: datetime):
-    conn.execute("INSERT INTO runs (job_id, started_at, status) VALUES (?, ?, 'ok')",
-                 (job_id, when.isoformat(timespec="seconds")))
+    conn.execute(
+        "INSERT INTO runs (job_id, started_at, status) VALUES (?, ?, 'ok')",
+        (job_id, when.isoformat(timespec="seconds")),
+    )
     conn.commit()
 
 
@@ -36,14 +43,14 @@ def _ayer_creado(conn, job_id):
 
 def test_cambiar_el_calendario_a_una_hora_ya_pasada_no_lanza_nada(conn):
     hoy = datetime.now().replace(second=0, microsecond=0)
-    luego = (hoy + timedelta(hours=1)).strftime("%H:%M")       # aún no toca hoy
-    antes = (hoy - timedelta(hours=1)).strftime("%H:%M")       # ya pasó hoy
+    luego = (hoy + timedelta(hours=1)).strftime("%H:%M")  # aún no toca hoy
+    antes = (hoy - timedelta(hours=1)).strftime("%H:%M")  # ya pasó hoy
     if antes > hoy.strftime("%H:%M") or luego < hoy.strftime("%H:%M"):
         pytest.skip("cerca de medianoche: la hora de antes o la de después cae en otro día")
     j = _job(conn, luego)
     _ayer_creado(conn, j["id"])
     _run(conn, j["id"], hoy - timedelta(days=1) + timedelta(hours=1))  # el de ayer, hecho
-    assert due_jobs(conn, datetime.now()) == []                 # control: nada pendiente
+    assert due_jobs(conn, datetime.now()) == []  # control: nada pendiente
     jobs.update_job(conn, "owner", j["id"], schedule={"type": "recurring", "every_days": 1, "at": antes})
     assert due_jobs(conn, datetime.now()) == []
 
@@ -82,4 +89,4 @@ def test_un_job_recien_creado_no_se_lanza_por_un_disparo_de_antes_de_existir(con
         pytest.skip("cerca de medianoche")
     _job(conn, antes)
     assert due_jobs(conn, datetime.now()) == []
-    assert [x["id"] for x in due_jobs(conn, datetime.now() + timedelta(days=1))] != []   # mañana sí
+    assert [x["id"] for x in due_jobs(conn, datetime.now() + timedelta(days=1))] != []  # mañana sí

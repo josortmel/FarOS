@@ -15,7 +15,7 @@ Puro sobre la DB (solo lecturas). Carriles = agentes de la Casa.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from . import service
 from .service import AGENTS, TicketError
@@ -41,11 +41,18 @@ def _end_time(start: str, duration_min: int | None) -> str | None:
 
 def _base(t: dict) -> dict:
     return {
-        "ticket_id": t["id"], "plan_key": t.get("plan_key"), "title": t["title"],
-        "owner": t.get("owner"), "project_id": t.get("project_id"), "status": t["status"],
-        "priority": t.get("priority"), "due_state": t.get("due_state"),
-        "last_change": t.get("last_change"), "cadence_days": t.get("cadence_days"),
-        "preferred_time": t.get("preferred_time"), "all_day": bool(t.get("all_day")),
+        "ticket_id": t["id"],
+        "plan_key": t.get("plan_key"),
+        "title": t["title"],
+        "owner": t.get("owner"),
+        "project_id": t.get("project_id"),
+        "status": t["status"],
+        "priority": t.get("priority"),
+        "due_state": t.get("due_state"),
+        "last_change": t.get("last_change"),
+        "cadence_days": t.get("cadence_days"),
+        "preferred_time": t.get("preferred_time"),
+        "all_day": bool(t.get("all_day")),
         "duration_min": t.get("duration_min"),
     }
 
@@ -58,9 +65,11 @@ def occurrences(conn, from_date, to_date, agent=None, project_id=None) -> dict:
         raise TicketError(f"rango demasiado grande (> {MAX_RANGE_DAYS} días)")
     if agent is not None and agent not in AGENTS:
         raise TicketError(f"agente desconocido: {agent!r}")
-    tickets = [t for t in service.list_tickets(conn, project_id=project_id, owner=agent,
-                                               include_closed=True)
-               if t.get("kind") == "manual"]
+    tickets = [
+        t
+        for t in service.list_tickets(conn, project_id=project_id, owner=agent, include_closed=True)
+        if t.get("kind") == "manual"
+    ]
     items = []
     for t in tickets:
         base = _base(t)
@@ -79,10 +88,18 @@ def occurrences(conn, from_date, to_date, agent=None, project_id=None) -> dict:
                     start = sched[11:16]
                 else:
                     start = t.get("preferred_time") or (t["closed_at"][11:16] or None)
-                items.append({**base, "kind": "closed", "date": day, "start": start,
-                              "end": _end_time(start, t.get("duration_min")),
-                              "ghost": False, "occurrence_n": 0,
-                              "closed_at": t["closed_at"]})
+                items.append(
+                    {
+                        **base,
+                        "kind": "closed",
+                        "date": day,
+                        "start": start,
+                        "end": _end_time(start, t.get("duration_min")),
+                        "ghost": False,
+                        "occurrence_n": 0,
+                        "closed_at": t["closed_at"],
+                    }
+                )
             continue
         if t.get("cadence_days"):
             items += _recurrence_items(base, t, d_from, d_to)
@@ -90,18 +107,29 @@ def occurrences(conn, from_date, to_date, agent=None, project_id=None) -> dict:
             day = t["scheduled_at"][:10]
             if d_from.isoformat() <= day <= d_to.isoformat():
                 start = None if t.get("all_day") else t["scheduled_at"][11:16]
-                items.append({**base, "kind": "scheduled", "date": day, "start": start,
-                              "end": _end_time(start, t.get("duration_min")),
-                              "ghost": False, "occurrence_n": 0})
+                items.append(
+                    {
+                        **base,
+                        "kind": "scheduled",
+                        "date": day,
+                        "start": start,
+                        "end": _end_time(start, t.get("duration_min")),
+                        "ghost": False,
+                        "occurrence_n": 0,
+                    }
+                )
         elif t.get("due_at"):
             day = t["due_at"][:10]
             if d_from.isoformat() <= day <= d_to.isoformat():
-                items.append({**base, "kind": "due", "date": day, "start": None, "end": None,
-                              "ghost": False, "occurrence_n": 0})
+                items.append(
+                    {**base, "kind": "due", "date": day, "start": None, "end": None, "ghost": False, "occurrence_n": 0}
+                )
     items.sort(key=lambda x: (x["date"], x["start"] or "", x["ticket_id"]))
     from . import settings
+
     return {
-        "from": d_from.isoformat(), "to": d_to.isoformat(),
+        "from": d_from.isoformat(),
+        "to": d_to.isoformat(),
         "lanes": sorted(AGENTS),
         "slots": settings.get(conn, "casa_slots"),
         "items": items,
@@ -128,31 +156,59 @@ def _recurrence_items(base: dict, t: dict, d_from: date, d_to: date) -> list[dic
         # día dentro del rango, como ocurrencia real, no apilada al inicio del rango.
         anchored = t.get("weekday") is not None
         if overdue and not anchored:
-            out.append({**base, "kind": "recurrence", "date": d_from.isoformat(),
-                        "start": start, "end": end, "ghost": False, "occurrence_n": 0,
-                        "overdue_since": next_due.isoformat()})
+            out.append(
+                {
+                    **base,
+                    "kind": "recurrence",
+                    "date": d_from.isoformat(),
+                    "start": start,
+                    "end": end,
+                    "ghost": False,
+                    "occurrence_n": 0,
+                    "overdue_since": next_due.isoformat(),
+                }
+            )
         # las siguientes proyectadas parten de la próxima real, no del rango
         while day < d_from and n < MAX_OCCURRENCES_PER_TICKET:
-            day = siguiente(day); n += 1
+            day = siguiente(day)
+            n += 1
         if overdue and anchored:
             # La vencida se ve en la PRIMERA ocurrencia de su día de la semana dentro del
             # rango (paso 7, no el de cadencia): una quincenal vencida cuyo paso de 14 cae
             # fuera de la semana vista desaparecía (finding de Prima, T4.1, 7-sep).
             show = next_due + timedelta(weeks=((d_from - next_due).days + 6) // 7)
             if show <= d_to:
-                out.append({**base, "kind": "recurrence", "date": show.isoformat(),
-                            "start": start, "end": end, "ghost": False, "occurrence_n": 0,
-                            "overdue_since": next_due.isoformat()})
+                out.append(
+                    {
+                        **base,
+                        "kind": "recurrence",
+                        "date": show.isoformat(),
+                        "start": start,
+                        "end": end,
+                        "ghost": False,
+                        "occurrence_n": 0,
+                        "overdue_since": next_due.isoformat(),
+                    }
+                )
                 if day == show:
-                    day += timedelta(days=cadence); n += 1
+                    day += timedelta(days=cadence)
+                    n += 1
     # #376 (Pepe, 25-sep): una semanal no cambia de día. Si ESTA ocurrencia se movió
     # (next_due_override), las previstas siguientes salen del ANCLA, no del día movido.
-    anclada = (t.get("weekday") is not None and cadence % 7 == 0 and t.get("next_due_override"))
-    natural = (date.fromisoformat(service.next_due_date({**t, "next_due_override": None}))
-               if anclada else None)
+    anclada = t.get("weekday") is not None and cadence % 7 == 0 and t.get("next_due_override")
+    natural = date.fromisoformat(service.next_due_date({**t, "next_due_override": None})) if anclada else None
     while day <= d_to and n < MAX_OCCURRENCES_PER_TICKET:
-        out.append({**base, "kind": "recurrence", "date": day.isoformat(),
-                    "start": start, "end": end, "ghost": n > 0, "occurrence_n": n})
+        out.append(
+            {
+                **base,
+                "kind": "recurrence",
+                "date": day.isoformat(),
+                "start": start,
+                "end": end,
+                "ghost": n > 0,
+                "occurrence_n": n,
+            }
+        )
         if anclada and n == 0:
             # la movida sustituye a la del ancla; la siguiente es la del ancla + cadencia
             day = natural + timedelta(days=cadence)
@@ -160,14 +216,15 @@ def _recurrence_items(base: dict, t: dict, d_from: date, d_to: date) -> list[dic
                 day += timedelta(days=cadence)
             n += 1
             continue
-        day = siguiente(day); n += 1
+        day = siguiente(day)
+        n += 1
     return out
 
 
 # ------------------------------------------------------------------ operaciones (T2.2)
 
-def schedule_ticket(conn, agent, ticket_id, scheduled_at=None, duration_min=None,
-                    all_day=None, note="") -> dict:
+
+def schedule_ticket(conn, agent, ticket_id, scheduled_at=None, duration_min=None, all_day=None, note="") -> dict:
     """Mover de día/hora, estirar duración, marcar todo el día. History legible."""
     t = service._get(conn, ticket_id)
     if t["closed_at"] is not None:
@@ -185,9 +242,17 @@ def schedule_ticket(conn, agent, ticket_id, scheduled_at=None, duration_min=None
         raise TicketError("schedule: nada que cambiar (scheduled_at, duration_min, all_day)")
     before = f"{t['scheduled_at'] or 'sin programar'}" + (f" ({t['duration_min']} min)" if t["duration_min"] else "")
     res = service.update_ticket(conn, agent, ticket_id, **fields)
-    after = f"{res['scheduled_at'] or 'sin programar'}" + (f" ({res['duration_min']} min)" if res["duration_min"] else "")
-    service._append_history(conn, ticket_id, res["status"], res["status"], agent,
-                            f"programada: {before} → {after}" + (f" — {note}" if note else ""))
+    after = f"{res['scheduled_at'] or 'sin programar'}" + (
+        f" ({res['duration_min']} min)" if res["duration_min"] else ""
+    )
+    service._append_history(
+        conn,
+        ticket_id,
+        res["status"],
+        res["status"],
+        agent,
+        f"programada: {before} → {after}" + (f" — {note}" if note else ""),
+    )
     conn.commit()
     return service._as_dict(conn, service._get(conn, ticket_id))
 
@@ -208,8 +273,14 @@ def shift_next_occurrence(conn, agent, ticket_id, new_date, note="") -> dict:
         target = target.isoformat()
     before = service._as_dict(conn, t)["next_due"]
     res = service.update_ticket(conn, agent, ticket_id, next_due_override=target)
-    service._append_history(conn, ticket_id, res["status"], res["status"], agent,
-                            f"próxima ocurrencia: {before} → {res['next_due']} (cadencia {t['cadence_days']} días intacta)"
-                            + (f" — {note}" if note else ""))
+    service._append_history(
+        conn,
+        ticket_id,
+        res["status"],
+        res["status"],
+        agent,
+        f"próxima ocurrencia: {before} → {res['next_due']} (cadencia {t['cadence_days']} días intacta)"
+        + (f" — {note}" if note else ""),
+    )
     conn.commit()
     return service._as_dict(conn, service._get(conn, ticket_id))

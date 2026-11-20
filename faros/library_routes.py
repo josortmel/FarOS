@@ -23,12 +23,16 @@ from . import library as L
 from . import service as s
 
 # R8: sandbox sin allow-scripts ni allow-same-origin, nada de red, solo estilo en línea.
-CSP = ("sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src data:; "
-       "font-src data:; style-src 'unsafe-inline'")
-CSP_META = "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'"   # sin `sandbox`: en una meta no vale
+CSP = (
+    "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; img-src data:; "
+    "font-src data:; style-src 'unsafe-inline'"
+)
+CSP_META = (
+    "default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'"  # sin `sandbox`: en una meta no vale
+)
 HEADERS = {"Content-Security-Policy": CSP, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"}
 
-DIA = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}|semana-[0-9]{4}-[0-9]{2}")      # ASCII + fullmatch (no \d, no $)
+DIA = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}|semana-[0-9]{4}-[0-9]{2}")  # ASCII + fullmatch (no \d, no $)
 FECHA = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 PUBLICADO = L.PUBLICADO_RE
 CAMPOS_POST = {"ruta", "clase", "ticket"}
@@ -36,25 +40,35 @@ MAX_ID = 2**63 - 1
 
 
 def _prohibido() -> JSONResponse:
-    return JSONResponse(status_code=403, headers=HEADERS,
-                        content={"error": "forbidden", "reason": "no disponible", "code": "library.forbidden"})
+    return JSONResponse(
+        status_code=403,
+        headers=HEADERS,
+        content={"error": "forbidden", "reason": "no disponible", "code": "library.forbidden"},
+    )
 
 
 def _pagina(titulo: str, cuerpo: str) -> str:
-    return ('<!doctype html><html><head>'
-            f'<meta http-equiv="Content-Security-Policy" content="{CSP_META}">'
-            '<meta charset="utf-8">'
-            f'<title>{_html.escape(titulo, quote=False)}</title>'
-            '<style>body{font:16px/1.55 system-ui,sans-serif;max-width:46rem;margin:1rem auto;padding:0 1rem}'
-            'pre{white-space:pre-wrap}table{border-collapse:collapse}td,th{border:1px solid #8884;padding:.2rem .5rem}'
-            f'</style></head><body>{cuerpo}</body></html>')
+    return (
+        "<!doctype html><html><head>"
+        f'<meta http-equiv="Content-Security-Policy" content="{CSP_META}">'
+        '<meta charset="utf-8">'
+        f"<title>{_html.escape(titulo, quote=False)}</title>"
+        "<style>body{font:16px/1.55 system-ui,sans-serif;max-width:46rem;margin:1rem auto;padding:0 1rem}"
+        "pre{white-space:pre-wrap}table{border-collapse:collapse}td,th{border:1px solid #8884;padding:.2rem .5rem}"
+        f"</style></head><body>{cuerpo}</body></html>"
+    )
 
 
 def register(app, conn, dep, get_env) -> None:
     def abrir(row, env) -> str | None:
         pub = row["publicado"]
-        if (not row["interactivo"] or not pub or not PUBLICADO.fullmatch(pub) or not env.abrir_base
-                or not (env.publicado_dir / pub).is_file()):
+        if (
+            not row["interactivo"]
+            or not pub
+            or not PUBLICADO.fullmatch(pub)
+            or not env.abrir_base
+            or not (env.publicado_dir / pub).is_file()
+        ):
             return None
         return env.abrir_base.rstrip("/") + "/" + pub
 
@@ -65,7 +79,7 @@ def register(app, conn, dep, get_env) -> None:
 
     def permitido(item_id: int):
         env = get_env()
-        if not 0 < item_id <= MAX_ID:           # fuera de rango de SQLite = como cualquier id que no existe
+        if not 0 < item_id <= MAX_ID:  # fuera de rango de SQLite = como cualquier id que no existe
             return None, env
         row = conn.execute("SELECT * FROM library_items WHERE id=?", (item_id,)).fetchone()
         if row is None or row["estado"] != "presente" or not L.permitida(row["ruta"], env.raices):
@@ -80,15 +94,24 @@ def register(app, conn, dep, get_env) -> None:
             return None
         esperado = Path(base) / f"revista-{m.group(1)}.html"
         real = os.path.realpath(esperado)
-        if (os.path.normcase(os.path.realpath(guardado)) != os.path.normcase(real)
-                or os.path.normcase(os.path.dirname(real)) != os.path.normcase(os.path.realpath(base))
-                or not os.path.isfile(real) or L.en_lista_negra(real)):
+        if (
+            os.path.normcase(os.path.realpath(guardado)) != os.path.normcase(real)
+            or os.path.normcase(os.path.dirname(real)) != os.path.normcase(os.path.realpath(base))
+            or not os.path.isfile(real)
+            or L.en_lista_negra(real)
+        ):
             return None
         return L._leer(real)
 
     @app.get("/api/library/items", dependencies=dep)
-    async def library_items(q: str | None = None, clase: str | None = None, desde: str | None = None,
-                            hasta: str | None = None, limite: int = Query(50), offset: int = Query(0)):
+    async def library_items(
+        q: str | None = None,
+        clase: str | None = None,
+        desde: str | None = None,
+        hasta: str | None = None,
+        limite: int = Query(50),
+        offset: int = Query(0),
+    ):
         env = get_env()
         if not 1 <= limite <= 500:
             raise s.TicketError("limite debe estar entre 1 y 500", field="limite", code="limite.invalid")
@@ -100,8 +123,16 @@ def register(app, conn, dep, get_env) -> None:
             if v is not None and not FECHA.fullmatch(v):
                 raise s.TicketError(f"{campo} debe ser AAAA-MM-DD", field=campo, code=f"{campo}.invalid")
         try:
-            filas = L.buscar(conn, (q or "")[:200], clase=clase, desde=desde, hasta=hasta, limite=limite,
-                             offset=offset, filtro=lambda r: L.permitida(r["ruta"], env.raices))
+            filas = L.buscar(
+                conn,
+                (q or "")[:200],
+                clase=clase,
+                desde=desde,
+                hasta=hasta,
+                limite=limite,
+                offset=offset,
+                filtro=lambda r: L.permitida(r["ruta"], env.raices),
+            )
         except ValueError as e:
             raise s.TicketError(str(e), field="q", code="q.invalid")
         return [fila(r, env) for r in filas]
@@ -112,8 +143,12 @@ def register(app, conn, dep, get_env) -> None:
         if row is None:
             return _prohibido()
         d = fila(row, env)
-        d["enlaces"] = [dict(r) for r in conn.execute(
-            "SELECT ticket_id, job_id, run_id FROM library_links WHERE item_id=? ORDER BY rowid", (item_id,))]
+        d["enlaces"] = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT ticket_id, job_id, run_id FROM library_links WHERE item_id=? ORDER BY rowid", (item_id,)
+            )
+        ]
         return d
 
     @app.get("/api/library/items/{item_id}/content", dependencies=dep)
@@ -129,9 +164,17 @@ def register(app, conn, dep, get_env) -> None:
                 return _prohibido()
             if row["ruta"].lower().endswith((".html", ".htm")):
                 texto = L._texto_de_html(texto)
-            return JSONResponse(headers=HEADERS, content={
-                "id": row["id"], "titulo": row["titulo"], "clase": row["clase"], "total": len(texto),
-                "texto": texto[:max], "truncado": len(texto) > max})
+            return JSONResponse(
+                headers=HEADERS,
+                content={
+                    "id": row["id"],
+                    "titulo": row["titulo"],
+                    "clase": row["clase"],
+                    "total": len(texto),
+                    "texto": texto[:max],
+                    "truncado": len(texto) > max,
+                },
+            )
         if row["interactivo"]:
             return JSONResponse(headers=HEADERS, content={"abrir": abrir(row, env)})
         maquetado = html_de_revista(row, env)
@@ -145,7 +188,7 @@ def register(app, conn, dep, get_env) -> None:
             return HTMLResponse(texto, headers=HEADERS)
         if nombre.endswith((".md", ".markdown")):
             cuerpo = L.md_a_html(texto)
-        else:                                           # carpeta de un run, .txt...: texto plano
+        else:  # carpeta de un run, .txt...: texto plano
             cuerpo = "<pre>" + _html.escape(texto, quote=False) + "</pre>"
         return HTMLResponse(_pagina(row["titulo"], cuerpo), headers=HEADERS)
 
@@ -161,14 +204,20 @@ def register(app, conn, dep, get_env) -> None:
         if clase not in L.CLASES:
             raise s.TicketError(f"clase debe ser una de {list(L.CLASES)}", field="clase", code="clase.invalid")
         if ticket is not None:
-            if (not isinstance(ticket, int) or isinstance(ticket, bool) or not 1 <= ticket <= MAX_ID
-                    or conn.execute("SELECT 1 FROM tickets WHERE id=?", (ticket,)).fetchone() is None):
+            if (
+                not isinstance(ticket, int)
+                or isinstance(ticket, bool)
+                or not 1 <= ticket <= MAX_ID
+                or conn.execute("SELECT 1 FROM tickets WHERE id=?", (ticket,)).fetchone() is None
+            ):
                 raise s.TicketError("ticket no existe", field="ticket", code="ticket.invalid")
         item_id = L.registrar(conn, ruta, clase, "manual", ticket_id=ticket, env=env)
         if item_id is None:
             return _prohibido()
-        return JSONResponse(status_code=201, content=fila(
-            conn.execute("SELECT * FROM library_items WHERE id=?", (item_id,)).fetchone(), env))
+        return JSONResponse(
+            status_code=201,
+            content=fila(conn.execute("SELECT * FROM library_items WHERE id=?", (item_id,)).fetchone(), env),
+        )
 
     @app.get("/api/library/revista/{dia}", dependencies=dep)
     async def library_revista(dia: str):
@@ -178,11 +227,13 @@ def register(app, conn, dep, get_env) -> None:
         raiz = next((r for r in env.raices if r["clase"] == "revista" and r["tipo"] == "carpeta"), None)
         ruta = Path(raiz["ruta"]) / f"{dia}.md" if raiz else None
         if ruta is None or not ruta.is_file() or not L.permitida(ruta, env.raices):
-            return JSONResponse(status_code=404, content={"error": "not_found", "reason": "sin revista de ese día",
-                                                          "code": "library.not_found"})
+            return JSONResponse(
+                status_code=404,
+                content={"error": "not_found", "reason": "sin revista de ese día", "code": "library.not_found"},
+            )
         clave = os.path.normcase(os.path.realpath(ruta))
         row = conn.execute("SELECT * FROM library_items WHERE ruta=? AND estado='presente'", (clave,)).fetchone()
-        if row is None:         # la única escritura en un GET: ruta construida con la regex, nunca del cliente
+        if row is None:  # la única escritura en un GET: ruta construida con la regex, nunca del cliente
             item_id = L.registrar(conn, ruta, "revista", "manual", env=env)
             row = conn.execute("SELECT * FROM library_items WHERE id=?", (item_id,)).fetchone() if item_id else None
         if row is None:

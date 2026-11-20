@@ -1,9 +1,11 @@
 """T4.1/T4.2 (v3.1): archivo/cancelación de workflows, búsqueda por nombre, repo_root."""
+
 from pathlib import Path
 
 import pytest
 
-from faros import db, service as s, workflows as w
+from faros import db
+from faros import workflows as w
 from faros.service import TicketError
 
 
@@ -15,11 +17,18 @@ def conn():
 
 
 def _plan(name):
-    return {"workflow": {"name": name, "kind": "construccion", "spec_path": "docs/SPEC.md",
-                         "plan_path": f"plans/{name}.plan.json", "project": "Demo",
-                         "coordinator": "alice"},
-            "phases": ["core"],
-            "tasks": [{"key": "T1", "phase": "core", "title": "x", "criterio": "y"}]}
+    return {
+        "workflow": {
+            "name": name,
+            "kind": "construccion",
+            "spec_path": "docs/SPEC.md",
+            "plan_path": f"plans/{name}.plan.json",
+            "project": "Demo",
+            "coordinator": "alice",
+        },
+        "phases": ["core"],
+        "tasks": [{"key": "T1", "phase": "core", "title": "x", "criterio": "y"}],
+    }
 
 
 def test_archive_only_from_closed_or_cancelled(conn):
@@ -47,9 +56,11 @@ def test_cancel_requires_reason_and_rejects_open_tickets(conn):
     assert res["status"] == "cancelled"
     t = conn.execute("SELECT status FROM tickets WHERE workflow_id=?", (wf["id"],)).fetchone()
     assert t["status"] == "rejected"
-    h = conn.execute("SELECT note FROM ticket_history WHERE ticket_id="
-                     "(SELECT id FROM tickets WHERE workflow_id=?) ORDER BY id DESC LIMIT 1",
-                     (wf["id"],)).fetchone()
+    h = conn.execute(
+        "SELECT note FROM ticket_history WHERE ticket_id="
+        "(SELECT id FROM tickets WHERE workflow_id=?) ORDER BY id DESC LIMIT 1",
+        (wf["id"],),
+    ).fetchone()
     assert "[workflow cancelado] cambió el producto" == h["note"]
     assert w.update_workflow(conn, "alice", wf["id"], status="archived")["status"] == "archived"
 
@@ -99,6 +110,7 @@ def test_repo_root_on_import_and_patch_and_documents(conn, tmp_path):
 
 def test_settings_repo_root_default_used(conn, tmp_path):
     from faros import settings
+
     root = tmp_path / "repo2"
     (root / "docs").mkdir(parents=True)
     (root / "docs" / "SPEC.md").write_text("# spec", encoding="utf-8")

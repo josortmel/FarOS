@@ -9,6 +9,7 @@ agente puede leer es un token que muere al terminar su run; la clave no sale del
 Límite, dicho: durante el run, el agente puede usar su token para llamar a DeepSeek a cargo de la cuenta,
 igual que ya podía con la clave. Lo que se quita es que se la lleve.
 """
+
 from __future__ import annotations
 
 import secrets
@@ -22,10 +23,10 @@ PREFIJO_TOKEN = "faros-run-"
 # Lo que no se reenvía: lo que lleva la credencial del run y lo que httpx recalcula.
 _FUERA = {"authorization", "x-api-key", "host", "content-length", "connection", "accept-encoding"}
 
-PUERTO = 8756                  # lo fija el daemon al arrancar (daemon.main)
-_TRANSPORTE = None              # los tests ponen aquí un httpx.MockTransport (la suite no sale a la red)
+PUERTO = 8756  # lo fija el daemon al arrancar (daemon.main)
+_TRANSPORTE = None  # los tests ponen aquí un httpx.MockTransport (la suite no sale a la red)
 _lock = threading.Lock()
-_tokens: dict[str, str] = {}   # token → para qué (run #N, juez externo)
+_tokens: dict[str, str] = {}  # token → para qué (run #N, juez externo)
 
 
 def emitir(para: str) -> str:
@@ -66,9 +67,11 @@ def cabeceras_hacia_fuera(headers, clave: str) -> dict:
 
 def _error(status: int, mensaje: str):
     from fastapi.responses import JSONResponse
+
     # La forma de error de la API de Anthropic: es la que entiende el `claude -p` del run.
-    return JSONResponse({"type": "error", "error": {"type": "authentication_error", "message": mensaje}},
-                        status_code=status)
+    return JSONResponse(
+        {"type": "error", "error": {"type": "authentication_error", "message": mensaje}}, status_code=status
+    )
 
 
 async def reenviar(request, path: str, clave: str):
@@ -76,6 +79,7 @@ async def reenviar(request, path: str, clave: str):
     `claude -p` pide los mensajes con stream=true). Sin token vigente o sin clave, 401 sin salir de casa."""
     from starlette.background import BackgroundTask
     from starlette.responses import StreamingResponse
+
     if not vigente(token_de(request.headers)):
         return _error(401, "token de run de FarOS no válido o caducado (#1109)")
     if not clave:
@@ -85,8 +89,9 @@ async def reenviar(request, path: str, clave: str):
         url += f"?{request.url.query}"
     cliente = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=20.0), transport=_TRANSPORTE)
     try:
-        peticion = cliente.build_request(request.method, url, content=await request.body(),
-                                         headers=cabeceras_hacia_fuera(request.headers, clave))
+        peticion = cliente.build_request(
+            request.method, url, content=await request.body(), headers=cabeceras_hacia_fuera(request.headers, clave)
+        )
         respuesta = await cliente.send(peticion, stream=True)
     except httpx.HTTPError as e:
         await cliente.aclose()
@@ -96,7 +101,11 @@ async def reenviar(request, path: str, clave: str):
         await respuesta.aclose()
         await cliente.aclose()
 
-    cabeceras = {k: v for k, v in respuesta.headers.items()
-                 if k.lower() not in {"content-length", "content-encoding", "transfer-encoding", "connection"}}
-    return StreamingResponse(respuesta.aiter_bytes(), status_code=respuesta.status_code, headers=cabeceras,
-                             background=BackgroundTask(cerrar))
+    cabeceras = {
+        k: v
+        for k, v in respuesta.headers.items()
+        if k.lower() not in {"content-length", "content-encoding", "transfer-encoding", "connection"}
+    }
+    return StreamingResponse(
+        respuesta.aiter_bytes(), status_code=respuesta.status_code, headers=cabeceras, background=BackgroundTask(cerrar)
+    )

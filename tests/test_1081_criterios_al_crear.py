@@ -24,7 +24,10 @@ def test_g1_la_suite_sin_comando_avisa_y_con_el_comando_no():
 
 def test_c3_suite_completa_en_verde_avisa_y_el_comando_exacto_con_rojo_no():
     assert _puntos("suite completa en verde") == [4]
-    assert _puntos("`python -m pytest -q tests/test_431_cambio_calendario.py` en verde en el commit y rojo en el padre") == []
+    assert (
+        _puntos("`python -m pytest -q tests/test_431_cambio_calendario.py` en verde en el commit y rojo en el padre")
+        == []
+    )
 
 
 def test_arreglado_con_test_sin_rojo_avisa():
@@ -43,7 +46,10 @@ def test_sin_criterio_avisa_si_alguien_tiene_que_verificar():
 
 
 def test_un_criterio_de_texto_bien_escrito_no_avisa():
-    assert _puntos("Explica cada paper, ticket y decisión citados; los nombres de los agentes no hay que definirlos.") == []
+    assert (
+        _puntos("Explica cada paper, ticket y decisión citados; los nombres de los agentes no hay que definirlos.")
+        == []
+    )
 
 
 @pytest.fixture
@@ -57,13 +63,24 @@ def cli(tmp_path, monkeypatch):
 
 
 def test_crear_por_la_api_devuelve_el_aviso_sin_bloquear(cli):
-    r = cli.post("/api/tickets", headers=H, json={"agent": "alice", "title": "x", "verification_level": "peer",
-                                                  "verify_criteria": "la suite en verde"})
+    r = cli.post(
+        "/api/tickets",
+        headers=H,
+        json={"agent": "alice", "title": "x", "verification_level": "peer", "verify_criteria": "la suite en verde"},
+    )
     assert r.status_code == 200
     assert [a["punto"] for a in r.json()["criterion_warnings"]] == [4]
-    assert r.json()["ticket"]["verify_criteria"] == "la suite en verde"   # se guarda igual
-    bueno = cli.post("/api/tickets", headers=H, json={"agent": "alice", "title": "y", "verification_level": "peer",
-                                                      "verify_criteria": "`pytest -q tests/test_y.py` en verde"})
+    assert r.json()["ticket"]["verify_criteria"] == "la suite en verde"  # se guarda igual
+    bueno = cli.post(
+        "/api/tickets",
+        headers=H,
+        json={
+            "agent": "alice",
+            "title": "y",
+            "verification_level": "peer",
+            "verify_criteria": "`pytest -q tests/test_y.py` en verde",
+        },
+    )
     assert bueno.json()["criterion_warnings"] == []
 
 

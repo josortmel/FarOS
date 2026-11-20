@@ -8,6 +8,7 @@ prioridad acordada). Lo que toca de verdad lo lee cada uno en su tablero.
 - Si el daemon estuvo parado, solo suena lo que empezó en los últimos VENTANA_S segundos.
 - Al dueño no se le manda por el relay: lo suyo va por el bot de Telegram (#1189, del_dueno).
 - FAROS_TIMBRE=0 lo apaga (tests y copias de prueba de la casa)."""
+
 import json
 import logging
 import os
@@ -32,12 +33,13 @@ def activo(conn=None) -> bool:
     if conn is None:
         return True
     from . import settings
+
     return bool(settings.get(conn, "timbre_activo"))
 
 
 def _hasta(valor, ahora: datetime) -> str | None:
     """«1h», «3h», «mañana» (hasta las 00:00 de mañana), «siempre», una fecha ISO, o vacío para quitarlo."""
-    v = (str(valor).strip().lower() if valor is not None else "")
+    v = str(valor).strip().lower() if valor is not None else ""
     if v in ("", "nada", "quitar", "no"):
         return None
     if v == "siempre":
@@ -47,12 +49,13 @@ def _hasta(valor, ahora: datetime) -> str | None:
     m = re.fullmatch(r"(\d{1,2})\s*h", v)
     if m:
         return (ahora + timedelta(hours=int(m.group(1)))).isoformat(timespec="seconds")
-    return datetime.fromisoformat(str(valor).strip()).isoformat(timespec="seconds")   # ValueError si no se entiende
+    return datetime.fromisoformat(str(valor).strip()).isoformat(timespec="seconds")  # ValueError si no se entiende
 
 
 def silencios(conn, ahora: datetime | None = None) -> dict[str, str]:
     """Los silencios que siguen vigentes ahora."""
     from . import settings
+
     ahora = ahora or datetime.now()
     out = {}
     for agente, hasta in (settings.get(conn, "timbre_silencio") or {}).items():
@@ -71,17 +74,24 @@ def silenciar(conn, quien: str, agente: str, hasta, ahora: datetime | None = Non
     """Cada uno silencia el suyo; el dueño de la casa puede quitar o poner el de cualquiera (desde Ajustes)."""
     from . import settings
     from .service import TicketError
+
     if agente not in roster.AGENTS:
         raise TicketError(f"agente desconocido: {agente!r}", field="agente")
     if quien != agente and quien != roster.HOUSE_OWNER:
-        raise TicketError("cada uno silencia solo su timbre (o el dueño de la casa desde Ajustes)",
-                          field="agente", code="timbre.solo_el_suyo")
+        raise TicketError(
+            "cada uno silencia solo su timbre (o el dueño de la casa desde Ajustes)",
+            field="agente",
+            code="timbre.solo_el_suyo",
+        )
     ahora = ahora or datetime.now()
     try:
         valor = _hasta(hasta, ahora)
     except ValueError:
-        raise TicketError("«hasta» no se entiende: «1h», «mañana», «siempre», una fecha ISO o vacío para quitarlo",
-                          field="hasta", code="timbre.hasta_invalido")
+        raise TicketError(
+            "«hasta» no se entiende: «1h», «mañana», «siempre», una fecha ISO o vacío para quitarlo",
+            field="hasta",
+            code="timbre.hasta_invalido",
+        )
     actual = silencios(conn, ahora)
     if valor is None:
         actual.pop(agente, None)
@@ -96,10 +106,12 @@ def marcar_libre(conn, quien: str, ticket_id: int, libre: bool = True) -> dict:
     aviso a mitad de su hora libre parte su tarea en dos y marca las dos (Pepe, 13-nov). El dueño, las de todos."""
     from . import service, settings
     from .service import TicketError
+
     t = service._get(conn, int(ticket_id))
     if quien != t["owner"] and quien != roster.HOUSE_OWNER:
-        raise TicketError("cada uno marca solo sus tareas como tiempo libre", field="ticket_id",
-                          code="timbre.solo_las_suyas")
+        raise TicketError(
+            "cada uno marca solo sus tareas como tiempo libre", field="ticket_id", code="timbre.solo_las_suyas"
+        )
     actual = dict(settings.get(conn, "timbre_tiempo_libre") or {})
     ids = [int(x) for x in actual.get("tareas", []) if int(x) != int(ticket_id)]
     if libre:
@@ -122,7 +134,7 @@ def ficheros(conn) -> tuple[Path | None, Path | None]:
 def estado(conn, fecha: str | None = None) -> dict:
     """Lo que enseña la app: si está encendido, cuándo dio la última vuelta y qué ha sonado ese día y a quién."""
     fecha = fecha or datetime.now().date().isoformat()
-    datetime.strptime(fecha, "%Y-%m-%d")   # valida (ValueError → 400 en la API)
+    datetime.strptime(fecha, "%Y-%m-%d")  # valida (ValueError → 400 en la API)
     est, reg = ficheros(conn)
     ultima = None
     if est is not None and est.exists():
@@ -136,8 +148,14 @@ def estado(conn, fecha: str | None = None) -> dict:
                 continue
             if a.get("hora", "").startswith(fecha):
                 avisos.append(a)
-    return {"activo": activo(conn), "apagado_por_entorno": os.environ.get("FAROS_TIMBRE", "1") == "0",
-            "ultima_vuelta": ultima, "fecha": fecha, "silencios": silencios(conn), "avisos": avisos}
+    return {
+        "activo": activo(conn),
+        "apagado_por_entorno": os.environ.get("FAROS_TIMBRE", "1") == "0",
+        "ultima_vuelta": ultima,
+        "fecha": fecha,
+        "silencios": silencios(conn),
+        "avisos": avisos,
+    }
 
 
 def franjas(conn, desde: datetime, hasta: datetime) -> dict[str, list[dict]]:
@@ -183,14 +201,19 @@ def mensaje_libre(items: list[dict], ahora: datetime, texto: str | None) -> str:
 def mensaje(items: list[dict], ahora: datetime | None = None) -> str:
     """La hora es la de ahora; si una tarea empezaba antes (llega tarde, p. ej. tras un reinicio), se dice cuándo."""
     hora = (ahora or datetime.now()).strftime("%H:%M")
-    plan = "; ".join(f"#{i['ticket_id']} «{i['title']}»" + ("" if i["start"] == hora else f" (a las {i['start']})")
-                     for i in sorted(items, key=lambda i: i["start"]))
-    return (f"Son las {hora}. Tenías planeado: {plan}. Cierra lo que estés haciendo con su siguiente paso "
-            f"en FarOS y empieza con esto, salvo que tengas una prioridad acordada con {roster.HOUSE_OWNER or 'el dueño'}. "
-            f"— FarOS (timbre de franjas)")
+    plan = "; ".join(
+        f"#{i['ticket_id']} «{i['title']}»" + ("" if i["start"] == hora else f" (a las {i['start']})")
+        for i in sorted(items, key=lambda i: i["start"])
+    )
+    return (
+        f"Son las {hora}. Tenías planeado: {plan}. Cierra lo que estés haciendo con su siguiente paso "
+        f"en FarOS y empieza con esto, salvo que tengas una prioridad acordada con {roster.HOUSE_OWNER or 'el dueño'}. "
+        f"— FarOS (timbre de franjas)"
+    )
 
 
 # ---------------------------------------------------------------- relay (WebSocket del hub)
+
 
 def _token() -> str:
     t = os.environ.get("ECORELAY_WS_TOKEN")
@@ -220,8 +243,17 @@ def enviar(avisos: dict[str, str], url: str | None = None, conectar=None) -> dic
         token, nombre = _token(), NOMBRE
         for intento in range(5):
             ws.send(json.dumps({"auth": token}))
-            ws.send(json.dumps({"type": "register", "name": nombre, "cwd": str(Path.home()),
-                                "git_branch": "", "protocol_version": PROTOCOLO_RELAY}))
+            ws.send(
+                json.dumps(
+                    {
+                        "type": "register",
+                        "name": nombre,
+                        "cwd": str(Path.home()),
+                        "git_branch": "",
+                        "protocol_version": PROTOCOLO_RELAY,
+                    }
+                )
+            )
             r = _esperar(ws, lambda m: m.get("type") in ("ack", "err"))
             if r.get("type") == "ack":
                 break
@@ -246,6 +278,7 @@ def enviar(avisos: dict[str, str], url: str | None = None, conectar=None) -> dic
 
 # ---------------------------------------------------------------- estado entre vueltas
 
+
 class Timbre:
     """Se reparte en dos pasos para no usar la conexión de la base fuera de su hilo:
     preparar() lee el calendario (hilo del scheduler) y enviar() habla con el relay (otro hilo)."""
@@ -263,7 +296,7 @@ class Timbre:
         except (OSError, ValueError):
             log.warning("timbre: no pude leer %s; empiezo con la ventana de %ss", estado, VENTANA_S)
         self.enviados: set = set()
-        self.inicio = self.ultimo   # #1189: lo del dueño no mira más atrás que esto (no repite tras reiniciar)
+        self.inicio = self.ultimo  # #1189: lo del dueño no mira más atrás que esto (no repite tras reiniciar)
 
     def del_dueno(self, conn, ahora: datetime | None = None) -> list[dict]:
         """#1189: lo del dueño de la casa, que va por el bot de Telegram. Lleva su propia cuenta: si Telegram
@@ -273,8 +306,11 @@ class Timbre:
         if not dueno or dueno in silencios(conn, ahora):
             return []
         desde = max(self.inicio, ahora - timedelta(seconds=VENTANA_S))
-        return [i for i in franjas(conn, desde, ahora).get(dueno, [])
-                if (dueno, i["ticket_id"], i["date"], i["start"]) not in self.enviados]
+        return [
+            i
+            for i in franjas(conn, desde, ahora).get(dueno, [])
+            if (dueno, i["ticket_id"], i["date"], i["start"]) not in self.enviados
+        ]
 
     def marcar_dueno(self, items: list[dict], ahora: datetime, resultado: str) -> None:
         dueno = roster.HOUSE_OWNER
@@ -283,11 +319,21 @@ class Timbre:
         if self.registro is not None and items:
             try:
                 with self.registro.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps({
-                        "hora": ahora.isoformat(timespec="seconds"), "agente": dueno, "resultado": resultado,
-                        "por": "telegram",
-                        "tareas": [{"id": i["ticket_id"], "titulo": i["title"], "inicio": i["start"]} for i in items],
-                    }, ensure_ascii=False) + "\n")
+                    f.write(
+                        json.dumps(
+                            {
+                                "hora": ahora.isoformat(timespec="seconds"),
+                                "agente": dueno,
+                                "resultado": resultado,
+                                "por": "telegram",
+                                "tareas": [
+                                    {"id": i["ticket_id"], "titulo": i["title"], "inicio": i["start"]} for i in items
+                                ],
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
             except OSError:
                 log.warning("timbre: no pude apuntar en %s", self.registro)
 
@@ -295,7 +341,7 @@ class Timbre:
         ahora = ahora or datetime.now()
         desde = max(self.ultimo, ahora - timedelta(seconds=VENTANA_S))
         pendientes = {}
-        callados = silencios(conn, ahora)   # lo de un silenciado no suena ni se guarda para después
+        callados = silencios(conn, ahora)  # lo de un silenciado no suena ni se guarda para después
         for agente, items in franjas(conn, desde, ahora).items():
             if agente == roster.HOUSE_OWNER or agente in callados:
                 continue
@@ -304,11 +350,15 @@ class Timbre:
                 pendientes[agente] = nuevos
         # Tiempo libre: solo si TODO lo que suena a la vez es descanso (si coincide con trabajo, manda el aviso normal).
         from . import settings
+
         libre = settings.get(conn, "timbre_tiempo_libre") or {}
         ids_libres = {int(x) for x in libre.get("tareas", [])}
         textos = libre.get("textos", {})
-        libres = {agente: texto_libre(textos.get(agente)) for agente, items in pendientes.items()
-                  if ids_libres and all(i["ticket_id"] in ids_libres for i in items)}
+        libres = {
+            agente: texto_libre(textos.get(agente))
+            for agente, items in pendientes.items()
+            if ids_libres and all(i["ticket_id"] in ids_libres for i in items)
+        }
         return {"ahora": ahora, "pendientes": pendientes, "libres": libres}
 
     def confirmar(self, plan: dict, res: dict | None) -> None:
@@ -324,11 +374,21 @@ class Timbre:
             try:
                 with self.registro.open("a", encoding="utf-8") as f:
                     for agente, items in sorted(plan["pendientes"].items()):
-                        f.write(json.dumps({
-                            "hora": plan["ahora"].isoformat(timespec="seconds"), "agente": agente,
-                            "resultado": res.get(agente, "sin_respuesta"),
-                            "tareas": [{"id": i["ticket_id"], "titulo": i["title"], "inicio": i["start"]} for i in items],
-                        }, ensure_ascii=False) + "\n")
+                        f.write(
+                            json.dumps(
+                                {
+                                    "hora": plan["ahora"].isoformat(timespec="seconds"),
+                                    "agente": agente,
+                                    "resultado": res.get(agente, "sin_respuesta"),
+                                    "tareas": [
+                                        {"id": i["ticket_id"], "titulo": i["title"], "inicio": i["start"]}
+                                        for i in items
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
             except OSError:
                 log.warning("timbre: no pude apuntar en %s", self.registro)
         self._guardar()
@@ -347,6 +407,11 @@ class Timbre:
 
     def avisos(self, plan: dict) -> dict[str, str]:
         libres = plan.get("libres", {})
-        return {agente: (mensaje_libre(items, plan["ahora"], libres[agente]) if agente in libres
-                         else mensaje(items, plan["ahora"]))
-                for agente, items in plan["pendientes"].items()}
+        return {
+            agente: (
+                mensaje_libre(items, plan["ahora"], libres[agente])
+                if agente in libres
+                else mensaje(items, plan["ahora"])
+            )
+            for agente, items in plan["pendientes"].items()
+        }

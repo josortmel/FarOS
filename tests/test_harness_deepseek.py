@@ -12,8 +12,7 @@ import json
 
 from faros import db, harness, runner, settings
 from faros.harness.claude_cli import ClaudeCliAdapter
-from faros.harness.claude_cli_deepseek import (BASE_URL, MODELS, TOKEN_RELLENO,
-                                               ClaudeCliDeepSeekAdapter)
+from faros.harness.claude_cli_deepseek import BASE_URL, MODELS, TOKEN_RELLENO, ClaudeCliDeepSeekAdapter
 
 CLAVE = "sk-prueba-463-no-real"
 
@@ -46,8 +45,12 @@ def test_la_clave_no_llega_ni_a_este_harness(tmp_path):
 
 def test_las_llamadas_de_fondo_tambien_van_a_deepseek():
     env = ClaudeCliDeepSeekAdapter.env(None, {"deepseek_api_key": CLAVE})
-    for var in ("ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
-                "ANTHROPIC_DEFAULT_HAIKU_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL"):
+    for var in (
+        "ANTHROPIC_DEFAULT_OPUS_MODEL",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        "CLAUDE_CODE_SUBAGENT_MODEL",
+    ):
         assert env[var] == "deepseek-flash", var
 
 
@@ -62,8 +65,7 @@ def test_sin_clave_ni_token_falla_cerrado(tmp_path):
 
 def test_comando_conserva_herramientas_y_no_lleva_la_clave():
     ad = harness.get("claude-cli-deepseek")
-    cmd = ad.build_command({"model": "deepseek-flash", "permission_mode": "dontAsk",
-                            "allowed_tools": "Read"})
+    cmd = ad.build_command({"model": "deepseek-flash", "permission_mode": "dontAsk", "allowed_tools": "Read"})
     assert cmd[cmd.index("--model") + 1] == "deepseek-flash"
     assert cmd[cmd.index("--allowedTools") + 1] == "Read"
     assert cmd[cmd.index("--permission-mode") + 1] == "dontAsk"
@@ -81,9 +83,19 @@ def test_no_apunta_el_coste_falso_de_claude():
     # Claude Code pone precios de Anthropic a una llamada a DeepSeek (0,63 $ y 0,59 $
     # medidos por llamadas de 12-15 s). El runner pasa RunResult.cost_usd tal cual a
     # finish_run → tiene que salir None del parse, no de read_cost (que el runner no usa).
-    salida = json.dumps([{"type": "result", "subtype": "success", "is_error": False,
-                          "result": "hola", "total_cost_usd": 0.627614, "session_id": "s",
-                          "modelUsage": {"deepseek-flash": {}}}])
+    salida = json.dumps(
+        [
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "result": "hola",
+                "total_cost_usd": 0.627614,
+                "session_id": "s",
+                "modelUsage": {"deepseek-flash": {}},
+            }
+        ]
+    )
     res = harness.get("claude-cli-deepseek").parse_output(salida, 0)
     assert res.status == "ok" and res.output_text == "hola"
     assert res.cost_usd is None

@@ -12,23 +12,28 @@ from __future__ import annotations
 
 import asyncio
 import json
-import secrets
 import logging
+import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, Request, HTTPException, Depends, Query
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import service as s, runner, workflows as w, harness as h, settings as st, db as dbmod
+from . import __version__, runner
 from . import credentials as cr
 from . import criterios as _criterios
+from . import db as dbmod
 from . import deepseek_proxy as _dsp
 from . import env as _env
+from . import harness as h
+from . import library as _library
+from . import library_routes as _library_routes
 from . import roster_admin as ra
-from . import library as _library, library_routes as _library_routes
-from . import __version__
+from . import service as s
+from . import settings as st
+from . import workflows as w
 
 
 class _AuthError(Exception):
@@ -46,7 +51,9 @@ log = logging.getLogger("faros.api")
 def AVISAR_RELAY(avisos: dict) -> dict:
     """{agente: texto} por el relay de la casa (el mismo camino que el timbre). Aparte para poder cambiarlo en tests."""
     from . import timbre
+
     return timbre.enviar(avisos)
+
 
 TOKEN_FILE = runner.DATA_DIR / "token"
 
@@ -72,8 +79,13 @@ META = {
     #   "agente desconocido o sin permiso: 'el dueño'"
     # o sea que la primera tarea que cree un desconocido falla.
     "owner": s.HOUSE_OWNER,
-    "defaults": {"model": "haiku", "timeout_s": 1800, "permission_mode": "dontAsk",
-                 "schedule": {"type": "manual"}, "verification_level": "auto"},
+    "defaults": {
+        "model": "haiku",
+        "timeout_s": 1800,
+        "permission_mode": "dontAsk",
+        "schedule": {"type": "manual"},
+        "verification_level": "auto",
+    },
 }
 
 
@@ -104,7 +116,7 @@ class EventBus:
         q: asyncio.Queue = asyncio.Queue(maxsize=100)
         self.subscribers.add(q)
         try:
-            yield "event: board.changed\ndata: {\"detail\": \"connected\", \"ids\": {}}\n\n"
+            yield 'event: board.changed\ndata: {"detail": "connected", "ids": {}}\n\n'
             while True:
                 try:
                     payload = await asyncio.wait_for(q.get(), timeout=25)
@@ -115,8 +127,7 @@ class EventBus:
             self.subscribers.discard(q)
 
 
-def _solo_campos_que_acepta(fn, body: dict, *, saltar: int = 0,
-                            ya_puestos: tuple = ()) -> dict:
+def _solo_campos_que_acepta(fn, body: dict, *, saltar: int = 0, ya_puestos: tuple = ()) -> dict:
     """Rechaza con 400 los campos que `fn` no acepta, en vez de reventar con 500.
 
     POR QUE EXISTE (#302, lo encontro Lienzo probando el motor a mano): SIETE
@@ -143,23 +154,27 @@ def _solo_campos_que_acepta(fn, body: dict, *, saltar: int = 0,
     agent, y a veces un id), que no pueden venir del body.
     """
     import inspect
+
     params = list(inspect.signature(fn).parameters.values())
-    propios = [p for p in params[saltar:]
-               if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                             inspect.Parameter.KEYWORD_ONLY)]
+    propios = [
+        p
+        for p in params[saltar:]
+        if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    ]
 
     # 1) FALTA UN OBLIGATORIO. Esta mitad salio despues de arreglar la otra, y
     #    es el mismo 500: `create_job() missing 1 required positional argument:
     #    'prompt'` sale como Internal Server Error. El que llama no se entera de
     #    que le falta el prompt. Se comprueba aunque la funcion acepte **kwargs,
     #    porque **kwargs no salva a un obligatorio.
-    faltan = [p.name for p in propios
-              if p.default is inspect.Parameter.empty
-              and p.name not in body and p.name not in ya_puestos]
+    faltan = [
+        p.name
+        for p in propios
+        if p.default is inspect.Parameter.empty and p.name not in body and p.name not in ya_puestos
+    ]
     if faltan:
         k = faltan[0]
-        raise s.TicketError(f"falta el campo obligatorio: '{k}'",
-                            field=k, code="request.missing_field")
+        raise s.TicketError(f"falta el campo obligatorio: '{k}'", field=k, code="request.missing_field")
 
     # 2) SOBRA UNO QUE NO EXISTE. Si la funcion acepta **kwargs no hay nada que
     #    filtrar: se los queda ella a proposito.
@@ -170,8 +185,8 @@ def _solo_campos_que_acepta(fn, body: dict, *, saltar: int = 0,
     if sobran:
         k = sobran[0]
         raise s.TicketError(
-            f"campo desconocido: '{k}' (acepta: {', '.join(sorted(aceptados))})",
-            field=k, code="request.unknown_field")
+            f"campo desconocido: '{k}' (acepta: {', '.join(sorted(aceptados))})", field=k, code="request.unknown_field"
+        )
     return body
 
 
@@ -189,8 +204,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         # manda; la vieja sigue valiendo porque hay builds empaquetados, scripts
         # y arneses de prueba que mandan X-AgenticOS-Token y que no se reconstruyen
         # a la vez que el codigo. Cambiar un solo extremo = 401 en todo.
-        sent = (request.headers.get("X-FarOS-Token")
-                or request.headers.get("X-AgenticOS-Token"))
+        sent = request.headers.get("X-FarOS-Token") or request.headers.get("X-AgenticOS-Token")
         if sent != token:
             # v3.3 (#270): forma PLANA, la misma que el resto de errores.
             # HTTPException envuelve en {"detail": ...} y el renderer no lee
@@ -213,10 +227,10 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     @app.exception_handler(_AuthError)
     async def auth_error_handler(request: Request, exc: "_AuthError"):
-        return JSONResponse(status_code=401,
-                            content={"error": "unauthorized",
-                                     "code": "auth.invalid_token",
-                                     "reason": "token inválido o ausente"})
+        return JSONResponse(
+            status_code=401,
+            content={"error": "unauthorized", "code": "auth.invalid_token", "reason": "token inválido o ausente"},
+        )
 
     @app.exception_handler(s.TicketError)
     async def ticket_error_handler(request: Request, exc: s.TicketError):
@@ -228,8 +242,11 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         # The renderer shows a 400 on a transition as a rejection, not as «Error de red».
         if request.url.path.endswith(("/transition", "/decide")) and not getattr(exc, "field", None):
             # transición ilegal o bisagra ya decidida: conflicto de estado, no input inválido
-            content = {"error": "transition_rejected", "reason": str(exc),
-                       "code": code or "transition.rejected"}  # #312: siempre un code
+            content = {
+                "error": "transition_rejected",
+                "reason": str(exc),
+                "code": code or "transition.rejected",
+            }  # #312: siempre un code
             return JSONResponse(status_code=409, content=content)
         content = {"error": getattr(exc, "error", "invalid_request"), "reason": str(exc)}
         if getattr(exc, "field", None):
@@ -249,8 +266,11 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     async def http_error_handler(request: Request, exc: StarletteHTTPException):
         codes = {404: ("not_found", "route.not_found"), 405: ("method_not_allowed", "method.not_allowed")}
         error, code = codes.get(exc.status_code, ("http_error", f"http.{exc.status_code}"))
-        return JSONResponse(status_code=exc.status_code, headers=getattr(exc, "headers", None),
-                            content={"error": error, "reason": str(exc.detail), "code": code})
+        return JSONResponse(
+            status_code=exc.status_code,
+            headers=getattr(exc, "headers", None),
+            content={"error": error, "reason": str(exc.detail), "code": code},
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
@@ -259,7 +279,9 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         if first.get("type") == "json_invalid":
             content["code"] = "request.malformed_json"
         else:
-            loc = [p for p in first.get("loc", ()) if isinstance(p, str) and p not in ("body", "query", "path", "header")]
+            loc = [
+                p for p in first.get("loc", ()) if isinstance(p, str) and p not in ("body", "query", "path", "header")
+            ]
             if loc:
                 content["field"] = loc[-1]
             content["code"] = f"{loc[-1]}.invalid" if loc else "request.invalid"
@@ -291,10 +313,11 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         # literal a añadirle una excepción al detector: un detector con
         # excepciones deja de ser un detector, y el comentario se explica
         # igual de bien sin el ejemplo.)
-        return {"ok": True,
-                "home": _env.redact_home(str(dbmod.DATA_DIR)),
-                "version": {"daemon": __version__,
-                            "schema": dbmod.schema_version(conn)}}
+        return {
+            "ok": True,
+            "home": _env.redact_home(str(dbmod.DATA_DIR)),
+            "version": {"daemon": __version__, "schema": dbmod.schema_version(conn)},
+        }
 
     # ------------------------------------------------------------ settings (v3, T0.4)
 
@@ -327,6 +350,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     @app.get("/api/timbre", dependencies=dep)
     async def timbre_get(fecha: str | None = None):
         from . import timbre as tb
+
         try:
             return tb.estado(conn, fecha)
         except ValueError:
@@ -337,6 +361,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         """{agent, agente?, hasta}: cada uno silencia el suyo (agente = agent por defecto); el dueño, el de
         cualquiera. hasta: «1h», «mañana», «siempre», ISO, o vacío para quitarlo."""
         from . import timbre as tb
+
         agent = body.get("agent")
         if not agent:
             raise s.TicketError("falta agent", field="agent", code="request.agent_required")
@@ -349,6 +374,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         """{agent, ticket_id, libre=true}: marca (o desmarca) una tarea SUYA como tiempo libre: su timbre sonará
         como invitación. Para un segundo aviso a mitad de la hora libre, se parte la tarea en dos y se marcan las dos."""
         from . import timbre as tb
+
         agent = body.get("agent")
         if not agent or body.get("ticket_id") is None:
             raise s.TicketError("faltan agent y ticket_id", field="ticket_id", code="request.agent_required")
@@ -393,8 +419,16 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     async def credentials_create(body: dict):
         agent = _agente(body)
         probado = await asyncio.to_thread(cr.prueba_previa, body.get("kind"), body.get("value"))
-        res = cr.create(conn, agent, body.get("name"), body.get("kind"), body.get("value"),
-                        body.get("origin"), body.get("in_use"), probado)
+        res = cr.create(
+            conn,
+            agent,
+            body.get("name"),
+            body.get("kind"),
+            body.get("value"),
+            body.get("origin"),
+            body.get("in_use"),
+            probado,
+        )
         bus.emit("credentials.changed", {"id": res["id"]})
         return res
 
@@ -402,8 +436,11 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     async def credentials_patch(cid: int, body: dict):
         agent = _agente(body)
         fila = conn.execute("SELECT kind FROM credentials WHERE id = ?", (cid,)).fetchone()
-        probado = (await asyncio.to_thread(cr.prueba_previa, fila["kind"], body.get("value"))
-                   if fila and "value" in body else None)
+        probado = (
+            await asyncio.to_thread(cr.prueba_previa, fila["kind"], body.get("value"))
+            if fila and "value" in body
+            else None
+        )
         res = cr.update(conn, agent, cid, body, probado)
         bus.emit("credentials.changed", {"id": cid})
         return res
@@ -431,19 +468,24 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         # openPath (la de Gmail). Misma resolución que workflows.documents(): settings
         # → último workflow con repo_root → el paquete solo si trae docs/ (desarrollo).
         from pathlib import Path as _P
+
         root = st.get(conn, "repo_root_default") or ""
         if not root:
             row = conn.execute(
                 "SELECT repo_root FROM workflows WHERE repo_root IS NOT NULL AND repo_root != ''"
-                " ORDER BY id DESC LIMIT 1").fetchone()
+                " ORDER BY id DESC LIMIT 1"
+            ).fetchone()
             root = row[0] if row else ""
         if not root:
             cand = _P(__file__).resolve().parent.parent
             root = str(cand) if (cand / "docs").is_dir() else ""
         docs = _P(root) / "docs" if root else None
         # #245: agents en vivo (el roster se edita desde la app); los suspendidos no salen.
-        return {**META, "agents": sorted(s.AGENTS),
-                "docs_dir": str(docs) if docs is not None and docs.is_dir() else None}
+        return {
+            **META,
+            "agents": sorted(s.AGENTS),
+            "docs_dir": str(docs) if docs is not None and docs.is_dir() else None,
+        }
 
     # ------------------------------------------------------------ roster (#245)
 
@@ -494,12 +536,35 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         ajustes = st.get_all(conn)  # la conexión sqlite no cruza de hilo: se lee aquí
         d = await asyncio.to_thread(adapter.describe, settings=ajustes, refresh=refresh)
         from .harness import model_catalog as mc
-        return {"harness": name, "models": d["models"], "source": d["models_source"],
-                "refreshed_at": d["models_refreshed_at"],
-                "families": mc.grouped([mc.CatalogEntry(**{k: m.get(k) for k in
-                                        ("id", "family", "label", "tier", "source", "alias_of",
-                                         "validated", "validated_at", "note")}) for m in d["models"]]),
-                "probe": mc.refresh_state()}
+
+        return {
+            "harness": name,
+            "models": d["models"],
+            "source": d["models_source"],
+            "refreshed_at": d["models_refreshed_at"],
+            "families": mc.grouped(
+                [
+                    mc.CatalogEntry(
+                        **{
+                            k: m.get(k)
+                            for k in (
+                                "id",
+                                "family",
+                                "label",
+                                "tier",
+                                "source",
+                                "alias_of",
+                                "validated",
+                                "validated_at",
+                                "note",
+                            )
+                        }
+                    )
+                    for m in d["models"]
+                ]
+            ),
+            "probe": mc.refresh_state(),
+        }
 
     @app.post("/api/harnesses/{name}/models/refresh", dependencies=dep)
     async def harness_models_refresh(name: str, body: dict | None = None):
@@ -510,6 +575,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         except (KeyError, RuntimeError) as exc:
             raise s.TicketError(str(exc))
         from .harness import model_catalog as mc
+
         if not hasattr(adapter, "probe_ids"):
             raise s.TicketError(f"el harness {name!r} no admite sonda de modelos")
         agent = (body or {}).get("agent") or "system"
@@ -530,15 +596,18 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     @app.post("/api/projects", dependencies=dep)
     async def create_project(body: dict):
-        p = s.create_project(conn, body.get("agent", s.HOUSE_OWNER), body.get("name", ""),
-                             color=body.get("color"))
+        p = s.create_project(conn, body.get("agent", s.HOUSE_OWNER), body.get("name", ""), color=body.get("color"))
         bus.emit("project.changed", {"project_id": p["id"]})
         return p
 
     @app.patch("/api/projects/{project_id}", dependencies=dep)
     async def update_project(project_id: int, body: dict):
-        p = s.update_project(conn, body.pop("agent", s.HOUSE_OWNER), project_id,
-                             **_solo_campos_que_acepta(s.update_project, body, saltar=3))
+        p = s.update_project(
+            conn,
+            body.pop("agent", s.HOUSE_OWNER),
+            project_id,
+            **_solo_campos_que_acepta(s.update_project, body, saltar=3),
+        )
         bus.emit("project.changed", {"project_id": project_id})
         return p
 
@@ -556,18 +625,29 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     # ------------------------------------------------------------ tickets
 
     @app.get("/api/tickets", dependencies=dep)
-    async def tickets(status: str | None = None, owner: str | None = None,
-                      project_id: int | None = None, kind: str | None = None,
-                      query: str | None = None, include_closed: bool = False,
-                      workflow_id: int | None = None, ready: bool | None = None):
-        out = s.list_tickets(conn, status=status, owner=owner, query=query,
-                             include_closed=include_closed, project_id=project_id, kind=kind)
+    async def tickets(
+        status: str | None = None,
+        owner: str | None = None,
+        project_id: int | None = None,
+        kind: str | None = None,
+        query: str | None = None,
+        include_closed: bool = False,
+        workflow_id: int | None = None,
+        ready: bool | None = None,
+    ):
+        out = s.list_tickets(
+            conn,
+            status=status,
+            owner=owner,
+            query=query,
+            include_closed=include_closed,
+            project_id=project_id,
+            kind=kind,
+        )
         if workflow_id is not None:
             out = [t for t in out if t.get("workflow_id") == workflow_id]
         if ready:  # review Eco SNAG-1: la cola despachable del coordinador en una llamada
-            out = [t for t in out
-                   if t["status"] in ("accepted", "blocked")
-                   and not s._unmet_deps(conn, t["id"])]
+            out = [t for t in out if t["status"] in ("accepted", "blocked") and not s._unmet_deps(conn, t["id"])]
         return out
 
     @app.post("/api/tickets", dependencies=dep)
@@ -575,12 +655,12 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         agent = body.pop("agent", None)
         if not agent:
             raise s.TicketError("falta agent (quién crea)", field="agent", code="request.agent_required")
-        res = s.propose_ticket(conn, agent,
-                               **_solo_campos_que_acepta(s.propose_ticket, body, saltar=2))
+        res = s.propose_ticket(conn, agent, **_solo_campos_que_acepta(s.propose_ticket, body, saltar=2))
         bus.emit("ticket.created", {"ticket_id": res["ticket"]["id"]})
         # #1081: el criterio se mira al crear, no al cerrar. Avisa, nunca bloquea.
-        res["criterion_warnings"] = _criterios.revisar(res["ticket"].get("verify_criteria"),
-                                                       res["ticket"].get("verification_level"))
+        res["criterion_warnings"] = _criterios.revisar(
+            res["ticket"].get("verify_criteria"), res["ticket"].get("verification_level")
+        )
         return res
 
     @app.get("/api/tickets/{ticket_id}", dependencies=dep)
@@ -600,12 +680,23 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         elif action == "block":
             t = s.block_ticket(conn, agent, ticket_id, body.get("reason") or body.get("note", ""))
         elif action == "complete":
-            t = s.complete_ticket(conn, agent, ticket_id,
-                                  body.get("evidence_type"), body.get("evidence"),
-                                  provenance=body.get("provenance"))
+            t = s.complete_ticket(
+                conn,
+                agent,
+                ticket_id,
+                body.get("evidence_type"),
+                body.get("evidence"),
+                provenance=body.get("provenance"),
+            )
         elif action == "verify":
-            t = s.verify_ticket(conn, agent, ticket_id, body.get("verdict", "pass"),
-                                note=body.get("note", ""), provenance=body.get("provenance"))
+            t = s.verify_ticket(
+                conn,
+                agent,
+                ticket_id,
+                body.get("verdict", "pass"),
+                note=body.get("note", ""),
+                provenance=body.get("provenance"),
+            )
         elif action == "pause":
             # #482: en curso → aceptada, con nota obligatoria.
             t = s.pause_ticket(conn, agent, ticket_id, body.get("note") or body.get("reason") or "")
@@ -625,11 +716,14 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
             t = s.backlog_ticket(conn, agent, ticket_id, note=body.get("note", ""))
         elif action == "rework":
             # v3.1: devolver una done/verified a accepted|in_progress con motivo obligatorio.
-            t = s.rework_ticket(conn, agent, ticket_id, body.get("to") or "accepted",
-                                body.get("reason") or body.get("note", ""))
+            t = s.rework_ticket(
+                conn, agent, ticket_id, body.get("to") or "accepted", body.get("reason") or body.get("note", "")
+            )
         else:
-            raise s.TicketError(f"action desconocida: {action!r} (accept|start|block|"
-                                "complete|verify|reject|unblock|reopen|backlog|rework|pause|claim|unclaim)")
+            raise s.TicketError(
+                f"action desconocida: {action!r} (accept|start|block|"
+                "complete|verify|reject|unblock|reopen|backlog|rework|pause|claim|unclaim)"
+            )
         bus.emit("ticket.transition", {"ticket_id": ticket_id, "status": t["status"]})
         return _proto(agent, t)
 
@@ -639,12 +733,16 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     # ------------------------------------------------------------ calendario (v3, T2.1-T2.2)
 
-    from . import agenda as cal, decisions as dec
+    from . import agenda as cal
+    from . import decisions as dec
 
     @app.get("/api/calendar", dependencies=dep)
-    async def calendar_range(from_: str | None = Query(None, alias="from"),
-                             to: str | None = None, agent: str | None = None,
-                             project_id: int | None = None):
+    async def calendar_range(
+        from_: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        agent: str | None = None,
+        project_id: int | None = None,
+    ):
         """?from=YYYY-MM-DD&to=YYYY-MM-DD (alias: `from` es palabra reservada en Python)."""
         if not from_ or not to:
             raise s.TicketError("calendar requiere from y to (YYYY-MM-DD)")
@@ -655,9 +753,15 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         agent = body.get("agent")
         if not agent:
             raise s.TicketError("falta agent", field="agent", code="request.agent_required")
-        res = cal.schedule_ticket(conn, agent, ticket_id, scheduled_at=body.get("scheduled_at"),
-                                  duration_min=body.get("duration_min"), all_day=body.get("all_day"),
-                                  note=body.get("note", ""))
+        res = cal.schedule_ticket(
+            conn,
+            agent,
+            ticket_id,
+            scheduled_at=body.get("scheduled_at"),
+            duration_min=body.get("duration_min"),
+            all_day=body.get("all_day"),
+            note=body.get("note", ""),
+        )
         bus.emit("ticket.updated", {"ticket_id": ticket_id})
         return res
 
@@ -681,8 +785,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     # ------------------------------------------------------------ decisiones (v3, T3.2-T3.3)
 
     @app.get("/api/decisions", dependencies=dep)
-    async def decisions_list(status: str | None = None, workflow_id: int | None = None,
-                             project_id: int | None = None):
+    async def decisions_list(status: str | None = None, workflow_id: int | None = None, project_id: int | None = None):
         return dec.list_decisions(conn, status=status, workflow_id=workflow_id, project_id=project_id)
 
     @app.post("/api/decisions", dependencies=dep)
@@ -695,13 +798,13 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         return d
 
     @app.get("/api/decisions/vigentes", dependencies=dep)
-    async def decisions_vigentes(tema: str, agente: str | None = None, incluir_superadas: bool = False,
-                                 limit: int = 10):
+    async def decisions_vigentes(
+        tema: str, agente: str | None = None, incluir_superadas: bool = False, limit: int = 10
+    ):
         """#919: las que valen hoy, de FarOS y de EcoDB (su endpoint, con la clave «EcoDB»)."""
         limit = max(1, min(int(limit), 50))
         f = dec.vigentes_faros(conn, tema, agente, incluir_superadas, limit)
-        e = await asyncio.to_thread(dec.vigentes_ecodb, cr.valor(conn, "EcoDB"), tema, agente,
-                                    incluir_superadas, limit)
+        e = await asyncio.to_thread(dec.vigentes_ecodb, cr.valor(conn, "EcoDB"), tema, agente, incluir_superadas, limit)
         return dec.combinar(f, e, limit, incluir_superadas)
 
     @app.get("/api/decisions/{decision_id}", dependencies=dep)
@@ -710,13 +813,21 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     @app.post("/api/decisions/{decision_id}/decide", dependencies=dep)
     async def decision_decide(decision_id: int, body: dict):
-        d = dec.decide(conn, body.get("agent"), decision_id,
-                       option=body.get("option"), decision=body.get("decision"),
-                       rationale=body.get("rationale", ""), surface=body.get("surface"),
-                       # #919: decisiones vigentes
-                       supersedes=body.get("supersedes"), supersede_kind=body.get("supersede_kind") or "total",
-                       supersede_reason=body.get("supersede_reason"), decidido_por=body.get("decidido_por"),
-                       valid_until=body.get("valid_until"))
+        d = dec.decide(
+            conn,
+            body.get("agent"),
+            decision_id,
+            option=body.get("option"),
+            decision=body.get("decision"),
+            rationale=body.get("rationale", ""),
+            surface=body.get("surface"),
+            # #919: decisiones vigentes
+            supersedes=body.get("supersedes"),
+            supersede_kind=body.get("supersede_kind") or "total",
+            supersede_reason=body.get("supersede_reason"),
+            decidido_por=body.get("decidido_por"),
+            valid_until=body.get("valid_until"),
+        )
         bus.emit("decision.changed", {"decision_id": decision_id, "status": d["status"]})
         # Pepe, 17-nov: decidida en la app (o por MCP), quien la pidió se entera igual que cuando pulsa en Telegram.
         # #1325 (lo vio Lienzo, 19-nov): el aviso va aparte. Con el hub caído, el POST esperaba 2-5 s y Pepe se
@@ -730,12 +841,16 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     async def _avisar_decision(d: dict) -> None:
         """Al que pidió la decisión, por el relay: la pregunta y lo decidido. No a quien la decide ni al dueño."""
-        from . import roster, timbre
+        from . import roster
+
         quien = d.get("asked_by")
         if not quien or quien == d.get("decided_by") or quien == roster.HOUSE_OWNER or quien not in roster.AGENTS:
             return
-        texto = (f"{d.get('decided_by')} ha decidido «{d['title']}»: {d['decision']}"
-                 + (f" — {d['rationale']}" if d.get("rationale") else "") + " — FarOS")
+        texto = (
+            f"{d.get('decided_by')} ha decidido «{d['title']}»: {d['decision']}"
+            + (f" — {d['rationale']}" if d.get("rationale") else "")
+            + " — FarOS"
+        )
         try:
             await asyncio.to_thread(AVISAR_RELAY, {quien: texto})
         except Exception as e:
@@ -746,6 +861,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         """#1189: manda un texto al dueño por el bot de FarOS. Para los scripts de la casa (la revista, las
         investigaciones…), que así no leen el token. {agent, text}; 409 si el bot no está configurado."""
         from . import telegram_bot as tb
+
         agent = body.get("agent")
         s._validate_agent(agent, family_only=True)
         texto = (body.get("text") or "").strip()
@@ -763,20 +879,19 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     @app.post("/api/decisions/{decision_id}/defer", dependencies=dep)
     async def decision_defer(decision_id: int, body: dict):
-        d = dec.defer(conn, body.get("agent"), decision_id, until=body.get("until"),
-                      note=body.get("note", ""))
+        d = dec.defer(conn, body.get("agent"), decision_id, until=body.get("until"), note=body.get("note", ""))
         bus.emit("decision.changed", {"decision_id": decision_id, "status": d["status"]})
         return d
 
     # ------------------------------------------------------------ Agentes (v3, T1.11)
 
-    from . import jobs as jm, mcp_inherit, schedule as sched_mod
+    from . import jobs as jm
+    from . import mcp_inherit
+    from . import schedule as sched_mod
 
     @app.get("/api/jobs", dependencies=dep)
-    async def jobs_list(status: str | None = None, project_id: int | None = None,
-                        include_archived: bool = False):
-        return jm.list_jobs(conn, status=status, project_id=project_id,
-                            include_archived=include_archived)
+    async def jobs_list(status: str | None = None, project_id: int | None = None, include_archived: bool = False):
+        return jm.list_jobs(conn, status=status, project_id=project_id, include_archived=include_archived)
 
     @app.post("/api/jobs", dependencies=dep)
     async def jobs_create(body: dict):
@@ -784,38 +899,46 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         if not agent:
             raise s.TicketError("falta agent (quién crea)", field="agent", code="request.agent_required")
         harness_name = body.pop("harness", "claude-cli")
-        j = jm.create_job(conn, agent, harness_name=harness_name,
-                          **_solo_campos_que_acepta(jm.create_job, body, saltar=2,
-                                                    ya_puestos=("harness_name",)))
+        j = jm.create_job(
+            conn,
+            agent,
+            harness_name=harness_name,
+            **_solo_campos_que_acepta(jm.create_job, body, saltar=2, ya_puestos=("harness_name",)),
+        )
         bus.emit("job.changed", {"job_id": j["id"]})
         return j
 
     @app.post("/api/jobs/{job_id}/pause", dependencies=dep)
     async def job_pause(job_id: int, body: dict):
         j = jm.set_status(conn, body.get("agent", s.HOUSE_OWNER), job_id, "paused")
-        bus.emit("job.changed", {"job_id": job_id}); return j
+        bus.emit("job.changed", {"job_id": job_id})
+        return j
 
     @app.post("/api/jobs/{job_id}/resume", dependencies=dep)
     async def job_resume(job_id: int, body: dict):
         j = jm.set_status(conn, body.get("agent", s.HOUSE_OWNER), job_id, "active")
-        bus.emit("job.changed", {"job_id": job_id}); return j
+        bus.emit("job.changed", {"job_id": job_id})
+        return j
 
     @app.post("/api/jobs/{job_id}/archive", dependencies=dep)
     async def job_archive(job_id: int, body: dict):
         j = jm.set_status(conn, body.get("agent", s.HOUSE_OWNER), job_id, "archived")
-        bus.emit("job.changed", {"job_id": job_id}); return j
+        bus.emit("job.changed", {"job_id": job_id})
+        return j
 
     @app.post("/api/jobs/{job_id}/duplicate", dependencies=dep)
     async def job_duplicate(job_id: int, body: dict):
         j = jm.duplicate_job(conn, body.get("agent", s.HOUSE_OWNER), job_id, name=body.get("name"))
-        bus.emit("job.changed", {"job_id": j["id"]}); return j
+        bus.emit("job.changed", {"job_id": j["id"]})
+        return j
 
     @app.get("/api/agents/schedule", dependencies=dep)
-    async def agents_schedule(from_: str | None = Query(None, alias="from"),
-                              to: str | None = None, days: int = 7):
+    async def agents_schedule(from_: str | None = Query(None, alias="from"), to: str | None = None, days: int = 7):
         """Línea de tiempo de próximas ejecuciones (calendario PROPIO de Agentes,
         decisión 4: nunca en el Tablero)."""
-        from datetime import datetime as _dt, timedelta as _td
+        from datetime import datetime as _dt
+        from datetime import timedelta as _td
+
         start = _dt.fromisoformat(from_) if from_ else _dt.now()
         end = _dt.fromisoformat(to) if to else start + _td(days=days)
         items = []
@@ -825,13 +948,19 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
                 nf = sched_mod.next_fire(j["schedule"], j["created_at"], cursor)
                 if nf is None or nf > end:
                     break
-                items.append({"job_id": j["id"], "name": j["name"], "fire_at": nf.isoformat(timespec="minutes"),
-                              "harness": j["harness"], "model": j["model"],
-                              "schedule": sched_mod.human(j["schedule"])})
+                items.append(
+                    {
+                        "job_id": j["id"],
+                        "name": j["name"],
+                        "fire_at": nf.isoformat(timespec="minutes"),
+                        "harness": j["harness"],
+                        "model": j["model"],
+                        "schedule": sched_mod.human(j["schedule"]),
+                    }
+                )
                 cursor = nf
         items.sort(key=lambda x: x["fire_at"])
-        return {"from": start.isoformat(timespec="minutes"), "to": end.isoformat(timespec="minutes"),
-                "items": items}
+        return {"from": start.isoformat(timespec="minutes"), "to": end.isoformat(timespec="minutes"), "items": items}
 
     @app.get("/api/agents/calendar", dependencies=dep)
     async def agents_calendar(from_: str | None = Query(None, alias="from"), to: str | None = None):
@@ -840,6 +969,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         if not from_ or not to:
             raise s.TicketError("calendar requiere from y to (YYYY-MM-DD)")
         from . import agents_agenda
+
         return agents_agenda.occurrences(conn, from_, to)
 
     @app.get("/api/agents/results", dependencies=dep)
@@ -915,6 +1045,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     @app.post("/api/verify/runs", dependencies=dep)
     async def verify_runs_now():
         from . import verifier
+
         return await verifier.sweep_runs(conn, emit=bus.emit)
 
     # ------------------------------------------------------------ jobs y runs
@@ -928,8 +1059,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         agent = body.pop("agent", None)
         if not agent:
             raise s.TicketError("falta agent", field="agent", code="request.agent_required")
-        j = jm.update_job(conn, agent, job_id,
-                          **_solo_campos_que_acepta(jm.update_job, body, saltar=3))
+        j = jm.update_job(conn, agent, job_id, **_solo_campos_que_acepta(jm.update_job, body, saltar=3))
         bus.emit("job.changed", {"job_id": job_id})
         if j.get("ticket_id"):
             bus.emit("ticket.updated", {"ticket_id": j["ticket_id"]})
@@ -950,8 +1080,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
             log.exception("run #%s del job #%s reventó", run["id"], job_id)
 
     @app.get("/api/runs", dependencies=dep)
-    async def runs(ticket_id: int | None = None, status: str | None = None, limit: int = 50,
-                   job_id: int | None = None):
+    async def runs(ticket_id: int | None = None, status: str | None = None, limit: int = 50, job_id: int | None = None):
         return jm.list_runs(conn, job_id=job_id, ticket_id=ticket_id, status=status, limit=limit)
 
     @app.get("/api/runs/{run_id}", dependencies=dep)
@@ -969,8 +1098,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         run = s.get_run(conn, run_id)
         if not run.get("output_path") or not Path(run["output_path"]).exists():
             return {"run_id": run_id, "output": None}
-        return {"run_id": run_id,
-                "output": Path(run["output_path"]).read_text(encoding="utf-8")}
+        return {"run_id": run_id, "output": Path(run["output_path"]).read_text(encoding="utf-8")}
 
     # ------------------------------------------------------------ workflows (v2)
 
@@ -978,8 +1106,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         """Los peers escriben directo PERO siempre reportan.
         La respuesta se lo recuerda en cada escritura de un rol de workflow."""
         if agent in s.WORKFLOW_AGENTS and isinstance(payload, dict):
-            payload = {**payload,
-                       "protocol": "reporta al coordinador por relay que has apuntado esto"}
+            payload = {**payload, "protocol": "reporta al coordinador por relay que has apuntado esto"}
         return payload
 
     @app.post("/api/workflows/import", dependencies=dep)
@@ -1001,11 +1128,16 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     @app.patch("/api/workflows/{workflow_id}", dependencies=dep)
     async def workflow_patch(workflow_id: int, body: dict):
-        res = w.update_workflow(conn, body.get("agent"), workflow_id,
-                                status=body.get("status"), repo_root=body.get("repo_root"),
-                                reason=body.get("reason"), close=bool(body.get("close")))
-        bus.emit("workflow.milestone" if res["status"] == "closed" else "ticket.updated",
-                 {"workflow_id": workflow_id})
+        res = w.update_workflow(
+            conn,
+            body.get("agent"),
+            workflow_id,
+            status=body.get("status"),
+            repo_root=body.get("repo_root"),
+            reason=body.get("reason"),
+            close=bool(body.get("close")),
+        )
+        bus.emit("workflow.milestone" if res["status"] == "closed" else "ticket.updated", {"workflow_id": workflow_id})
         return res
 
     @app.post("/api/workflows/{workflow_id}/dispatch_batch", dependencies=dep)
@@ -1013,8 +1145,10 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         """Lote atómico (T3.8, Eco): todas o ninguna; el 400 nombra la culpable."""
         res = w.dispatch_batch(conn, body.get("agent"), workflow_id, body.get("items") or [])
         for d in res.get("dispatched", []):
-            bus.emit("ticket.dispatched", {"ticket_id": d.get("ticket_id") or d.get("id"),
-                                           "to": d.get("to") or d.get("dispatched_to")})
+            bus.emit(
+                "ticket.dispatched",
+                {"ticket_id": d.get("ticket_id") or d.get("id"), "to": d.get("to") or d.get("dispatched_to")},
+            )
         return res
 
     @app.get("/api/workflows/{workflow_id}/documents", dependencies=dep)
@@ -1029,8 +1163,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     @app.post("/api/tickets/{ticket_id}/dispatch", dependencies=dep)
     async def dispatch(ticket_id: int, body: dict):
-        res = w.dispatch_ticket(conn, body.get("agent"), ticket_id,
-                                body.get("to"), note=body.get("note", ""))
+        res = w.dispatch_ticket(conn, body.get("agent"), ticket_id, body.get("to"), note=body.get("note", ""))
         bus.emit("ticket.dispatched", {"ticket_id": ticket_id, "to": body.get("to")})
         return res
 
@@ -1053,17 +1186,16 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     @app.post("/api/workflows/{workflow_id}/findings", dependencies=dep)
     async def finding_add(workflow_id: int, body: dict):
         agent = body.pop("agent", None)
-        res = w.add_finding(conn, agent, workflow_id,
-                            **_solo_campos_que_acepta(w.add_finding, body, saltar=3))
+        res = w.add_finding(conn, agent, workflow_id, **_solo_campos_que_acepta(w.add_finding, body, saltar=3))
         bus.emit("finding.added", {"workflow_id": workflow_id, "finding_id": res["id"]})
         return _proto(agent, res)
 
     @app.post("/api/findings/{finding_id}/dispatch", dependencies=dep)
     async def finding_dispatch(finding_id: int, body: dict):
-        res = w.dispatch_finding(conn, body.get("agent"), finding_id,
-                                 note=body.get("note", ""), phase=body.get("phase"))
-        bus.emit("finding.dispatched", {"finding_id": finding_id,
-                                        "correction_ticket_id": res["correction_ticket_id"]})
+        res = w.dispatch_finding(
+            conn, body.get("agent"), finding_id, note=body.get("note", ""), phase=body.get("phase")
+        )
+        bus.emit("finding.dispatched", {"finding_id": finding_id, "correction_ticket_id": res["correction_ticket_id"]})
         return res
 
     @app.post("/api/findings/{finding_id}/dismiss", dependencies=dep)
@@ -1086,28 +1218,26 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
         bus.emit("ticket.updated", {"workflow_id": workflow_id})
         return res
 
-    @app.get("/api/workflows/{workflow_id}/milestones/{milestone_id}/memory_draft",
-             dependencies=dep)
+    @app.get("/api/workflows/{workflow_id}/milestones/{milestone_id}/memory_draft", dependencies=dep)
     async def milestone_memory_draft(workflow_id: int, milestone_id: int):
         return w.memory_draft(conn, workflow_id, milestone_id)
 
-    @app.post("/api/workflows/{workflow_id}/milestones/{milestone_id}/mark_saved",
-              dependencies=dep)
+    @app.post("/api/workflows/{workflow_id}/milestones/{milestone_id}/mark_saved", dependencies=dep)
     async def milestone_mark_saved(workflow_id: int, milestone_id: int, body: dict):
-        return w.mark_milestone_saved(conn, body.get("agent"), workflow_id,
-                                      milestone_id, body.get("memory_id"))
+        return w.mark_milestone_saved(conn, body.get("agent"), workflow_id, milestone_id, body.get("memory_id"))
 
     @app.patch("/api/tickets/{ticket_id}", dependencies=dep)
     async def ticket_patch(ticket_id: int, body: dict):
         agent = body.pop("agent", None)
         if not agent:
             raise s.TicketError("falta agent", field="agent", code="request.agent_required")
-        res = s.update_ticket(conn, agent, ticket_id,
-                              **_solo_campos_que_acepta(s.update_ticket, body, saltar=3))
+        res = s.update_ticket(conn, agent, ticket_id, **_solo_campos_que_acepta(s.update_ticket, body, saltar=3))
         bus.emit("ticket.updated", {"ticket_id": ticket_id})
-        if "verify_criteria" in body or "verification_level" in body:   # #1081
-            res = {**res, "criterion_warnings": _criterios.revisar(res.get("verify_criteria"),
-                                                                   res.get("verification_level"))}
+        if "verify_criteria" in body or "verification_level" in body:  # #1081
+            res = {
+                **res,
+                "criterion_warnings": _criterios.revisar(res.get("verify_criteria"), res.get("verification_level")),
+            }
         return res
 
     # ------------------------------------------------------------ verificador
@@ -1115,6 +1245,7 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
     @app.post("/api/verify/sweep", dependencies=dep)
     async def verify_sweep():
         from . import verifier
+
         result = await verifier.sweep(conn, emit=bus.emit)
         return result
 

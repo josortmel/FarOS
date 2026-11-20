@@ -13,7 +13,8 @@ import json
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -25,8 +26,14 @@ def conn():
 
 
 def _ajeno(conn, level="peer"):
-    t = s.propose_ticket(conn, "owner", "decide el dueño, ejecuta otro", owner="owner",
-                         verification_level=level, scheduled_at="2031-03-05T10:00")["ticket"]
+    t = s.propose_ticket(
+        conn,
+        "owner",
+        "decide el dueño, ejecuta otro",
+        owner="owner",
+        verification_level=level,
+        scheduled_at="2031-03-05T10:00",
+    )["ticket"]
     s.accept_ticket(conn, "alice", t["id"])
     return t["id"]
 
@@ -53,8 +60,9 @@ def test_the_one_who_completed_cannot_verify_but_a_third_can(conn):
 def test_self_level_tickets_stay_owner_only(conn):
     # #640 (Pepe, 19-oct): las tareas DEL dueño de la casa las puede cerrar cualquiera de la casa
     # en su nombre (test_640_tareas_del_dueno.py). La regla sigue para la tarea self de otro agente.
-    t = s.propose_ticket(conn, "owner", "la tarea self de bob", owner="bob",
-                         verification_level="self", scheduled_at="2031-03-05T10:00")["ticket"]
+    t = s.propose_ticket(
+        conn, "owner", "la tarea self de bob", owner="bob", verification_level="self", scheduled_at="2031-03-05T10:00"
+    )["ticket"]
     s.accept_ticket(conn, "bob", t["id"])
     tid = t["id"]
     with pytest.raises(TicketError) as e:
@@ -67,8 +75,16 @@ def test_self_level_tickets_stay_owner_only(conn):
 def test_my_board_is_slim_by_default_and_full_on_request(conn):
     cuerpo = "x" * 11_000
     for i in range(12):
-        s.propose_ticket(conn, "owner", f"tarea {i}", description=cuerpo, verify_criteria=cuerpo,
-                         owner="alice", scheduled_at="2031-03-05T10:00", auto_accept=True)
+        s.propose_ticket(
+            conn,
+            "owner",
+            f"tarea {i}",
+            description=cuerpo,
+            verify_criteria=cuerpo,
+            owner="alice",
+            scheduled_at="2031-03-05T10:00",
+            auto_accept=True,
+        )
     slim = s.my_board(conn, "alice")
     t0 = slim["mine_open"][0]
     assert "description" not in t0 and "verify_criteria" not in t0

@@ -13,17 +13,18 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, date, time as dtime, timedelta
+from datetime import datetime, timedelta
 
-from . import service, runner, backup, notify, schedule as schedule_mod
+from . import backup, notify, runner, service
+from . import schedule as schedule_mod
 
 log = logging.getLogger("faros.scheduler")
 
 TICK_SECONDS = 30
 MISSED_GRACE_H = 24
 BACKUP_CHECK_S = 3600  # backup.daily_tick es idempotente por día; se consulta cada hora
-VERIFY_EVERY_S = 300   # veredicto por run (T1.10): barrido cada 5 min, además del tras-run
-EXPIRE_EVERY_S = 60    # T4.5: caducar tickets expired — antes vivía en las lecturas
+VERIFY_EVERY_S = 300  # veredicto por run (T1.10): barrido cada 5 min, además del tras-run
+EXPIRE_EVERY_S = 60  # T4.5: caducar tickets expired — antes vivía en las lecturas
 
 
 def _parse_iso(s: str) -> datetime:
@@ -33,8 +34,9 @@ def _parse_iso(s: str) -> datetime:
 def last_theoretical_fire(schedule: dict, created_at: str, now: datetime) -> datetime | None:
     """Último disparo teórico <= now (v3: schedule.last_fire; acepta at como
     string v1 o lista, recurring y weekly)."""
-    return schedule_mod.last_fire({"type": "recurring", **schedule} if "type" not in schedule
-                                  else schedule, created_at, now)
+    return schedule_mod.last_fire(
+        {"type": "recurring", **schedule} if "type" not in schedule else schedule, created_at, now
+    )
 
 
 def next_fire(schedule: dict, created_at: str, now: datetime) -> datetime | None:
@@ -50,7 +52,8 @@ def due_jobs(conn, now: datetime) -> list[dict]:
         "SELECT j.*, t.status AS ticket_status, t.closed_at AS ticket_closed"
         " FROM agent_jobs j LEFT JOIN tickets t ON t.id = j.ticket_id"
         " WHERE j.enabled = 1 AND j.status = 'active'"
-        " AND (j.ticket_id IS NULL OR t.closed_at IS NULL)").fetchall()
+        " AND (j.ticket_id IS NULL OR t.closed_at IS NULL)"
+    ).fetchall()
     due = []
     for row in rows:
         job = dict(row)
@@ -59,8 +62,8 @@ def due_jobs(conn, now: datetime) -> list[dict]:
         if stype == "manual":
             continue
         last_run = conn.execute(
-            "SELECT started_at, status FROM runs WHERE job_id=? ORDER BY id DESC LIMIT 1",
-            (job["id"],)).fetchone()
+            "SELECT started_at, status FROM runs WHERE job_id=? ORDER BY id DESC LIMIT 1", (job["id"],)
+        ).fetchone()
         if last_run and last_run["status"] == "running":
             continue
         if stype == "once":
@@ -70,16 +73,24 @@ def due_jobs(conn, now: datetime) -> list[dict]:
             if last_run is not None:
                 continue  # ya se lanzó
             if now - run_at > timedelta(hours=MISSED_GRACE_H):
-                conn.execute("UPDATE agent_jobs SET enabled=0, status='paused', updated_at=?"
-                             " WHERE id=?", (now.isoformat(timespec="seconds"), job["id"]))
+                conn.execute(
+                    "UPDATE agent_jobs SET enabled=0, status='paused', updated_at=? WHERE id=?",
+                    (now.isoformat(timespec="seconds"), job["id"]),
+                )
                 if job["ticket_id"]:
-                    service._append_history(conn, job["ticket_id"], None, "blocked", "system",
-                                            f"schedule once perdida (venció {sched['run_at']}, "
-                                            f"gracia {MISSED_GRACE_H}h) — job pausado")
+                    service._append_history(
+                        conn,
+                        job["ticket_id"],
+                        None,
+                        "blocked",
+                        "system",
+                        f"schedule once perdida (venció {sched['run_at']}, gracia {MISSED_GRACE_H}h) — job pausado",
+                    )
                     conn.execute(
                         "UPDATE tickets SET status='blocked',"
                         " blocked_reason='schedule once perdida' WHERE id=? AND closed_at IS NULL",
-                        (job["ticket_id"],))
+                        (job["ticket_id"],),
+                    )
                 conn.commit()
                 continue
             due.append(job)
@@ -110,7 +121,8 @@ def skipped_jobs(conn, now: datetime) -> list[dict]:
     rows = conn.execute(
         "SELECT j.*, t.status AS ticket_status FROM agent_jobs j JOIN tickets t ON t.id = j.ticket_id"
         " WHERE j.enabled = 1 AND j.status = 'active' AND t.closed_at IS NOT NULL"
-        " AND t.kind != 'agentic'").fetchall()
+        " AND t.kind != 'agentic'"
+    ).fetchall()
     out = []
     for row in rows:
         job = dict(row)
@@ -120,8 +132,9 @@ def skipped_jobs(conn, now: datetime) -> list[dict]:
         fire = schedule_mod.last_fire(sched, job["created_at"], now)
         if fire is None or _antes_del_cambio(job, fire):
             continue
-        last_run = conn.execute("SELECT started_at FROM runs WHERE job_id=? ORDER BY id DESC LIMIT 1",
-                                (job["id"],)).fetchone()
+        last_run = conn.execute(
+            "SELECT started_at FROM runs WHERE job_id=? ORDER BY id DESC LIMIT 1", (job["id"],)
+        ).fetchone()
         if last_run is None or _parse_iso(last_run["started_at"]) < fire:
             job["fire"] = fire.isoformat(timespec="minutes")
             out.append(job)
@@ -133,9 +146,11 @@ def _avisar_saltados(conn, now: datetime, avisados: set) -> None:
         if (job["id"], job["fire"]) in avisados:
             continue
         avisados.add((job["id"], job["fire"]))
-        texto = (f"FarOS: el job #{job['id']} «{job['name']}» no se ha lanzado ({job['fire']}) porque su"
-                 f" tarea #{job['ticket_id']} está cerrada ({job['ticket_status']}). Desenlázalo o"
-                 " cuélgalo de una tarea abierta.")
+        texto = (
+            f"FarOS: el job #{job['id']} «{job['name']}» no se ha lanzado ({job['fire']}) porque su"
+            f" tarea #{job['ticket_id']} está cerrada ({job['ticket_status']}). Desenlázalo o"
+            " cuélgalo de una tarea abierta."
+        )
         log.warning(texto)
         notify.telegram(conn, texto)
 
@@ -159,10 +174,11 @@ async def scheduler_loop(conn, emit=None, stop_event: asyncio.Event | None = Non
 
     last_backup_check = 0.0
     avisados: set = set()  # #518: (job, disparo) ya avisados como saltados
-    from . import timbre as timbre_mod   # #1184: el timbre de franjas por el relay
+    from . import timbre as timbre_mod  # #1184: el timbre de franjas por el relay
+
     timbre = None
-    if timbre_mod.activo():   # FAROS_TIMBRE=0 lo quita del todo; el interruptor de la app se mira en cada vuelta
-        estado_f, registro_f = timbre_mod.ficheros(conn)   # junto a la base: sobreviven al reinicio
+    if timbre_mod.activo():  # FAROS_TIMBRE=0 lo quita del todo; el interruptor de la app se mira en cada vuelta
+        estado_f, registro_f = timbre_mod.ficheros(conn)  # junto a la base: sobreviven al reinicio
         timbre = timbre_mod.Timbre(estado=estado_f, registro=registro_f)
     last_verify = time.monotonic()
     last_expire = 0.0
@@ -170,10 +186,15 @@ async def scheduler_loop(conn, emit=None, stop_event: asyncio.Event | None = Non
     async def _verify_runs():
         try:
             from . import verifier
+
             res = await verifier.sweep_runs(conn, emit=emit)
             if res.get("swept"):
-                log.info("veredictos: %s pass, %s fail, %s errores",
-                         len(res["passed"]), len(res["failed"]), len(res["errors"]))
+                log.info(
+                    "veredictos: %s pass, %s fail, %s errores",
+                    len(res["passed"]),
+                    len(res["failed"]),
+                    len(res["errors"]),
+                )
         except Exception:
             log.exception("barrido de veredictos falló — sigo vivo")
 
@@ -195,9 +216,13 @@ async def scheduler_loop(conn, emit=None, stop_event: asyncio.Event | None = Non
             last_backup_check = time.monotonic()
             try:
                 info = backup.daily_tick(conn, datetime.now())
-                log.info("backup diario: %s (%s KB, %s tickets, podados %s)",
-                         info["backup"], info["size_kb"], info["production_tickets"],
-                         info["pruned"] or "ninguno")
+                log.info(
+                    "backup diario: %s (%s KB, %s tickets, podados %s)",
+                    info["backup"],
+                    info["size_kb"],
+                    info["production_tickets"],
+                    info["pruned"] or "ninguno",
+                )
             except Exception:
                 log.exception("backup diario falló — sigo vivo")
         try:
@@ -223,13 +248,14 @@ async def scheduler_loop(conn, emit=None, stop_event: asyncio.Event | None = Non
                     if avisos:
                         log.info("timbre %s: %s", plan["ahora"].strftime("%H:%M"), res)
                 else:
-                    timbre.saltar()    # apagado desde la app: pasa el tiempo sin sonar
+                    timbre.saltar()  # apagado desde la app: pasa el tiempo sin sonar
             except Exception:
                 log.exception("timbre de franjas falló (¿relay caído?) — se reintenta en la vuelta siguiente")
             if plan is not None:
                 timbre.confirmar(plan, res)
-            try:   # #1189: lo del dueño, por el bot de Telegram (sin token o sin chat, no suena)
+            try:  # #1189: lo del dueño, por el bot de Telegram (sin token o sin chat, no suena)
                 from . import telegram_bot
+
                 cfg = telegram_bot.datos(conn) if timbre_mod.activo(conn) and telegram_bot.activo() else None
                 suyos = timbre.del_dueno(conn) if cfg else []
                 if suyos:

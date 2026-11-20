@@ -39,7 +39,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0"]
+# Las herramientas del CI van con version EXACTA (#1361, 20-nov): el 19-nov ruff
+# daba 87 avisos y el 20-nov, otra version con otros «por defecto», 404 sobre el
+# mismo codigo. Un CI que depende de lo que la herramienta mire por defecto se
+# pone en rojo un dia sin que nadie haya tocado nada.
+dev = ["pytest>=9.0", "ruff==0.17.6", "vulture==2.16"]
 
 # SIN [project.scripts] a proposito. Lo escribi primero como
 # `faros-daemon = "faros.daemon:main"` y al comprobarlo NO EXISTE
@@ -85,3 +89,35 @@ markers = [
 # candado de escritura cogido) la comprueba sin relojes test_850_bloqueo::test_mezcla_…,
 # que si corre en el CI. Los de estres se corren en casa antes de cada instalacion.
 addopts = "-m 'not judge and not stress'"
+
+[tool.ruff]
+# #1361 (20-nov): las reglas van ESCRITAS, no por defecto (ver el comentario de dev).
+target-version = "py311"
+# 120 y no 88: el codigo ya vive en lineas largas (61 pasan de 120, 759 de 100) y
+# partirlas todas haria del commit de formato un diff ilegible sin ganar nada.
+line-length = 120
+extend-exclude = ["build", "app", "e2e"]
+
+[tool.ruff.lint]
+# Las que cazan fallos de verdad: E4/E7/E9 (los errores de pycodestyle que ruff trae
+# de serie), F (pyflakes: imports y variables sin usar, nombres redefinidos), W,
+# B (bugbear: patrones que suelen ser un fallo) e I (orden de imports, se arregla solo).
+select = ["E4", "E7", "E9", "F", "W", "B", "I"]
+ignore = [
+  "E741",  # nombres l, O, I (23 casos): es legibilidad, no un fallo
+  "E731",  # lambda asignada a un nombre (7 casos): estilo, no un fallo
+  "B904",  # raise sin from dentro de un except (31): cambia la traza que se ve, no lo que hace
+  "B905",  # zip sin strict= (6): sin revisar caso a caso todavia; si alguno mezcla longitudes, es fallo
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Solo en tests y herramientas, revisados uno a uno el 20-nov (#1361): ninguno escondia
+# una comprobacion olvidada. En el codigo del daemon (faros/) SI cuentan: ahi un F841
+# escondia que cancelar un run lo dejaba en «error» (a4a6705).
+"tests/*" = [
+  "F811",  # un fixture importado que entra como parametro: el patron de pytest, no una redefinicion
+  "F841",  # variables de montaje (ficheros creados para que existan) o restos sin leer
+  "B007",  # variable del bucle sin usar en el cuerpo
+  "E402",  # imports a mitad de fichero, junto al bloque de tests que los usa
+]
+"tools/*" = ["B007"]  # scripts sueltos de medida, no se instalan

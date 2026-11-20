@@ -2,9 +2,11 @@
 
 Se valida todo ANTES de escribir: si una de las sustituidas no vale, la decisión nueva no se decide.
 """
+
 import pytest
 
-from faros import db, decisions as dec
+from faros import db
+from faros import decisions as dec
 from faros.service import HOUSE_OWNER, TicketError
 
 OPTS = [{"label": "sí", "text": "sí, hacerlo"}, {"label": "no", "text": "no hacerlo"}]
@@ -71,17 +73,21 @@ def test_nunca_valida_solo_el_dueno(conn):
         dec.decide(conn, "alice", otra, option="sí", rationale="r", supersedes=[vieja], supersede_kind="nunca_valida")
     assert e.value.field == "supersede_kind"
     assert dec.get_decision(conn, vieja)["superseded_by"] is None
-    d = dec.decide(conn, HOUSE_OWNER, otra, option="sí", rationale="r", supersedes=[vieja],
-                   supersede_kind="nunca_valida")
+    d = dec.decide(
+        conn, HOUSE_OWNER, otra, option="sí", rationale="r", supersedes=[vieja], supersede_kind="nunca_valida"
+    )
     assert dec.get_decision(conn, vieja)["supersede_kind"] == "nunca_valida" and d["status"] == "decided"
 
 
-@pytest.mark.parametrize("kw,campo", [
-    ({"decidido_por": {"tipo": "jefe", "quien": "x"}}, "decidido_por"),
-    ({"decidido_por": {"tipo": "humano"}}, "decidido_por"),
-    ({"valid_until": "mañana"}, "valid_until"),
-    ({"supersede_reason": "sin a quién"}, "supersede_reason"),
-])
+@pytest.mark.parametrize(
+    "kw,campo",
+    [
+        ({"decidido_por": {"tipo": "jefe", "quien": "x"}}, "decidido_por"),
+        ({"decidido_por": {"tipo": "humano"}}, "decidido_por"),
+        ({"valid_until": "mañana"}, "valid_until"),
+        ({"supersede_reason": "sin a quién"}, "supersede_reason"),
+    ],
+)
 def test_valores_malos_se_rechazan_con_su_campo(conn, kw, campo):
     nueva = _pendiente(conn)
     with pytest.raises(TicketError) as e:
@@ -134,9 +140,18 @@ def test_por_http_supersedes_marca_la_vieja(cliente):
     client, c = cliente
     vieja = _decidida(c)["id"]
     nueva = _pendiente(c, "¿la nueva?")
-    r = client.post(f"/api/decisions/{nueva}/decide", headers=H, json={
-        "agent": HOUSE_OWNER, "option": "sí", "rationale": "r", "supersedes": [vieja],
-        "supersede_reason": "cambia", "decidido_por": {"tipo": "humano", "quien": "Pepe"}})
+    r = client.post(
+        f"/api/decisions/{nueva}/decide",
+        headers=H,
+        json={
+            "agent": HOUSE_OWNER,
+            "option": "sí",
+            "rationale": "r",
+            "supersedes": [vieja],
+            "supersede_reason": "cambia",
+            "decidido_por": {"tipo": "humano", "quien": "Pepe"},
+        },
+    )
     assert r.status_code == 200, r.text
     assert r.json()["decidido_por"] == {"tipo": "humano", "quien": "Pepe"}
     assert dec.get_decision(c, vieja)["superseded_by"] == nueva
@@ -145,8 +160,11 @@ def test_por_http_supersedes_marca_la_vieja(cliente):
 def test_por_http_una_sustituida_mala_es_400_con_su_campo(cliente):
     client, c = cliente
     nueva = _pendiente(c)
-    r = client.post(f"/api/decisions/{nueva}/decide", headers=H, json={
-        "agent": HOUSE_OWNER, "option": "sí", "rationale": "r", "supersedes": [9999]})
+    r = client.post(
+        f"/api/decisions/{nueva}/decide",
+        headers=H,
+        json={"agent": HOUSE_OWNER, "option": "sí", "rationale": "r", "supersedes": [9999]},
+    )
     assert r.status_code == 400, r.text
     assert r.json()["field"] == "supersedes"
     assert dec.get_decision(c, nueva)["status"] == "pending"
@@ -156,9 +174,17 @@ def test_el_mcp_reenvia_los_campos(monkeypatch):
     enviados = []
     monkeypatch.setattr(mcp_server, "_call", lambda m, path, **kw: enviados.append((path, kw.get("json"))) or {})
     fn = getattr(mcp_server.decide, "fn", mcp_server.decide)
-    fn(agent=HOUSE_OWNER, decision_id=7, rationale="r", option="sí", supersedes=[3],
-       supersede_kind="parcial", supersede_reason="x", decidido_por={"tipo": "equipo", "quien": "casa"},
-       valid_until="2026-12-01")
+    fn(
+        agent=HOUSE_OWNER,
+        decision_id=7,
+        rationale="r",
+        option="sí",
+        supersedes=[3],
+        supersede_kind="parcial",
+        supersede_reason="x",
+        decidido_por={"tipo": "equipo", "quien": "casa"},
+        valid_until="2026-12-01",
+    )
     path, body = enviados[-1]
     assert path == "/api/decisions/7/decide"
     assert body["supersedes"] == [3] and body["supersede_kind"] == "parcial"

@@ -8,7 +8,6 @@ no se abre nada (apagado). El juez los lee con la regla de solo esos ficheros, y
 """
 
 import asyncio
-import json
 
 import pytest
 
@@ -49,8 +48,9 @@ def test_un_fichero_nombrado_dentro_de_la_raiz_se_abre(casa):
 def test_fuera_de_la_raiz_no_existe_o_con_puntos_no_se_abre(casa):
     c, raiz, nota, fuera, salida = casa
     settings.patch(c, "owner", {"verifier_read_roots": str(raiz)})
-    texto = (f"{fuera.as_posix()}\n{(raiz / 'no_existe.md').as_posix()}\n"
-             f"{(raiz / '..' / '..' / 'secreto.md').as_posix()}\n")
+    texto = (
+        f"{fuera.as_posix()}\n{(raiz / 'no_existe.md').as_posix()}\n{(raiz / '..' / '..' / 'secreto.md').as_posix()}\n"
+    )
     assert verifier._ficheros_del_run(c, _run(salida, texto)) == []
 
 
@@ -66,15 +66,20 @@ def test_sweep_runs_juzga_con_la_nota_y_el_output(casa, monkeypatch):
     settings.patch(c, "owner", {"verifier_read_roots": str(raiz)})
     run = _run(salida, f"nota: {nota.as_posix()}")
     from faros import jobs
+
     monkeypatch.setattr(jobs, "runs_pending_verdict", lambda conn: [dict(run, job_id=13)])
-    monkeypatch.setattr(jobs, "get_job", lambda conn, jid: {"id": 13, "name": "revista", "cwd": None,
-                                                            "prompt": "p", "verify_criteria": "c"})
+    monkeypatch.setattr(
+        jobs,
+        "get_job",
+        lambda conn, jid: {"id": 13, "name": "revista", "cwd": None, "prompt": "p", "verify_criteria": "c"},
+    )
     monkeypatch.setattr(jobs, "set_verdict", lambda conn, rid, v, reason, provenance=None: {"verdict": v})
     visto = {}
 
     async def juez(prompt, model=None, env=None, read_dirs=None, read_files=None):
         visto.update(read_dirs=read_dirs, read_files=read_files)
         return {"verdict": "pass", "reason": "ok"}
+
     monkeypatch.setattr(verifier, "_judge", juez)
     asyncio.run(verifier.sweep_runs(c))
     assert str(nota.resolve()) in visto["read_files"] and str(salida) in visto["read_files"]

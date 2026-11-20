@@ -64,9 +64,11 @@ def test_400_unknown_field_is_named(client):
 
 def test_409_illegal_transition_is_transition_rejected(client):
     t = client.post("/api/tickets", json={"agent": "owner", "title": "x", "owner": "alice"}, headers=H).json()["ticket"]
-    r = client.post(f"/api/tickets/{t['id']}/transition",
-                    json={"agent": "alice", "action": "complete", "evidence_type": "file_path",
-                          "evidence": "x.md"}, headers=H)
+    r = client.post(
+        f"/api/tickets/{t['id']}/transition",
+        json={"agent": "alice", "action": "complete", "evidence_type": "file_path", "evidence": "x.md"},
+        headers=H,
+    )
     assert r.status_code == 409
     body = r.json()
     assert body["error"] == "transition_rejected" and body["reason"] and body["code"] == "transition.illegal"
@@ -82,12 +84,16 @@ def test_unknown_ticket_carries_its_code(client):
 # Los seis caminos de error que midió el ticket: TODOS llevan un `code` estable.
 # Los que no tienen uno específico heredan <field>.invalid, o request.invalid.
 
-@pytest.mark.parametrize("path, body, code", [
-    ("/api/tickets", {"title": "x"}, "request.agent_required"),
-    ("/api/tickets", {"agent": "nadie", "title": "x"}, "agent.unknown"),
-    ("/api/tickets", {"agent": "owner", "title": "  "}, "title.invalid"),
-    ("/api/tickets", {"agent": "owner", "title": "x", "priority": "urgentisima"}, "priority.invalid"),
-])
+
+@pytest.mark.parametrize(
+    "path, body, code",
+    [
+        ("/api/tickets", {"title": "x"}, "request.agent_required"),
+        ("/api/tickets", {"agent": "nadie", "title": "x"}, "agent.unknown"),
+        ("/api/tickets", {"agent": "owner", "title": "  "}, "title.invalid"),
+        ("/api/tickets", {"agent": "owner", "title": "x", "priority": "urgentisima"}, "priority.invalid"),
+    ],
+)
 def test_312_every_validation_error_carries_a_code(client, path, body, code):
     r = client.post(path, json=body, headers=H)
     assert r.status_code == 400 and r.json()["code"] == code, r.json()

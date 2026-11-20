@@ -14,20 +14,50 @@ import json
 import logging
 from datetime import datetime
 
-from . import service, harness
-from .service import (TicketError, _now, _get, _append_history, _validate_agent,
-                      _validate_project, CLOSED_STATUSES, SYSTEM_AGENTS)
+from . import harness, service
+from .service import (
+    CLOSED_STATUSES,
+    TicketError,
+    _append_history,
+    _get,
+    _now,
+    _validate_agent,
+    _validate_project,
+)
 
 JOB_STATUSES = {"active", "paused", "archived"}
 VERIFY_LEVELS = {"auto", "none"}
-EDITABLE = {"name", "harness", "model", "prompt", "cwd", "permission_mode", "allowed_tools",
-            "mcp_config", "inherit_mcp", "mcp_servers", "strict_mcp", "add_dirs", "effort", "fallback_model",
-            "system_prompt", "json_schema", "max_budget_usd", "timeout_s", "schedule",
-            "verify_level", "verify_criteria", "ticket_id", "project_id", "enabled"}
+EDITABLE = {
+    "name",
+    "harness",
+    "model",
+    "prompt",
+    "cwd",
+    "permission_mode",
+    "allowed_tools",
+    "mcp_config",
+    "inherit_mcp",
+    "mcp_servers",
+    "strict_mcp",
+    "add_dirs",
+    "effort",
+    "fallback_model",
+    "system_prompt",
+    "json_schema",
+    "max_budget_usd",
+    "timeout_s",
+    "schedule",
+    "verify_level",
+    "verify_criteria",
+    "ticket_id",
+    "project_id",
+    "enabled",
+}
 _JSON_LISTS = ("inherit_mcp", "add_dirs", "mcp_servers")
 
 
 # ------------------------------------------------------------------ helpers
+
 
 def _billing_for(harness_name: str) -> str | None:
     try:
@@ -42,8 +72,10 @@ def _tope_no_aplicable(harness_name: str, billing: str | None) -> str | None:
     claude-cli-deepseek el coste se anula (el de Claude Code es falso con DeepSeek), así que el tope nunca
     saltaría: una promesa falsa."""
     if billing != "api":
-        return (f"el harness {harness_name!r} factura por {billing or 'modo desconocido'}, "
-                "el tope en USD solo aplica a billing=api")
+        return (
+            f"el harness {harness_name!r} factura por {billing or 'modo desconocido'}, "
+            "el tope en USD solo aplica a billing=api"
+        )
     try:
         puede = getattr(harness.get(harness_name).capabilities, "budget", True)
     except Exception:
@@ -78,6 +110,7 @@ def _normalize(fields: dict, conn=None, harness_current=None) -> dict:
         out["json_schema"] = v
     if "schedule" in out and out["schedule"] is not None:
         from . import schedule as _schedule
+
         raw = out["schedule"]
         if isinstance(raw, str):
             try:
@@ -95,8 +128,9 @@ def _normalize(fields: dict, conn=None, harness_current=None) -> dict:
         except (KeyError, RuntimeError):
             adapter = None
         if adapter is not None and hname == "claude-cli":
-            from .harness import model_catalog as _mc
             from . import settings as _settings
+            from .harness import model_catalog as _mc
+
             entries = _mc.merge_cache(_mc.seed_entries(list(_mc.ALIASES)), _settings.get(conn, "model_catalog"))
             ok, why = _mc.is_acceptable(out["model"], entries)
             if not ok:
@@ -104,6 +138,7 @@ def _normalize(fields: dict, conn=None, harness_current=None) -> dict:
     if conn is not None and out.get("mcp_servers"):
         # v3.1 (T5.6): cada nombre debe existir en el registro
         from . import mcp_registry as _reg
+
         for n in json.loads(out["mcp_servers"]):
             if _reg.get_by_name(conn, n) is None:
                 raise TicketError(f"el servidor MCP {n!r} no está en el registro (Ajustes › MCP)")
@@ -124,8 +159,9 @@ def _validate_link(conn, ticket_id, job_id=None, legacy=False):
         raise TicketError(f"ticket #{ticket_id} no es manual — solo se vincula a tareas del Tablero")
     if t["closed_at"] is not None:
         raise TicketError(f"ticket #{ticket_id} está cerrado ({t['status']}) — no se vincula")
-    other = conn.execute("SELECT id FROM agent_jobs WHERE ticket_id=? AND id != COALESCE(?, -1)",
-                         (ticket_id, job_id)).fetchone()
+    other = conn.execute(
+        "SELECT id FROM agent_jobs WHERE ticket_id=? AND id != COALESCE(?, -1)", (ticket_id, job_id)
+    ).fetchone()
     if other:
         raise TicketError(f"ticket #{ticket_id} ya tiene brazo automático: job #{other['id']}")
 
@@ -145,50 +181,76 @@ def _hydrate(conn, row) -> dict:
     last = conn.execute(
         "SELECT id, status, started_at, finished_at, cost_usd, cost_kind, verdict,"
         " verdict_reason, verified_at, result_summary FROM runs WHERE job_id=?"
-        " ORDER BY id DESC LIMIT 1", (d["id"],)).fetchone()
+        " ORDER BY id DESC LIMIT 1",
+        (d["id"],),
+    ).fetchone()
     d["last_run"] = dict(last) if last else None
     tot = conn.execute(
         "SELECT COALESCE(SUM(CASE WHEN cost_kind='billed' THEN cost_usd END),0) AS billed,"
         " COALESCE(SUM(CASE WHEN cost_kind='equivalent' THEN cost_usd END),0) AS equiv,"
-        " COUNT(*) AS n FROM runs WHERE job_id=?", (d["id"],)).fetchone()
+        " COUNT(*) AS n FROM runs WHERE job_id=?",
+        (d["id"],),
+    ).fetchone()
     d["total_cost_usd"] = round(tot["billed"], 4)
     d["total_equivalent_usd"] = round(tot["equiv"], 4)
     d["runs_count"] = tot["n"]
-    d["running"] = bool(conn.execute(
-        "SELECT 1 FROM runs WHERE job_id=? AND status='running'", (d["id"],)).fetchone())
+    d["running"] = bool(conn.execute("SELECT 1 FROM runs WHERE job_id=? AND status='running'", (d["id"],)).fetchone())
     try:
         from . import scheduler
-        d["next_fire"] = scheduler.next_fire(d["schedule"], d["created_at"], datetime.now()) \
-            if d["status"] == "active" and d["enabled"] else None
+
+        d["next_fire"] = (
+            scheduler.next_fire(d["schedule"], d["created_at"], datetime.now())
+            if d["status"] == "active" and d["enabled"]
+            else None
+        )
         if isinstance(d["next_fire"], datetime):
             d["next_fire"] = d["next_fire"].isoformat(timespec="minutes")
     except Exception:
         d["next_fire"] = None
     if d.get("ticket_id"):
-        t = conn.execute("SELECT id, title, status, closed_at FROM tickets WHERE id=?",
-                         (d["ticket_id"],)).fetchone()
+        t = conn.execute("SELECT id, title, status, closed_at FROM tickets WHERE id=?", (d["ticket_id"],)).fetchone()
         d["ticket"] = dict(t) if t else None
     else:
         d["ticket"] = None
     if d["ticket"] and d["ticket"]["closed_at"] and d["status"] == "active" and d["enabled"]:
         # #518: el scheduler no lanza un job colgado de una tarea cerrada; que tampoco lo anuncie
         d["next_fire"] = None
-        d["not_firing"] = (f"no se dispara: la tarea #{d['ticket_id']} está cerrada ({d['ticket']['status']});"
-                           " desenlázalo (ticket_id a null) o cuélgalo de una tarea abierta")
+        d["not_firing"] = (
+            f"no se dispara: la tarea #{d['ticket_id']} está cerrada ({d['ticket']['status']});"
+            " desenlázalo (ticket_id a null) o cuélgalo de una tarea abierta"
+        )
     return d
 
 
 # ------------------------------------------------------------------ CRUD
 
-def create_job(conn, agent, name, prompt, harness_name="claude-cli", model="haiku",
-               schedule=None, ticket_id=None, project_id=None, **opts) -> dict:
+
+def create_job(
+    conn,
+    agent,
+    name,
+    prompt,
+    harness_name="claude-cli",
+    model="haiku",
+    schedule=None,
+    ticket_id=None,
+    project_id=None,
+    **opts,
+) -> dict:
     _validate_agent(agent)
     legacy = bool(opts.pop("_legacy", False))
     if not (prompt or "").strip():
         raise TicketError("prompt vacío")
-    fields = {"name": name, "prompt": prompt, "harness": harness_name, "model": model,
-              "schedule": schedule or {"type": "manual"}, "ticket_id": ticket_id,
-              "project_id": project_id, **opts}
+    fields = {
+        "name": name,
+        "prompt": prompt,
+        "harness": harness_name,
+        "model": model,
+        "schedule": schedule or {"type": "manual"},
+        "ticket_id": ticket_id,
+        "project_id": project_id,
+        **opts,
+    }
     unknown = set(fields) - EDITABLE
     if unknown:
         raise TicketError(f"campos desconocidos: {sorted(unknown)}")
@@ -215,13 +277,12 @@ def create_job(conn, agent, name, prompt, harness_name="claude-cli", model="haik
     fields["updated_at"] = fields["created_at"]
     cols = list(fields)
     cur = conn.execute(
-        f"INSERT INTO agent_jobs ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
-        [fields[c] for c in cols])
+        f"INSERT INTO agent_jobs ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", [fields[c] for c in cols]
+    )
     job_id = cur.lastrowid
     if ticket_id and not legacy:
         st = _get(conn, ticket_id)["status"]
-        _append_history(conn, ticket_id, st, st, agent,
-                        f"brazo automático: job #{job_id} '{name}' vinculado")
+        _append_history(conn, ticket_id, st, st, agent, f"brazo automático: job #{job_id} '{name}' vinculado")
     conn.commit()
     out = get_job(conn, job_id)
     if warning:
@@ -238,11 +299,13 @@ def list_jobs(conn, status=None, project_id=None, include_archived=False) -> lis
     if status:
         if status not in JOB_STATUSES:
             raise TicketError(f"status inválido: {status!r}")
-        where.append("status=?"); params.append(status)
+        where.append("status=?")
+        params.append(status)
     elif not include_archived:
         where.append("status != 'archived'")
     if project_id:
-        where.append("project_id=?"); params.append(project_id)
+        where.append("project_id=?")
+        params.append(project_id)
     sql = "SELECT * FROM agent_jobs"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -260,8 +323,9 @@ def update_job(conn, agent, job_id, **fields) -> dict:
         return _hydrate(conn, row)
     fields = _normalize(fields, conn, harness_current=row["harness"])
     merged = {**dict(row), **fields}
-    service._validate_job_fields({**merged, "schedule": {"type": "manual"},
-                                  "prompt": merged.get("prompt") or row["prompt"]})
+    service._validate_job_fields(
+        {**merged, "schedule": {"type": "manual"}, "prompt": merged.get("prompt") or row["prompt"]}
+    )
     if "project_id" in fields:
         _validate_project(conn, fields["project_id"])
     if "ticket_id" in fields:
@@ -295,11 +359,12 @@ def set_status(conn, agent, job_id, status) -> dict:
     row = _row(conn, job_id)
     if row["status"] == "archived" and status != "archived":
         raise TicketError(f"job #{job_id} está archivado — duplícalo para volver a usarlo")
-    if status == "archived" and conn.execute(
-            "SELECT 1 FROM runs WHERE job_id=? AND status='running'", (job_id,)).fetchone():
+    if (
+        status == "archived"
+        and conn.execute("SELECT 1 FROM runs WHERE job_id=? AND status='running'", (job_id,)).fetchone()
+    ):
         raise TicketError(f"job #{job_id} tiene un run en curso — cancélalo antes de archivar")
-    conn.execute("UPDATE agent_jobs SET status=?, updated_at=? WHERE id=?",
-                 (status, _now(), job_id))
+    conn.execute("UPDATE agent_jobs SET status=?, updated_at=? WHERE id=?", (status, _now(), job_id))
     conn.commit()
     return get_job(conn, job_id)
 
@@ -315,19 +380,22 @@ def duplicate_job(conn, agent, job_id, name=None) -> dict:
     fields["created_at"] = fields["updated_at"] = _now()
     cols = list(fields)
     cur = conn.execute(
-        f"INSERT INTO agent_jobs ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
-        [fields[c] for c in cols])
+        f"INSERT INTO agent_jobs ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", [fields[c] for c in cols]
+    )
     conn.commit()
     return get_job(conn, cur.lastrowid)
 
 
 # ------------------------------------------------------------------ runs
 
+
 def create_run(conn, job_id) -> dict:
     """Registra el arranque. Anti-solape: un running por job (índice único)."""
     job = get_job(conn, job_id)
     if job["status"] != "active" or not job["enabled"]:
-        raise TicketError(f"job #{job_id} está {job['status']}{'' if job['enabled'] else ' (deshabilitado)'} — no se lanza")
+        raise TicketError(
+            f"job #{job_id} está {job['status']}{'' if job['enabled'] else ' (deshabilitado)'} — no se lanza"
+        )
     if job["running"]:
         raise TicketError(f"job #{job_id} ya tiene un run en curso")
     # T1.7: el tope en USD solo existe donde se factura por uso (billing=api).
@@ -335,7 +403,8 @@ def create_run(conn, job_id) -> dict:
         if job["total_cost_usd"] >= float(job["max_budget_usd"]):
             raise TicketError(
                 f"job #{job_id} agotó su presupuesto: {job['total_cost_usd']:.4f} USD gastados"
-                f" de {float(job['max_budget_usd']):.2f} — sube el tope o archívalo")
+                f" de {float(job['max_budget_usd']):.2f} — sube el tope o archívalo"
+            )
     ticket_id = job["ticket_id"]
     if ticket_id:
         t = _get(conn, ticket_id)
@@ -343,24 +412,31 @@ def create_run(conn, job_id) -> dict:
             raise TicketError(f"ticket #{ticket_id} vinculado está cerrado ({t['status']}) — pausa o desvincula el job")
     cur = conn.execute(
         "INSERT INTO runs (job_id, ticket_id, started_at, status) VALUES (?, ?, ?, 'running')",
-        (job_id, ticket_id, _now()))
+        (job_id, ticket_id, _now()),
+    )
     run_id = cur.lastrowid
     if ticket_id:
         # El tablero refleja que el brazo automático está trabajando (semántica v1).
         t = _get(conn, ticket_id)
         if t["status"] in {"proposed", "accepted", "blocked"}:
             if t["status"] == "proposed":
-                _append_history(conn, ticket_id, "proposed", "accepted", "runner-bot",
-                                "auto-accept al lanzar")
+                _append_history(conn, ticket_id, "proposed", "accepted", "runner-bot", "auto-accept al lanzar")
                 conn.execute("UPDATE tickets SET status='accepted' WHERE id=?", (ticket_id,))
-            conn.execute("UPDATE tickets SET status='in_progress', blocked_reason=NULL,"
-                         " owner=COALESCE(owner, 'runner-bot') WHERE id=?", (ticket_id,))
-            _append_history(conn, ticket_id,
-                            t["status"] if t["status"] != "proposed" else "accepted",
-                            "in_progress", "runner-bot", f"run #{run_id} lanzado")
+            conn.execute(
+                "UPDATE tickets SET status='in_progress', blocked_reason=NULL,"
+                " owner=COALESCE(owner, 'runner-bot') WHERE id=?",
+                (ticket_id,),
+            )
+            _append_history(
+                conn,
+                ticket_id,
+                t["status"] if t["status"] != "proposed" else "accepted",
+                "in_progress",
+                "runner-bot",
+                f"run #{run_id} lanzado",
+            )
         else:
-            _append_history(conn, ticket_id, t["status"], t["status"], "runner-bot",
-                            f"run #{run_id} lanzado")
+            _append_history(conn, ticket_id, t["status"], t["status"], "runner-bot", f"run #{run_id} lanzado")
     conn.commit()
     return dict(conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone())
 
@@ -370,14 +446,15 @@ def _streak_already_open(conn, job_id, run_id) -> bool:
     fallo (terminó error/timeout/cancelled, o terminó ok y el verificador dijo fail): entonces ya
     se avisó al empezar la racha y este fallo no avisa. Un run bueno la cierra."""
     prev = conn.execute(
-        "SELECT status, verdict FROM runs WHERE job_id=? AND id<? AND status!='running'"
-        " ORDER BY id DESC LIMIT 1", (job_id, run_id)).fetchone()
-    return prev is not None and (prev["status"] in ("error", "timeout", "cancelled")
-                                 or prev["verdict"] == "fail")
+        "SELECT status, verdict FROM runs WHERE job_id=? AND id<? AND status!='running' ORDER BY id DESC LIMIT 1",
+        (job_id, run_id),
+    ).fetchone()
+    return prev is not None and (prev["status"] in ("error", "timeout", "cancelled") or prev["verdict"] == "fail")
 
 
-def finish_run(conn, run_id, status, exit_code=None, cost_usd=None, session_id=None,
-               output_path=None, result_summary=None) -> dict:
+def finish_run(
+    conn, run_id, status, exit_code=None, cost_usd=None, session_id=None, output_path=None, result_summary=None
+) -> dict:
     if status not in {"ok", "error", "timeout", "cancelled"}:
         raise TicketError(f"status de run inválido: {status!r}")
     run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -392,16 +469,18 @@ def finish_run(conn, run_id, status, exit_code=None, cost_usd=None, session_id=N
     conn.execute(
         "UPDATE runs SET finished_at=?, status=?, exit_code=?, cost_usd=?, cost_kind=?,"
         " session_id=?, output_path=?, result_summary=? WHERE id=? AND status='running'",
-        (_now(), status, exit_code, cost_usd, cost_kind, session_id, output_path,
-         result_summary, run_id))
-    try:    # Biblioteca (#850): artifacts/run_<id> con su job y su ticket; antes del cierre del ticket
+        (_now(), status, exit_code, cost_usd, cost_kind, session_id, output_path, result_summary, run_id),
+    )
+    try:  # Biblioteca (#850): artifacts/run_<id> con su job y su ticket; antes del cierre del ticket
         from . import library
+
         library.al_terminar_run(conn, run_id, run["job_id"], run["ticket_id"])
     except Exception:
         logging.getLogger(__name__).exception("biblioteca: el gancho de run falló en #%s", run_id)
     if status in ("error", "timeout", "cancelled"):
         try:  # T4.4 (Eco): aviso al dueño; sin token es no-op. #662: uno por racha
             from . import notify
+
             if _streak_already_open(conn, run["job_id"], run_id):
                 notify.log.info("aviso omitido: run #%s de «%s» sigue una racha de fallos", run_id, job["name"])
             else:
@@ -415,12 +494,21 @@ def finish_run(conn, run_id, status, exit_code=None, cost_usd=None, session_id=N
             if job["verify_level"] == "none" and t["status"] in {"in_progress", "accepted"}:
                 service.complete_ticket(conn, "runner-bot", ticket_id, "run_output", str(run_id))
             else:
-                _append_history(conn, ticket_id, t["status"], t["status"], "runner-bot",
-                                f"run #{run_id} terminó ok — esperando veredicto")
+                _append_history(
+                    conn,
+                    ticket_id,
+                    t["status"],
+                    t["status"],
+                    "runner-bot",
+                    f"run #{run_id} terminó ok — esperando veredicto",
+                )
         elif t["status"] in {"accepted", "in_progress"}:
-            service.block_ticket(conn, "runner-bot", ticket_id,
-                                 f"run #{run_id} terminó {status}"
-                                 + (f" (exit {exit_code})" if exit_code is not None else ""))
+            service.block_ticket(
+                conn,
+                "runner-bot",
+                ticket_id,
+                f"run #{run_id} terminó {status}" + (f" (exit {exit_code})" if exit_code is not None else ""),
+            )
     conn.commit()
     return dict(conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone())
 
@@ -441,11 +529,13 @@ def set_verdict(conn, run_id, verdict, reason, by="verifier-bot", provenance=Non
     if run["verdict"] and not (run["verdict"] == "uncertain" and verdict != "uncertain"):
         raise TicketError(f"run #{run_id} ya tiene veredicto ({run['verdict']})")
     reason = (reason or "").strip()[:1000] or "(sin motivo)"
-    conn.execute("UPDATE runs SET verdict=?, verdict_reason=?, verified_at=? WHERE id=?",
-                 (verdict, reason, _now(), run_id))
+    conn.execute(
+        "UPDATE runs SET verdict=?, verdict_reason=?, verified_at=? WHERE id=?", (verdict, reason, _now(), run_id)
+    )
     if verdict == "fail":
         try:  # T4.4 (Eco). #662: uno por racha
             from . import notify
+
             name = get_job(conn, run["job_id"])["name"]
             if _streak_already_open(conn, run["job_id"], run_id):
                 notify.log.info("aviso omitido: run #%s de «%s» sigue una racha de fallos", run_id, name)
@@ -459,13 +549,19 @@ def set_verdict(conn, run_id, verdict, reason, by="verifier-bot", provenance=Non
         if verdict == "pass" and t["status"] in {"in_progress", "accepted"}:
             done = service.complete_ticket(conn, "runner-bot", ticket_id, "run_output", str(run_id))
             if done["status"] == "done" and t["verification_level"] == "auto":
-                service.verify_ticket(conn, "verifier-bot", ticket_id, "pass",
-                                      note=f"veredicto pass del run #{run_id}: {reason}",
-                                      provenance=provenance)
+                service.verify_ticket(
+                    conn,
+                    "verifier-bot",
+                    ticket_id,
+                    "pass",
+                    note=f"veredicto pass del run #{run_id}: {reason}",
+                    provenance=provenance,
+                )
         elif t["closed_at"] is None:
             etiqueta = "incierto (lo resuelve una persona)" if verdict == "uncertain" else verdict
-            _append_history(conn, ticket_id, t["status"], t["status"], by,
-                            f"run #{run_id} veredicto {etiqueta}: {reason}")
+            _append_history(
+                conn, ticket_id, t["status"], t["status"], by, f"run #{run_id} veredicto {etiqueta}: {reason}"
+            )
     conn.commit()
     return dict(conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone())
 
@@ -473,11 +569,14 @@ def set_verdict(conn, run_id, verdict, reason, by="verifier-bot", provenance=Non
 def list_runs(conn, job_id=None, ticket_id=None, status=None, limit=50) -> list[dict]:
     where, params = [], []
     if job_id:
-        where.append("job_id=?"); params.append(job_id)
+        where.append("job_id=?")
+        params.append(job_id)
     if ticket_id:
-        where.append("ticket_id=?"); params.append(ticket_id)
+        where.append("ticket_id=?")
+        params.append(ticket_id)
     if status:
-        where.append("status=?"); params.append(status)
+        where.append("status=?")
+        params.append(status)
     sql = "SELECT * FROM runs"
     if where:
         sql += " WHERE " + " AND ".join(where)
@@ -488,9 +587,13 @@ def list_runs(conn, job_id=None, ticket_id=None, status=None, limit=50) -> list[
 
 def runs_pending_verdict(conn) -> list[dict]:
     """Runs ok sin veredicto cuyo job pide verificación automática."""
-    return [dict(r) for r in conn.execute(
-        "SELECT r.* FROM runs r JOIN agent_jobs j ON j.id = r.job_id"
-        " WHERE r.status='ok' AND r.verdict IS NULL AND j.verify_level='auto' ORDER BY r.id")]
+    return [
+        dict(r)
+        for r in conn.execute(
+            "SELECT r.* FROM runs r JOIN agent_jobs j ON j.id = r.job_id"
+            " WHERE r.status='ok' AND r.verdict IS NULL AND j.verify_level='auto' ORDER BY r.id"
+        )
+    ]
 
 
 def results(conn) -> list[dict]:

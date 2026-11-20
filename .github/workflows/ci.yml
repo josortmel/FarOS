@@ -39,7 +39,7 @@ jobs:
             # A run cut short can still exit 0 (it happened in EcoRelay for five months):
             # require pytest's summary and at least MIN_TESTS passed tests.
             # Removing tests on purpose? Lower MIN_TESTS in the same PR.
-            # 1093 run by default (judge and stress are out); the calendar tests skip
+            # 1089 run by default (judge and stress are out); the calendar tests skip
             # themselves near midnight (4 of them), and CI runs in UTC: hence the margin.
             - name: Python tests
               if: ${{ !cancelled() && steps.install.outcome == 'success' }}
@@ -63,6 +63,45 @@ jobs:
               if: ${{ !cancelled() && steps.install.outcome == 'success' }}
               working-directory: app
               run: node --test
+
+    # #1361: lint y formato del Python. No dependen del sistema, así que van en Linux y no esperan a Windows.
+    # La versión de ruff y sus reglas viven en pyproject.toml ([dev] y [tool.ruff]): aquí no se repiten.
+    lint:
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@v5
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.14"
+            - name: Install ruff and vulture (the exact versions in pyproject.toml)
+              shell: bash
+              run: |
+                  pins=$(grep -oE '"(ruff|vulture)==[0-9.]+"' pyproject.toml | tr -d '"')
+                  echo "installing $pins"
+                  python -m pip install $pins
+            - name: ruff check
+              run: ruff check faros tests tools
+            - name: ruff format --check
+              if: ${{ !cancelled() }}
+              run: ruff format --check faros tests tools
+            # Dead code in faros/ (what gets installed). vulture also reads tests/ and tools/ so that
+            # something only they use does not count as dead, but only faros/ makes it fail.
+            # The routes and MCP tools are called through their decorator; vulture_whitelist.py holds
+            # the checked false positives, each with its reason.
+            - name: vulture (dead code in faros/)
+              if: ${{ !cancelled() }}
+              shell: bash
+              run: |
+                  set +e
+                  vulture faros tests tools vulture_whitelist.py --min-confidence 60 \
+                      --ignore-decorators "@app.*,@mcp.tool,@pytest.*" > vulture.txt
+                  dead=$(grep -E '^faros' vulture.txt)
+                  if [ -n "$dead" ]; then
+                      echo "$dead"
+                      echo "::error::dead code in faros/ (or a new false positive: add it to vulture_whitelist.py with its reason)"
+                      exit 1
+                  fi
+                  echo "no dead code in faros/"
 
     secrets:
         runs-on: ubuntu-24.04

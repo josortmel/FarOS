@@ -2,6 +2,7 @@
 11,828 chars, «Fuentes consultadas» starting at 7,901 → the judge saw 99 chars of the section and failed it for
 «missing sources» that were there. When the evidence is cut, the prompt must SAY so: how much it sees out of how
 much, and where the whole file is (the judge can read that folder: _dirs_del_run)."""
+
 from faros import verifier
 
 JOB = {"id": 13, "name": "Revista", "prompt": "haz la revista", "verify_criteria": "todas las fuentes con ok"}

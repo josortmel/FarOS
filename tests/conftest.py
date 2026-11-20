@@ -16,7 +16,7 @@ import os
 
 os.environ.setdefault("FAROS_OWNER", "owner")
 os.environ.setdefault("FAROS_AGENTS", "owner,alice,bob,carol,dave")
-os.environ.setdefault("FAROS_TIMBRE", "0")   # #1184: los tests no tocan el relay de la casa
+os.environ.setdefault("FAROS_TIMBRE", "0")  # #1184: los tests no tocan el relay de la casa
 
 # #1354: lo mismo con Claude Code. El adaptador busca `claude` en el PATH al
 # crearse, aunque el test simule el lanzamiento: con Claude Code instalado
@@ -49,6 +49,7 @@ import pytest  # noqa: E402
 def _saldo_sin_red(monkeypatch):
     """#465: el verificador mira el saldo de DeepSeek antes de usarlo (red). En la suite, hay saldo."""
     from faros import verifier
+
     monkeypatch.setattr(verifier, "_hay_saldo", lambda key: True)
 
 
@@ -58,6 +59,7 @@ def _claves_sin_red(monkeypatch):
     se sustituye por una prueba falsa que rechaza los valores que empiezan por «mala».
     Devuelve la lista de llamadas, por si un test quiere ver si se probó."""
     from faros import credentials
+
     llamadas = []
 
     def falsa(kind, value):

@@ -12,6 +12,7 @@ Usage:
 
 Output: docs/mediciones/modelos_concretos.md + JSON with structured results.
 """
+
 import argparse
 import json
 import subprocess
@@ -20,7 +21,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 CLAUDE_CANDIDATES = [
-    "opus", "sonnet", "haiku", "fable",
+    "opus",
+    "sonnet",
+    "haiku",
+    "fable",
     "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-6",
@@ -57,7 +61,13 @@ def run_claude_probe(model_id: str, budget: float = 0.001, prompt: str = PROBE_P
             return {"model": model_id, "status": "accepted", "reason": "budget_hit_model_valid", "exit": r.returncode}
         if r.returncode == 0:
             return {"model": model_id, "status": "accepted", "output": stdout[:200], "exit": 0}
-        return {"model": model_id, "status": "error", "stderr": stderr[:300], "stdout": stdout[:200], "exit": r.returncode}
+        return {
+            "model": model_id,
+            "status": "error",
+            "stderr": stderr[:300],
+            "stdout": stdout[:200],
+            "exit": r.returncode,
+        }
     except subprocess.TimeoutExpired:
         return {"model": model_id, "status": "timeout", "exit": -1}
     except Exception as e:

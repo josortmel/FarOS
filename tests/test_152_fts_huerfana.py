@@ -12,7 +12,8 @@ import logging
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 
 
 @pytest.fixture

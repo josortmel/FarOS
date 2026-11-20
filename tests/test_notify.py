@@ -1,11 +1,10 @@
 """Tests for faros.notify (T4.4)."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from faros import db
-from faros import notify
+from faros import db, notify
 
 
 @pytest.fixture
@@ -21,6 +20,7 @@ class TestTelegramNoOp:
 
     def test_token_but_no_chat_returns_false(self, conn):
         from faros import settings
+
         settings.patch(conn, "owner", {"telegram_token": "fake-token"})
         assert notify.telegram(conn, "hello") is False
 
@@ -32,10 +32,15 @@ class TestTelegramNoOp:
 class TestTelegramSend:
     def _configure(self, conn):
         from faros import settings
-        settings.patch(conn, "owner", {
-            "telegram_token": "123:ABC",
-            "telegram_chat_id": "999",
-        })
+
+        settings.patch(
+            conn,
+            "owner",
+            {
+                "telegram_token": "123:ABC",
+                "telegram_chat_id": "999",
+            },
+        )
 
     @patch("faros.notify.httpx")
     def test_sends_when_configured(self, mock_httpx, conn):
@@ -56,8 +61,7 @@ class TestTelegramSend:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_httpx.post.return_value = mock_resp
-        assert notify.on_run_failed(conn, "backup-job", 42, "timeout",
-                                    "exceeded 1800s") is True
+        assert notify.on_run_failed(conn, "backup-job", 42, "timeout", "exceeded 1800s") is True
         text = mock_httpx.post.call_args[1]["json"]["text"]
         assert "run #42" in text
         assert "backup-job" in text
@@ -70,8 +74,7 @@ class TestTelegramSend:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_httpx.post.return_value = mock_resp
-        assert notify.on_verdict_fail(conn, "email-job", 7,
-                                      "output inventa remitente") is True
+        assert notify.on_verdict_fail(conn, "email-job", 7, "output inventa remitente") is True
         text = mock_httpx.post.call_args[1]["json"]["text"]
         assert "run #7" in text
         assert "email-job" in text

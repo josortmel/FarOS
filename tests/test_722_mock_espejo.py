@@ -28,17 +28,27 @@ SCENARIOS = [
     {"name": "block with note", "steps": [ACCEPT, {"agent": "alice", "action": "block", "note": "espera a Pepe"}]},
     {"name": "block with nothing", "steps": [ACCEPT, {"agent": "alice", "action": "block"}]},
     {"name": "complete with no evidence at all", "steps": [ACCEPT, {"agent": "alice", "action": "complete"}]},
-    {"name": "complete with blank evidence", "steps": [ACCEPT, {"agent": "alice", "action": "complete",
-                                                                "evidence_type": "file_path", "evidence": " "}]},
-    {"name": "rework with a short reason", "steps": [ACCEPT, COMPLETE, {"agent": "alice", "action": "rework",
-                                                                        "reason": "corto"}]},
-    {"name": "rework with a reason", "steps": [ACCEPT, COMPLETE, {"agent": "alice", "action": "rework",
-                                                                  "reason": "le falta la prueba de verdad"}]},
+    {
+        "name": "complete with blank evidence",
+        "steps": [ACCEPT, {"agent": "alice", "action": "complete", "evidence_type": "file_path", "evidence": " "}],
+    },
+    {
+        "name": "rework with a short reason",
+        "steps": [ACCEPT, COMPLETE, {"agent": "alice", "action": "rework", "reason": "corto"}],
+    },
+    {
+        "name": "rework with a reason",
+        "steps": [ACCEPT, COMPLETE, {"agent": "alice", "action": "rework", "reason": "le falta la prueba de verdad"}],
+    },
     {"name": "pause with a short note", "steps": [ACCEPT, START, {"agent": "alice", "action": "pause", "note": "no"}]},
-    {"name": "pause with a note", "steps": [ACCEPT, START, {"agent": "alice", "action": "pause",
-                                                            "note": "no estaba en curso de verdad"}]},
-    {"name": "illegal: block from done", "steps": [ACCEPT, COMPLETE, {"agent": "alice", "action": "block",
-                                                                      "reason": "no se puede desde done"}]},
+    {
+        "name": "pause with a note",
+        "steps": [ACCEPT, START, {"agent": "alice", "action": "pause", "note": "no estaba en curso de verdad"}],
+    },
+    {
+        "name": "illegal: block from done",
+        "steps": [ACCEPT, COMPLETE, {"agent": "alice", "action": "block", "reason": "no se puede desde done"}],
+    },
 ]
 
 
@@ -50,8 +60,9 @@ def _daemon(tmp_path, monkeypatch):
     cli = TestClient(api.create_app(c))
     out = []
     for sc in SCENARIOS:
-        tid = cli.post("/api/tickets", headers=H, json={
-            "agent": "owner", "title": sc["name"], "owner": "alice"}).json()["ticket"]["id"]
+        tid = cli.post(
+            "/api/tickets", headers=H, json={"agent": "owner", "title": sc["name"], "owner": "alice"}
+        ).json()["ticket"]["id"]
         last = None
         for body in sc["steps"]:
             r = cli.post(f"/api/tickets/{tid}/transition", headers=H, json=body)
@@ -59,7 +70,12 @@ def _daemon(tmp_path, monkeypatch):
                 last = {"status": 200}
             else:
                 b = r.json()
-                last = {"status": r.status_code, "error": b.get("error"), "field": b.get("field"), "code": b.get("code")}
+                last = {
+                    "status": r.status_code,
+                    "error": b.get("error"),
+                    "field": b.get("field"),
+                    "code": b.get("code"),
+                }
         out.append(last)
     c.close()
     return out
@@ -69,8 +85,9 @@ def _mock():
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
-    p = subprocess.run([node, str(RUNNER)], input=json.dumps(SCENARIOS), capture_output=True,
-                       text=True, encoding="utf-8", timeout=60)
+    p = subprocess.run(
+        [node, str(RUNNER)], input=json.dumps(SCENARIOS), capture_output=True, text=True, encoding="utf-8", timeout=60
+    )
     assert p.returncode == 0, p.stderr
     return json.loads(p.stdout)
 
@@ -86,11 +103,23 @@ def test_input_errors_name_their_field_and_state_errors_are_409(tmp_path, monkey
     assert by_name["block with reason"] == {"status": 200}
     assert by_name["block with nothing"]["field"] == "reason"
     assert by_name["complete with no evidence at all"] == {
-        "status": 400, "error": "invalid_request", "field": "evidence_type", "code": "complete.evidence_required"}
+        "status": 400,
+        "error": "invalid_request",
+        "field": "evidence_type",
+        "code": "complete.evidence_required",
+    }
     assert by_name["complete with blank evidence"]["field"] == "evidence"
     assert by_name["rework with a short reason"] == {
-        "status": 400, "error": "invalid_request", "field": "reason", "code": "rework.reason_required"}
+        "status": 400,
+        "error": "invalid_request",
+        "field": "reason",
+        "code": "rework.reason_required",
+    }
     assert by_name["pause with a short note"] == {
-        "status": 400, "error": "invalid_request", "field": "note", "code": "pause.note_required"}
+        "status": 400,
+        "error": "invalid_request",
+        "field": "note",
+        "code": "pause.note_required",
+    }
     assert by_name["illegal: block from done"]["status"] == 409
     assert by_name["illegal: block from done"]["field"] is None

@@ -36,8 +36,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 MASK = st.MASK
 # tipo → el ajuste que alimenta la marcada «en uso» (None: no la usa FarOS)
-USO = {"deepseek": "deepseek_api_key", "anthropic": "anthropic_api_key",
-       "telegram": "telegram_token", "otra": None}
+USO = {"deepseek": "deepseek_api_key", "anthropic": "anthropic_api_key", "telegram": "telegram_token", "otra": None}
 NOMBRE_TIPO = {"deepseek": "DeepSeek", "anthropic": "Anthropic", "telegram": "Telegram", "otra": "Otra"}
 _ERROR = {403: "forbidden", 404: "not_found", 409: "conflict", 422: "invalid_request"}
 
@@ -45,8 +44,7 @@ _ERROR = {403: "forbidden", 404: "not_found", 409: "conflict", 422: "invalid_req
 class ClaveError(TicketError):
     """TicketError con estado HTTP propio (como RosterError): 404, 409 o 422."""
 
-    def __init__(self, message: str, status: int = 400, field: str | None = None,
-                 code: str | None = None, **extra):
+    def __init__(self, message: str, status: int = 400, field: str | None = None, code: str | None = None, **extra):
         super().__init__(message, field=field, code=code)
         self.status = status
         self.error = _ERROR.get(status, "invalid_request")
@@ -54,6 +52,7 @@ class ClaveError(TicketError):
 
 
 # ------------------------------------------------------------------ la prueba
+
 
 def _probar_red(kind: str, value: str) -> tuple[bool, str]:
     """Prueba sin coste contra el servicio. Devuelve (vale, detalle legible).
@@ -66,8 +65,11 @@ def _probar_red(kind: str, value: str) -> tuple[bool, str]:
                 n = len((r.json() or {}).get("data") or [])
                 return True, f"{n} modelos{_sin_saldo_deepseek(h)}"
         elif kind == "anthropic":
-            r = httpx.get("https://api.anthropic.com/v1/models",
-                          headers={"X-Api-Key": value, "anthropic-version": "2023-06-01"}, timeout=10)
+            r = httpx.get(
+                "https://api.anthropic.com/v1/models",
+                headers={"X-Api-Key": value, "anthropic-version": "2023-06-01"},
+                timeout=10,
+            )
             if r.status_code == 200:
                 n = len((r.json() or {}).get("data") or [])
                 return True, f"{n} modelos"
@@ -97,18 +99,20 @@ def _sin_saldo_deepseek(headers) -> str:
     return ""
 
 
-PROBAR = _probar_red   # los tests lo sustituyen: la suite no sale a la red
+PROBAR = _probar_red  # los tests lo sustituyen: la suite no sale a la red
 
 
 # ------------------------------------------------------------------ #499: entrega bajo demanda
+
 
 def _etiqueta(valor, campo: str, maximo: int) -> str:
     if not isinstance(valor, str) or not valor.strip():
         raise ClaveError(f"falta {campo}", field=campo, code=f"credential.{campo}_required")
     valor = valor.strip()
     if len(valor) > maximo or any(c in valor for c in "\r\n\0"):
-        raise ClaveError(f"{campo}: una línea de hasta {maximo} caracteres", field=campo,
-                         code=f"credential.{campo}_invalid")
+        raise ClaveError(
+            f"{campo}: una línea de hasta {maximo} caracteres", field=campo, code=f"credential.{campo}_invalid"
+        )
     return valor
 
 
@@ -122,16 +126,29 @@ def deliver(conn, name, requested_by, purpose) -> dict:
     purpose = _etiqueta(purpose, "purpose", 200)
     _sin_valores(conn, requested_by=requested_by, purpose=purpose)
     nombre = name.strip() if isinstance(name, str) else ""
-    r = conn.execute("SELECT * FROM credentials WHERE name = ? COLLATE NOCASE", (nombre,)).fetchone() if nombre else None
+    r = (
+        conn.execute("SELECT * FROM credentials WHERE name = ? COLLATE NOCASE", (nombre,)).fetchone()
+        if nombre
+        else None
+    )
     if r is None:
-        err = ClaveError(f"no hay ninguna clave que se llame «{nombre}»", 404, field="name",
-                         code="credential.not_found")
+        err = ClaveError(
+            f"no hay ninguna clave que se llame «{nombre}»", 404, field="name", code="credential.not_found"
+        )
     elif not r["deliverable"]:
-        err = ClaveError(f"«{r['name']}» no está marcada como entregable (lo decide {HOUSE_OWNER} en Claves)",
-                         403, field="name", code="credential.not_deliverable")
+        err = ClaveError(
+            f"«{r['name']}» no está marcada como entregable (lo decide {HOUSE_OWNER} en Claves)",
+            403,
+            field="name",
+            code="credential.not_deliverable",
+        )
     elif not r["value"]:
-        err = ClaveError(f"«{r['name']}» está vacía (restaurada de una copia): hay que volver a pegarla", 409,
-                         field="name", code="credential.value_empty")
+        err = ClaveError(
+            f"«{r['name']}» está vacía (restaurada de una copia): hay que volver a pegarla",
+            409,
+            field="name",
+            code="credential.value_empty",
+        )
     else:
         err = None
     nombre_reg = r["name"] if r is not None else nombre[:60]
@@ -140,13 +157,27 @@ def deliver(conn, name, requested_by, purpose) -> dict:
     # necesito recibirlo 500 veces». Antes era quién + para qué, y cada purpose nuevo avisaba; el purpose sigue
     # apuntado en credential_deliveries, pero ya no cuenta para el aviso.
     ahora = _now()
-    nueva = conn.execute("SELECT 1 FROM credential_deliveries WHERE name = ? COLLATE NOCASE AND requested_by = ?"
-                         " AND substr(at, 1, 10) = ? LIMIT 1", (nombre_reg, requested_by, ahora[:10])).fetchone() is None
+    nueva = (
+        conn.execute(
+            "SELECT 1 FROM credential_deliveries WHERE name = ? COLLATE NOCASE AND requested_by = ?"
+            " AND substr(at, 1, 10) = ? LIMIT 1",
+            (nombre_reg, requested_by, ahora[:10]),
+        ).fetchone()
+        is None
+    )
     conn.execute(
         "INSERT INTO credential_deliveries (credential_id, name, requested_by, purpose, at, ok, reason)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (r["id"] if r is not None else None, nombre_reg, requested_by,
-         purpose, ahora, 0 if err else 1, str(err) if err else ""))
+        (
+            r["id"] if r is not None else None,
+            nombre_reg,
+            requested_by,
+            purpose,
+            ahora,
+            0 if err else 1,
+            str(err) if err else "",
+        ),
+    )
     conn.commit()
     if nueva:
         _avisar_primera_vez(conn, nombre_reg, requested_by, purpose, err)
@@ -155,7 +186,7 @@ def deliver(conn, name, requested_by, purpose) -> dict:
     return {"name": r["name"], "value": r["value"]}
 
 
-_VALOR_MIN = 8   # por debajo, coincidir dentro de un texto es casualidad, no una clave pegada
+_VALOR_MIN = 8  # por debajo, coincidir dentro de un texto es casualidad, no una clave pegada
 
 
 def _sin_valores(conn, **campos) -> None:
@@ -164,27 +195,39 @@ def _sin_valores(conn, **campos) -> None:
     for (valor,) in conn.execute("SELECT value FROM credentials WHERE length(value) >= ?", (_VALOR_MIN,)):
         for campo, texto in campos.items():
             if valor in texto:
-                raise ClaveError(f"{campo} contiene el valor de una clave guardada: no se registra ni se entrega",
-                                 field=campo, code="credential.value_in_label")
+                raise ClaveError(
+                    f"{campo} contiene el valor de una clave guardada: no se registra ni se entrega",
+                    field=campo,
+                    code="credential.value_in_label",
+                )
 
 
 def _avisar_primera_vez(conn, nombre, requested_by, purpose, err) -> None:
     from . import notify
+
     estado = f"NEGADA ({err.code})" if err else "entregada"
     try:
-        notify.telegram(conn, "\n".join([
-            "FarOS · Claves: primera vez hoy",
-            f"«{requested_by}» ha pedido la clave «{nombre}» para «{purpose}» → {estado}.",
-            "Hoy no te aviso más de esta persona con esta clave; el resto queda en Ajustes › Claves › Entregas.",
-        ]))
+        notify.telegram(
+            conn,
+            "\n".join(
+                [
+                    "FarOS · Claves: primera vez hoy",
+                    f"«{requested_by}» ha pedido la clave «{nombre}» para «{purpose}» → {estado}.",
+                    "Hoy no te aviso más de esta persona con esta clave; el resto queda en Ajustes › Claves › Entregas.",
+                ]
+            ),
+        )
     except Exception:  # un aviso que no sale no puede tumbar la entrega
         pass
 
 
 def _cambio(conn, cid, name, field, antes, despues, by) -> None:
     """#1078: una fila del historial de una clave. antes/despues son etiquetas, nunca el valor."""
-    conn.execute("INSERT INTO credential_changes (credential_id, name, field, antes, despues, changed_by, at)"
-                 " VALUES (?, ?, ?, ?, ?, ?, ?)", (cid, name, field, antes, despues, by, _now()))
+    conn.execute(
+        "INSERT INTO credential_changes (credential_id, name, field, antes, despues, changed_by, at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (cid, name, field, antes, despues, by, _now()),
+    )
 
 
 def _si_no(v) -> str:
@@ -193,18 +236,24 @@ def _si_no(v) -> str:
 
 def changes(conn, limit: int = 200) -> list[dict]:
     """#1078: el historial de cambios de las claves, el más nuevo primero."""
-    rows = conn.execute("SELECT id, credential_id, name, field, antes, despues, changed_by, at FROM credential_changes"
-                        " ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    rows = conn.execute(
+        "SELECT id, credential_id, name, field, antes, despues, changed_by, at FROM credential_changes"
+        " ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
     return [dict(r) for r in rows]
 
 
 def deliveries(conn, limit: int = 200) -> list[dict]:
-    rows = conn.execute("SELECT id, name, requested_by, purpose, at, ok, reason FROM credential_deliveries"
-                        " ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    rows = conn.execute(
+        "SELECT id, name, requested_by, purpose, at, ok, reason FROM credential_deliveries ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
     return [{**dict(r), "ok": bool(r["ok"])} for r in rows]
 
 
 # ------------------------------------------------------------------ helpers
+
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -212,14 +261,23 @@ def _now() -> str:
 
 def _row(r) -> dict:
     """Lo que ve la API: todo menos el valor."""
-    return {"id": r["id"], "name": r["name"], "kind": r["kind"], "origin": r["origin"],
-            "in_use": bool(r["in_use"]), "use": USO[r["kind"]], "value": MASK if r["value"] else "",
-            "empty": not r["value"],      # vacía = restaurada de una copia: hay que volver a pegarla
-            "tested_at": r["tested_at"],
-            "test_ok": None if r["test_ok"] is None else bool(r["test_ok"]),
-            "test_detail": r["test_detail"], "created_by": r["created_by"],
-            "created_at": r["created_at"], "updated_at": r["updated_at"],
-            "deliverable": bool(r["deliverable"])}
+    return {
+        "id": r["id"],
+        "name": r["name"],
+        "kind": r["kind"],
+        "origin": r["origin"],
+        "in_use": bool(r["in_use"]),
+        "use": USO[r["kind"]],
+        "value": MASK if r["value"] else "",
+        "empty": not r["value"],  # vacía = restaurada de una copia: hay que volver a pegarla
+        "tested_at": r["tested_at"],
+        "test_ok": None if r["test_ok"] is None else bool(r["test_ok"]),
+        "test_detail": r["test_detail"],
+        "created_by": r["created_by"],
+        "created_at": r["created_at"],
+        "updated_at": r["updated_at"],
+        "deliverable": bool(r["deliverable"]),
+    }
 
 
 def _get(conn, cid: int):
@@ -235,11 +293,11 @@ def _name(conn, name, cid: int | None = None) -> str:
     name = name.strip()
     if len(name) > 60:
         raise ClaveError("el nombre no puede pasar de 60 caracteres", field="name", code="credential.name_too_long")
-    otra = conn.execute("SELECT id FROM credentials WHERE name = ? COLLATE NOCASE AND id IS NOT ?",
-                        (name, cid)).fetchone()
+    otra = conn.execute(
+        "SELECT id FROM credentials WHERE name = ? COLLATE NOCASE AND id IS NOT ?", (name, cid)
+    ).fetchone()
     if otra:
-        raise ClaveError(f"ya hay una clave que se llama «{name}»", 409, field="name",
-                         code="credential.name_taken")
+        raise ClaveError(f"ya hay una clave que se llama «{name}»", 409, field="name", code="credential.name_taken")
     return name
 
 
@@ -253,8 +311,7 @@ def valor(conn, name: str) -> str:
     """El valor REAL de una clave por nombre — solo para el daemon; la API nunca lo devuelve
     (`_row` lo enmascara). Devuelve '' si no existe: quien llama decide qué hacer sin clave.
     #600: el ejecutor lo usa con la credencial «EcoDB» para comprobar memorias citadas."""
-    r = conn.execute("SELECT value FROM credentials WHERE name = ? COLLATE NOCASE",
-                     (name,)).fetchone()
+    r = conn.execute("SELECT value FROM credentials WHERE name = ? COLLATE NOCASE", (name,)).fetchone()
     return (r["value"] or "") if r else ""
 
 
@@ -264,8 +321,9 @@ def _origin(origin) -> str:
     if not isinstance(origin, str):
         raise ClaveError("el origen es texto", field="origin", code="credential.origin_invalid")
     if len(origin.strip()) > 300:
-        raise ClaveError("el origen no puede pasar de 300 caracteres", field="origin",
-                         code="credential.origin_too_long")
+        raise ClaveError(
+            "el origen no puede pasar de 300 caracteres", field="origin", code="credential.origin_too_long"
+        )
     return origin.strip()
 
 
@@ -288,8 +346,13 @@ def _probar(kind: str, value: str, probado=None) -> tuple[int | None, str]:
 
 
 def _rechazada(kind: str, detail: str):
-    return ClaveError(f"la clave de {NOMBRE_TIPO[kind]} no vale: {detail}. No se ha guardado.",
-                      422, field="value", code="credential.test_failed", detail=detail)
+    return ClaveError(
+        f"la clave de {NOMBRE_TIPO[kind]} no vale: {detail}. No se ha guardado.",
+        422,
+        field="value",
+        code="credential.test_failed",
+        detail=detail,
+    )
 
 
 def _espejo(conn, kind: str) -> None:
@@ -302,8 +365,9 @@ def _espejo(conn, kind: str) -> None:
 
 
 def _marcar(conn, cid: int, kind: str, by: str) -> None:
-    for o in conn.execute("SELECT id, name FROM credentials WHERE kind = ? AND in_use = 1 AND id != ?",
-                          (kind, cid)).fetchall():
+    for o in conn.execute(
+        "SELECT id, name FROM credentials WHERE kind = ? AND in_use = 1 AND id != ?", (kind, cid)
+    ).fetchall():
         _cambio(conn, o["id"], o["name"], "en uso", "sí", "no", by)
     r = conn.execute("SELECT name, in_use FROM credentials WHERE id = ?", (cid,)).fetchone()
     if not r["in_use"]:
@@ -313,6 +377,7 @@ def _marcar(conn, cid: int, kind: str, by: str) -> None:
 
 
 # ------------------------------------------------------------------ operaciones
+
 
 def listing(conn) -> list[dict]:
     rows = conn.execute("SELECT * FROM credentials ORDER BY kind, in_use DESC, name COLLATE NOCASE").fetchall()
@@ -324,23 +389,32 @@ def create(conn, agent: str, name, kind, value, origin=None, in_use=None, probad
     in_use sin decir: la primera de su tipo queda en uso (si no, nadie la usaría)."""
     _validate_agent(agent, family_only=True)
     if kind not in USO:
-        raise ClaveError(f"tipo desconocido: {kind!r} (deepseek, anthropic, telegram u otra)",
-                         field="kind", code="credential.kind_invalid")
+        raise ClaveError(
+            f"tipo desconocido: {kind!r} (deepseek, anthropic, telegram u otra)",
+            field="kind",
+            code="credential.kind_invalid",
+        )
     name, value, origin = _name(conn, name), _value(value), _origin(origin)
     if in_use and USO[kind] is None:
-        raise ClaveError("FarOS no usa las claves de tipo «otra»: no se pueden marcar en uso",
-                         field="in_use", code="credential.not_usable")
+        raise ClaveError(
+            "FarOS no usa las claves de tipo «otra»: no se pueden marcar en uso",
+            field="in_use",
+            code="credential.not_usable",
+        )
     ok, detail = _probar(kind, value, probado)
     if ok == 0:
         raise _rechazada(kind, detail)
     if in_use is None:
-        in_use = USO[kind] is not None and not conn.execute(
-            "SELECT 1 FROM credentials WHERE kind = ? AND in_use = 1", (kind,)).fetchone()
+        in_use = (
+            USO[kind] is not None
+            and not conn.execute("SELECT 1 FROM credentials WHERE kind = ? AND in_use = 1", (kind,)).fetchone()
+        )
     now = _now()
     cur = conn.execute(
         "INSERT INTO credentials (name, kind, value, origin, in_use, tested_at, test_ok, test_detail,"
         " created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)",
-        (name, kind, value, origin, now if ok is not None else None, ok, detail, agent, now, now))
+        (name, kind, value, origin, now if ok is not None else None, ok, detail, agent, now, now),
+    )
     cid = cur.lastrowid
     _cambio(conn, cid, name, "alta", None, kind, agent)
     if in_use:
@@ -358,24 +432,34 @@ def update(conn, agent: str, cid: int, changes: dict, probado=None) -> dict:
     kind = r["kind"]
     unknown = set(changes) - {"name", "origin", "value", "in_use", "deliverable"}
     if unknown:
-        raise ClaveError(f"no se puede cambiar {sorted(unknown)} (sí: name, origin, value, in_use, deliverable)",
-                         field=sorted(unknown)[0], code="credential.field_not_editable")
+        raise ClaveError(
+            f"no se puede cambiar {sorted(unknown)} (sí: name, origin, value, in_use, deliverable)",
+            field=sorted(unknown)[0],
+            code="credential.field_not_editable",
+        )
     sets, args, cambios = [], [], []
     if "deliverable" in changes:
         if agent != HOUSE_OWNER:
-            raise ClaveError(f"solo {HOUSE_OWNER} decide qué claves se entregan bajo demanda", 403,
-                             field="deliverable", code="credential.deliverable_owner_only")
-        sets.append("deliverable = ?"); args.append(1 if changes["deliverable"] else 0)
+            raise ClaveError(
+                f"solo {HOUSE_OWNER} decide qué claves se entregan bajo demanda",
+                403,
+                field="deliverable",
+                code="credential.deliverable_owner_only",
+            )
+        sets.append("deliverable = ?")
+        args.append(1 if changes["deliverable"] else 0)
         if bool(changes["deliverable"]) != bool(r["deliverable"]):
             cambios.append(("entregable", _si_no(r["deliverable"]), _si_no(changes["deliverable"])))
     if "name" in changes:
         nuevo_nombre = _name(conn, changes["name"], cid)
-        sets.append("name = ?"); args.append(nuevo_nombre)
+        sets.append("name = ?")
+        args.append(nuevo_nombre)
         if nuevo_nombre != r["name"]:
             cambios.append(("nombre", r["name"], nuevo_nombre))
     if "origin" in changes:
         nuevo_origen = _origin(changes["origin"])
-        sets.append("origin = ?"); args.append(nuevo_origen)
+        sets.append("origin = ?")
+        args.append(nuevo_origen)
         if nuevo_origen != r["origin"]:
             cambios.append(("origen", r["origin"], nuevo_origen))
     nuevo_valor = "value" in changes and changes["value"] != MASK
@@ -389,11 +473,13 @@ def update(conn, agent: str, cid: int, changes: dict, probado=None) -> dict:
         if value != r["value"]:
             cambios.append(("valor", None, "cambiado"))
     if "in_use" in changes and changes["in_use"] and USO[kind] is None:
-        raise ClaveError("FarOS no usa las claves de tipo «otra»: no se pueden marcar en uso",
-                         field="in_use", code="credential.not_usable")
+        raise ClaveError(
+            "FarOS no usa las claves de tipo «otra»: no se pueden marcar en uso",
+            field="in_use",
+            code="credential.not_usable",
+        )
     if sets:
-        conn.execute(f"UPDATE credentials SET {', '.join(sets)}, updated_at = ? WHERE id = ?",
-                     (*args, _now(), cid))
+        conn.execute(f"UPDATE credentials SET {', '.join(sets)}, updated_at = ? WHERE id = ?", (*args, _now(), cid))
     nombre = _get(conn, cid)["name"]
     for campo, de, a in cambios:
         _cambio(conn, cid, nombre, campo, de, a, agent)
@@ -415,14 +501,18 @@ def retest(conn, agent: str, cid: int, probado=None) -> dict:
     _validate_agent(agent, family_only=True)
     r = _get(conn, cid)
     if USO[r["kind"]] is None:
-        raise ClaveError("las claves de tipo «otra» no se saben probar", 422,
-                         code="credential.untestable")
+        raise ClaveError("las claves de tipo «otra» no se saben probar", 422, code="credential.untestable")
     if not r["value"]:
-        raise ClaveError("esta clave está vacía (viene de una copia de seguridad): pega el valor otra vez",
-                         422, code="credential.value_empty")
+        raise ClaveError(
+            "esta clave está vacía (viene de una copia de seguridad): pega el valor otra vez",
+            422,
+            code="credential.value_empty",
+        )
     ok, detail = _probar(r["kind"], r["value"], probado)
-    conn.execute("UPDATE credentials SET tested_at = ?, test_ok = ?, test_detail = ?, updated_at = ? WHERE id = ?",
-                 (_now(), ok, detail, _now(), cid))
+    conn.execute(
+        "UPDATE credentials SET tested_at = ?, test_ok = ?, test_detail = ?, updated_at = ? WHERE id = ?",
+        (_now(), ok, detail, _now(), cid),
+    )
     conn.commit()
     return _row(_get(conn, cid))
 
@@ -433,7 +523,7 @@ def delete(conn, agent: str, cid: int) -> dict:
     _cambio(conn, cid, r["name"], "borrada", None, None, agent)
     conn.execute("DELETE FROM credentials WHERE id = ?", (cid,))
     if r["in_use"]:
-        _espejo(conn, r["kind"])      # ya no hay ninguna en uso de ese tipo: el ajuste se vacía
+        _espejo(conn, r["kind"])  # ya no hay ninguna en uso de ese tipo: el ajuste se vacía
     conn.commit()
     return {"id": cid, "deleted": True, "was_in_use": bool(r["in_use"])}
 
@@ -456,8 +546,11 @@ def desde_ajuste(conn, agent: str, key: str, value: str, probado=None) -> None:
         raise _rechazada(kind, detail)
     now = _now()
     if marcada:
-        conn.execute("UPDATE credentials SET value = ?, tested_at = ?, test_ok = ?, test_detail = ?,"
-                     " updated_at = ? WHERE id = ?", (value, now, ok, detail, now, marcada["id"]))
+        conn.execute(
+            "UPDATE credentials SET value = ?, tested_at = ?, test_ok = ?, test_detail = ?,"
+            " updated_at = ? WHERE id = ?",
+            (value, now, ok, detail, now, marcada["id"]),
+        )
         _cambio(conn, marcada["id"], marcada["name"], "valor", None, "cambiado", agent)
         return
     base, n, name = f"{NOMBRE_TIPO[kind]} (ajustes)", 2, f"{NOMBRE_TIPO[kind]} (ajustes)"
@@ -466,5 +559,6 @@ def desde_ajuste(conn, agent: str, key: str, value: str, probado=None) -> None:
     cur = conn.execute(
         "INSERT INTO credentials (name, kind, value, origin, in_use, tested_at, test_ok, test_detail,"
         " created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)",
-        (name, kind, value, "guardada por los ajustes", now, ok, detail, agent, now, now))
+        (name, kind, value, "guardada por los ajustes", now, ok, detail, agent, now, now),
+    )
     _cambio(conn, cur.lastrowid, name, "alta", None, kind, agent)

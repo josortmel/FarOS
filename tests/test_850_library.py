@@ -1,8 +1,8 @@
 """#867 (Biblioteca, tarea 2): faros/library.py contra Spec v2 §2, §5 y §9 (criterios 2, 4, 5, 8, 9, 11)."""
 
 import json
-import re
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from faros import db, library as L
+from faros import db
+from faros import library as L
 
 FIX = Path(__file__).parent / "fixtures" / "biblioteca"
 TOKEN = "TOKEN-DE-PRUEBA-0123456789"
@@ -45,7 +46,10 @@ def mundo(tmp_path_factory):
     ses = t / "Faro" / "Sesiones"
     _w(ses / "s1" / "informe.md", "# Informe uno\n\nalgo sobre migraciones")
     _w(ses / "s1" / "estatica.html", "<html><head><title>Estatica</title></head><body>hola</body></html>")
-    _w(ses / "s1" / "viva.html", "<html><head><title>Página Viva ñandú</title></head><body><script>1</script></body></html>")
+    _w(
+        ses / "s1" / "viva.html",
+        "<html><head><title>Página Viva ñandú</title></head><body><script>1</script></body></html>",
+    )
     _w(ses / "s1" / "datos.json", "{}")
     _w(ses / ".git" / "x.md", "# git")
     _w(ses / "AREA" / "AREA_Textos" / "x.md", "# privado")
@@ -62,21 +66,46 @@ def mundo(tmp_path_factory):
     _w(t / "docs" / "OTRO.md", "otro")
     (t / "docs" / "CARPETA.md").mkdir()
     raices = [
-        {"clase": "revista", "ruta": str(rev), "tipo": "carpeta", "patrones": ["????-??-??.md", "semana-*.md"], "recursivo": False},
+        {
+            "clase": "revista",
+            "ruta": str(rev),
+            "tipo": "carpeta",
+            "patrones": ["????-??-??.md", "semana-*.md"],
+            "recursivo": False,
+        },
         {"clase": "lectura", "ruta": str(rev), "tipo": "carpeta", "patrones": ["lectura_*.md"], "recursivo": False},
         {"clase": "faro", "ruta": str(ses), "tipo": "carpeta", "patrones": ["*.html", "*.md"], "recursivo": True},
-        {"clase": "faro", "ruta": str(t / "Faro" / "Informes"), "tipo": "carpeta", "patrones": ["*.html", "*.md"], "recursivo": True},
+        {
+            "clase": "faro",
+            "ruta": str(t / "Faro" / "Informes"),
+            "tipo": "carpeta",
+            "patrones": ["*.html", "*.md"],
+            "recursivo": True,
+        },
         {"clase": "resultado", "ruta": str(art), "tipo": "carpeta", "patrones": ["run_*"], "recursivo": False},
-        {"clase": "documentacion", "ruta": str(t / "docs" / "CLAUDE.md"), "tipo": "fichero", "patrones": [], "recursivo": False},
-        {"clase": "documentacion", "ruta": str(t / "docs" / "CARPETA.md"), "tipo": "fichero", "patrones": [], "recursivo": False},
+        {
+            "clase": "documentacion",
+            "ruta": str(t / "docs" / "CLAUDE.md"),
+            "tipo": "fichero",
+            "patrones": [],
+            "recursivo": False,
+        },
+        {
+            "clase": "documentacion",
+            "ruta": str(t / "docs" / "CARPETA.md"),
+            "tipo": "fichero",
+            "patrones": [],
+            "recursivo": False,
+        },
     ]
     rj = t / "raices.json"
     rj.write_text(json.dumps(raices), encoding="utf-8")
-    env = L.Entorno(raices=L.cargar_raices(rj), publicado_dir=t / "pub",
-                    html_revista_dir=pub, token=TOKEN, artifacts_dir=art)
+    env = L.Entorno(
+        raices=L.cargar_raices(rj), publicado_dir=t / "pub", html_revista_dir=pub, token=TOKEN, artifacts_dir=art
+    )
     conn = db.connect(t / "faros.db")
     cede = L.CEDER_S
-    L.CEDER_S = 0.0                    # la pausa de 0,1 s por escritura solo se prueba en test_850_bloqueo
+    L.CEDER_S = 0.0  # la pausa de 0,1 s por escritura solo se prueba en test_850_bloqueo
     yield type("Mundo", (), {"t": t, "env": env, "conn": conn, "rev": rev, "ses": ses, "art": art, "rj": rj})
     L.CEDER_S = cede
     conn.close()
@@ -89,13 +118,21 @@ def _filas(conn, **filtro):
 
 # --------------------------------------------------------------- import y raíces
 
+
 def test_import_no_abre_la_casa_ni_la_red(tmp_path):
     casa = tmp_path / "casa_inexistente"
-    r = subprocess.run([sys.executable, "-I", "-c",
-                        "import sys; sys.path.insert(0, sys.argv[1]); import faros.library; print('socket' in sys.modules, 'httpx' in sys.modules)",
-                        str(Path(__file__).parent.parent)],
-                       capture_output=True, text=True,
-                       env={**os.environ, "FAROS_HOME": str(casa), "AGENTICOS_HOME": str(casa)})
+    r = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "import sys; sys.path.insert(0, sys.argv[1]); import faros.library; print('socket' in sys.modules, 'httpx' in sys.modules)",
+            str(Path(__file__).parent.parent),
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "FAROS_HOME": str(casa), "AGENTICOS_HOME": str(casa)},
+    )
     assert r.returncode == 0, r.stderr
     assert r.stdout.split() == ["False", "False"]
     assert not casa.exists()
@@ -104,10 +141,18 @@ def test_import_no_abre_la_casa_ni_la_red(tmp_path):
 def test_raiz_con_lista_negra_se_rechaza_al_cargar(tmp_path):
     ok = tmp_path / "ok"
     ok.mkdir()
-    malas = [tmp_path / "beta_textos", tmp_path / "AREA" / "AREA_Textos", tmp_path / ".claude", tmp_path / "privado_x",
-             tmp_path / "a" / "chat", tmp_path / "x" / "run.bat"]
-    datos = [{"clase": "faro", "ruta": str(p), "tipo": "carpeta", "patrones": ["*.md"], "recursivo": True}
-             for p in malas + [ok]]
+    malas = [
+        tmp_path / "beta_textos",
+        tmp_path / "AREA" / "AREA_Textos",
+        tmp_path / ".claude",
+        tmp_path / "privado_x",
+        tmp_path / "a" / "chat",
+        tmp_path / "x" / "run.bat",
+    ]
+    datos = [
+        {"clase": "faro", "ruta": str(p), "tipo": "carpeta", "patrones": ["*.md"], "recursivo": True}
+        for p in malas + [ok]
+    ]
     datos.append({"clase": "inventada", "ruta": str(ok), "tipo": "carpeta"})
     datos.append({"clase": "faro", "ruta": str(ok), "tipo": "raro"})
     rj = tmp_path / "raices.json"
@@ -126,48 +171,82 @@ def test_raices_json_inexistente_o_roto_no_lanza(tmp_path):
 
 # --------------------------------------------------------------- permitida (criterio 5, N17)
 
+
 def test_permitida_acepta_lo_normal(mundo):
     r, e = mundo.rev, mundo.env.raices
     assert L.permitida(r / "2026-10-29.md", e)
     assert L.permitida(str(r / "2026-10-29.md").replace("\\", "/"), e)
-    assert L.permitida(str(mundo.ses / "S1" / "INFORME.MD").upper(), e)         # sin distinguir mayúsculas
-    assert L.permitida(mundo.ses / "chats" / "ok.md", e)                        # `chats` no es `chat`
+    assert L.permitida(str(mundo.ses / "S1" / "INFORME.MD").upper(), e)  # sin distinguir mayúsculas
+    assert L.permitida(mundo.ses / "chats" / "ok.md", e)  # `chats` no es `chat`
     assert L.permitida(mundo.art / "run_5", e) and L.permitida(mundo.art / "run_5" / "out.txt", e)
     assert L.permitida(mundo.t / "docs" / "CLAUDE.md", e)
 
 
-@pytest.mark.parametrize("rel", [
-    "Faro/Sesiones/AREA/AREA_Textos/x.md",          # N17: N17: reproduce un area con carpeta *_Textos
-    "Faro/Sesiones/beta_textos/x.md",             # N17: beta_textos/x.md
-    "Faro/Sesiones/.git/x.md",                    # empieza por punto
-    "Faro/Sesiones_evil/x.md",                    # prefijo de cadena, no de componentes
-    "Faro/Sesiones/s1/datos.json",                # fuera por patrón
-    "Alfa/revista/sesion_2026-10-28.md",         # fuera por patrón
-    "Alfa/revista/notas.json",
-    "artifacts/otra_cosa/x.md",                   # no casa run_*
-    "docs/CLAUDE.md.bak",                         # raíz de fichero = exactamente ese fichero
-    "docs/OTRO.md",
-    "docs/CARPETA.md",                            # un directorio con nombre de raíz de fichero
-    "Faro/Sesiones/s1/../../../Sesiones_evil/x.md",   # ..
-    "Faro/Sesiones/s1/../../Informes/i1.md",
-])
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "Faro/Sesiones/AREA/AREA_Textos/x.md",  # N17: N17: reproduce un area con carpeta *_Textos
+        "Faro/Sesiones/beta_textos/x.md",  # N17: beta_textos/x.md
+        "Faro/Sesiones/.git/x.md",  # empieza por punto
+        "Faro/Sesiones_evil/x.md",  # prefijo de cadena, no de componentes
+        "Faro/Sesiones/s1/datos.json",  # fuera por patrón
+        "Alfa/revista/sesion_2026-10-28.md",  # fuera por patrón
+        "Alfa/revista/notas.json",
+        "artifacts/otra_cosa/x.md",  # no casa run_*
+        "docs/CLAUDE.md.bak",  # raíz de fichero = exactamente ese fichero
+        "docs/OTRO.md",
+        "docs/CARPETA.md",  # un directorio con nombre de raíz de fichero
+        "Faro/Sesiones/s1/../../../Sesiones_evil/x.md",  # ..
+        "Faro/Sesiones/s1/../../Informes/i1.md",
+    ],
+)
 def test_permitida_rechaza(mundo, rel):
     assert not L.permitida(mundo.t / rel, mundo.env.raices)
 
 
-@pytest.mark.parametrize("nombre", [".env", "credentials", "id.key", "x.bat", "x.bat.txt", "x.ps1", "x.cmd",
-                                    "PRIVADO.md", "mi_privado_x.md", "chat", "CHAT", "archivo_x", "x_archivo",
-                                    "archivo_prima2", ".ssh", "．env"])
+@pytest.mark.parametrize(
+    "nombre",
+    [
+        ".env",
+        "credentials",
+        "id.key",
+        "x.bat",
+        "x.bat.txt",
+        "x.ps1",
+        "x.cmd",
+        "PRIVADO.md",
+        "mi_privado_x.md",
+        "chat",
+        "CHAT",
+        "archivo_x",
+        "x_archivo",
+        "archivo_prima2",
+        ".ssh",
+        "．env",
+    ],
+)
 def test_lista_negra_por_componente(mundo, nombre):
     for ruta in (mundo.ses / nombre / "x.md", mundo.ses / "s1" / nombre):
         assert L.en_lista_negra(ruta)
     assert not L.permitida(_w(mundo.ses / nombre / "z.md"), mundo.env.raices)
 
 
-@pytest.mark.parametrize("malo", [
-    r"\\evil\share\x.md", "//evil/share/x.md", r"\\?\C:\Windows\x.md", r"\\.\C:\x.md", "C:foo.md", "relativa/x.md",
-    "", None, 5, b"C:/x.md", "C:/a\x00b.md",
-])
+@pytest.mark.parametrize(
+    "malo",
+    [
+        r"\\evil\share\x.md",
+        "//evil/share/x.md",
+        r"\\?\C:\Windows\x.md",
+        r"\\.\C:\x.md",
+        "C:foo.md",
+        "relativa/x.md",
+        "",
+        None,
+        5,
+        b"C:/x.md",
+        "C:/a\x00b.md",
+    ],
+)
 def test_permitida_rechaza_formas_raras(mundo, malo):
     assert not L.permitida(malo, mundo.env.raices)
 
@@ -233,14 +312,15 @@ def test_leer_contenido_de_carpeta_es_su_lista(mundo):
 
 # --------------------------------------------------------------- registrar
 
+
 def test_dos_registrar_seguidos_una_fila_y_una_en_fts(mundo):
     f = mundo.ses / "s1" / "informe.md"
     a = L.registrar(mundo.conn, f, "faro", "cierre", env=mundo.env, ticket_id=7)
-    b = L.registrar(mundo.conn, str(f).upper(), "faro", "cierre", env=mundo.env, ticket_id=7)   # otra grafía (N7)
+    b = L.registrar(mundo.conn, str(f).upper(), "faro", "cierre", env=mundo.env, ticket_id=7)  # otra grafía (N7)
     assert a == b and a is not None
     assert len(_filas(mundo.conn)) == 1
     assert mundo.conn.execute("SELECT count(*) FROM library_fts").fetchone()[0] == 1
-    assert mundo.conn.execute("SELECT count(*) FROM library_links").fetchone()[0] == 1       # N11
+    assert mundo.conn.execute("SELECT count(*) FROM library_links").fetchone()[0] == 1  # N11
     L.registrar(mundo.conn, f, "faro", "cierre", env=mundo.env, ticket_id=8, job_id=3)
     assert mundo.conn.execute("SELECT count(*) FROM library_links").fetchone()[0] == 2
     fila = _filas(mundo.conn)[0]
@@ -251,8 +331,10 @@ def test_dos_registrar_seguidos_una_fila_y_una_en_fts(mundo):
 def test_registrar_no_lanza_y_devuelve_none(mundo):
     assert L.registrar(mundo.conn, mundo.ses / "beta_textos" / "x.md", env=mundo.env) is None
     assert L.registrar(mundo.conn, mundo.ses / "no_existe.md", env=mundo.env) is None
-    assert L.registrar(mundo.conn, mundo.ses / "s1" / "informe.md", "revista", env=mundo.env) is None   # clase ≠ raíz
-    assert L.registrar(mundo.conn, mundo.t / "docs" / "CARPETA.md", env=mundo.env) is None            # directorio, raíz de fichero
+    assert L.registrar(mundo.conn, mundo.ses / "s1" / "informe.md", "revista", env=mundo.env) is None  # clase ≠ raíz
+    assert (
+        L.registrar(mundo.conn, mundo.t / "docs" / "CARPETA.md", env=mundo.env) is None
+    )  # directorio, raíz de fichero
     assert L.registrar(None, mundo.ses / "s1" / "informe.md", env=mundo.env) is None
     c = db.connect(mundo.t / "otra.db")
     c.close()
@@ -263,6 +345,7 @@ def test_registrar_no_lanza_y_devuelve_none(mundo):
 def test_registrar_no_deja_filas_a_medias(mundo, monkeypatch):
     def roto(*a, **k):
         raise RuntimeError("fallo a mitad")
+
     monkeypatch.setattr(L, "_publicar", roto)
     r = L.registrar(mundo.conn, mundo.ses / "s1" / "viva.html", env=mundo.env, ticket_id=1)
     assert r is None
@@ -278,7 +361,7 @@ def test_registrar_no_deja_filas_a_medias(mundo, monkeypatch):
 def test_registrar_respeta_una_transaccion_abierta(mundo):
     mundo.conn.execute("INSERT INTO projects (name, created_at) VALUES ('p', 'x')")
     assert L.registrar(mundo.conn, mundo.ses / "s1" / "informe.md", env=mundo.env)
-    assert mundo.conn.in_transaction            # no hizo commit de lo ajeno
+    assert mundo.conn.in_transaction  # no hizo commit de lo ajeno
     mundo.conn.rollback()
     assert _filas(mundo.conn) == []
 
@@ -315,6 +398,7 @@ def test_extracto_de_16kb_y_titulos(mundo):
 
 # --------------------------------------------------------------- recorrer (criterios 2, 8, 9)
 
+
 def test_recorrer_criterio_2_cuadra_con_lo_que_hay_en_la_carpeta(mundo):
     res = L.recorrer(mundo.conn, mundo.env)
     assert res["raices_saltadas"] == 0
@@ -327,9 +411,11 @@ def test_recorrer_criterio_2_cuadra_con_lo_que_hay_en_la_carpeta(mundo):
         assert prohibido not in rutas
     assert len(L.buscar(mundo.conn, clase="resultado")) == 2
     docs = L.buscar(mundo.conn, clase="documentacion")
-    assert [os.path.basename(d["ruta"]) for d in docs] == ["claude.md"] or [d["ruta"] for d in docs][0].endswith("claude.md")
+    assert [os.path.basename(d["ruta"]) for d in docs] == ["claude.md"] or [d["ruta"] for d in docs][0].endswith(
+        "claude.md"
+    )
     assert len(docs) == 1
-    assert len(L.buscar(mundo.conn, clase="faro", limite=500)) == 5      # informe, estatica, viva, ok, i1
+    assert len(L.buscar(mundo.conn, clase="faro", limite=500)) == 5  # informe, estatica, viva, ok, i1
 
 
 def test_recorrer_es_idempotente_y_no_relee_lo_que_no_cambio(mundo, monkeypatch):
@@ -364,7 +450,7 @@ def test_dos_faltas_pasan_a_ausente_y_reaparece(mundo):
 
 def test_raices_solapadas_cuentan_una_falta_por_pasada(mundo):
     solapada = dict(mundo.env.raices[2])
-    mundo.env.raices.append(solapada)               # la misma raíz dos veces
+    mundo.env.raices.append(solapada)  # la misma raíz dos veces
     L.recorrer(mundo.conn, mundo.env)
     (mundo.ses / "s1" / "informe.md").unlink()
     L.recorrer(mundo.conn, mundo.env)
@@ -375,13 +461,13 @@ def test_criterio_9_raiz_que_no_existe_se_salta_entera_sin_faltas(mundo):
     L.recorrer(mundo.conn, mundo.env)
     antes = {r["ruta"]: (r["estado"], r["faltas"]) for r in _filas(mundo.conn, clase="resultado")}
     assert len(antes) == 2
-    os.rename(mundo.art, mundo.t / "artifacts_movido")        # la raíz desaparece (disco sin montar)
+    os.rename(mundo.art, mundo.t / "artifacts_movido")  # la raíz desaparece (disco sin montar)
     for _ in range(3):
         res = L.recorrer(mundo.conn, mundo.env)
         assert res["raices_saltadas"] == 1
     despues = {r["ruta"]: (r["estado"], r["faltas"]) for r in _filas(mundo.conn, clase="resultado")}
     assert despues == antes
-    assert len(L.buscar(mundo.conn, clase="faro", limite=500)) == 5     # el resto sigue
+    assert len(L.buscar(mundo.conn, clase="faro", limite=500)) == 5  # el resto sigue
 
 
 def test_criterio_8_directorio_vigilado(mundo):
@@ -405,20 +491,24 @@ def test_recorrer_no_sigue_junctions(mundo):
 
 # --------------------------------------------------------------- HTML interactivos y secretos (§5, N12, N14, R9)
 
-@pytest.mark.parametrize("html,esperado", [
-    ("<p>hola</p>", 0),
-    ("<SCRIPT>x()</SCRIPT>", 1),
-    ("<style>@import 'a.css';</style>", 1),
-    ("<style>a{background:url(https://x.test/a.png)}</style>", 1),
-    ("<style>a{background:url('http://x.test/a.png')}</style>", 1),
-    ('<img src="https://x.test/a.png">', 1),
-    ('<link rel=stylesheet href=https://x.test/a.css>', 1),
-    ('<iframe src="https://x.test/"></iframe>', 1),
-    ('<a href="https://x.test/">enlace</a>', 0),
-    ('<img src="data:image/png;base64,AAAA">', 0),
-    ('<form action="https://x.test/"><input></form>', 0),         # no se amplía el detector (revisión)
-    ('<meta http-equiv="refresh" content="0;url=https://x.test/">', 0),
-])
+
+@pytest.mark.parametrize(
+    "html,esperado",
+    [
+        ("<p>hola</p>", 0),
+        ("<SCRIPT>x()</SCRIPT>", 1),
+        ("<style>@import 'a.css';</style>", 1),
+        ("<style>a{background:url(https://x.test/a.png)}</style>", 1),
+        ("<style>a{background:url('http://x.test/a.png')}</style>", 1),
+        ('<img src="https://x.test/a.png">', 1),
+        ("<link rel=stylesheet href=https://x.test/a.css>", 1),
+        ('<iframe src="https://x.test/"></iframe>', 1),
+        ('<a href="https://x.test/">enlace</a>', 0),
+        ('<img src="data:image/png;base64,AAAA">', 0),
+        ('<form action="https://x.test/"><input></form>', 0),  # no se amplía el detector (revisión)
+        ('<meta http-equiv="refresh" content="0;url=https://x.test/">', 0),
+    ],
+)
 def test_deteccion_de_interactivo(mundo, html, esperado):
     f = _w(mundo.ses / "s1" / "caso.html", f"<html><head><title>Caso</title></head><body>{html}</body></html>")
     i = L.registrar(mundo.conn, f, env=mundo.env)
@@ -441,9 +531,16 @@ def test_slug_solo_ascii_y_60_caracteres():
     assert L._slug("../../etc/passwd") == "etc-passwd"
 
 
-@pytest.mark.parametrize("secreto", [
-    "clave sk-" + "A1b2C3d4E5f6G7h8I9j0K1", "cabecera X-FarOS-Token: abc", "api_key = 'zzz'", "API-KEY: zzz", TOKEN,
-])
+@pytest.mark.parametrize(
+    "secreto",
+    [
+        "clave sk-" + "A1b2C3d4E5f6G7h8I9j0K1",
+        "cabecera X-FarOS-Token: abc",
+        "api_key = 'zzz'",
+        "API-KEY: zzz",
+        TOKEN,
+    ],
+)
 def test_escaneo_de_secretos_no_publica(mundo, secreto, caplog):
     f = _w(mundo.ses / "s1" / "peligro.html", f"<html><title>Peligro</title><script>/* {secreto} */</script></html>")
     i = L.registrar(mundo.conn, f, env=mundo.env)
@@ -491,6 +588,7 @@ def test_republica_si_cambia_el_mtime_y_despublica_al_pasar_a_ausente(mundo):
 
 # --------------------------------------------------------------- rutas_de_texto y evidencias
 
+
 def test_rutas_de_texto_saca_rutas_de_la_prosa(mundo):
     f = mundo.ses / "s1" / "informe.md"
     g = _w(mundo.ses / "s1" / "con espacios y más.md")
@@ -515,6 +613,7 @@ def test_rutas_de_texto_nunca_toca_una_unc(monkeypatch):
 
 def test_rutas_de_texto_no_se_cuelga_con_entrada_enorme():
     import time
+
     t0 = time.time()
     r = L.rutas_de_texto("C:\\" + "a " * 100_000 + "\nC:\\" * 5000)
     assert time.time() - t0 < 5 and len(r) <= 50
@@ -535,39 +634,63 @@ def test_rutas_de_evidencia_segun_el_tipo(mundo):
 
 # --------------------------------------------------------------- md_a_html (B7)
 
+
 def test_md_a_html_con_la_revista_del_29_oct_y_su_anexo():
     revista = (FIX / "2026-10-29.md").read_text(encoding="utf-8")
     h = L.md_a_html(revista)
     assert "<h1>Revista I+D — 2026-10-29</h1>" in h and "<h2>Fuentes consultadas</h2>" in h
     assert h.count("<li>") == sum(1 for ln in revista.splitlines() if ln.startswith("- "))
     assert h.count("<p>") == sum(1 for ln in revista.splitlines() if ln.strip() and not ln.startswith(("#", "- ")))
-    assert ('<a href="https://noticias.example.test/articulo-1_a_b/"'
-            ' target="_blank" rel="noopener noreferrer">') in h
+    assert ('<a href="https://noticias.example.test/articulo-1_a_b/" target="_blank" rel="noopener noreferrer">') in h
     assert "<script" not in h.lower() and "\x00" not in h
     anexo = L.md_a_html((FIX / "lectura_2026-10-29.md").read_text(encoding="utf-8"))
     assert anexo.startswith("<h1>") and "<strong>" in anexo and "<p>" in anexo and "\x00" not in anexo
 
 
 def test_md_a_html_inline_y_bloques():
-    h = L.md_a_html("# T\n\nuna **negrita**, una *cursiva*, `co<de>` y snake_case_name y [aq](https://a.test/x_y_z).\n\n"
-                    "- uno\n  - anidado\n- dos\n\n1. a\n2. b\n\n> cita\n\n---\n\n```\n<b>crudo</b>\n```\n\n"
-                    "| a | b |\n|---|---|\n| 1 | 2 |\n")
-    for esperado in ("<h1>T</h1>", "<strong>negrita</strong>", "<em>cursiva</em>", "<code>co&lt;de&gt;</code>",
-                     "snake_case_name", '<a href="https://a.test/x_y_z"', "<ul>", "<ol>", "<blockquote>", "<hr>",
-                     "<pre><code>&lt;b&gt;crudo&lt;/b&gt;</code></pre>", "<table>", "<th>a</th>", "<td>2</td>"):
+    h = L.md_a_html(
+        "# T\n\nuna **negrita**, una *cursiva*, `co<de>` y snake_case_name y [aq](https://a.test/x_y_z).\n\n"
+        "- uno\n  - anidado\n- dos\n\n1. a\n2. b\n\n> cita\n\n---\n\n```\n<b>crudo</b>\n```\n\n"
+        "| a | b |\n|---|---|\n| 1 | 2 |\n"
+    )
+    for esperado in (
+        "<h1>T</h1>",
+        "<strong>negrita</strong>",
+        "<em>cursiva</em>",
+        "<code>co&lt;de&gt;</code>",
+        "snake_case_name",
+        '<a href="https://a.test/x_y_z"',
+        "<ul>",
+        "<ol>",
+        "<blockquote>",
+        "<hr>",
+        "<pre><code>&lt;b&gt;crudo&lt;/b&gt;</code></pre>",
+        "<table>",
+        "<th>a</th>",
+        "<td>2</td>",
+    ):
         assert esperado in h, esperado
     assert h.count("<ul>") == 2 and h.count("</ul>") == 2 and h.count("<li>") == 5
     assert "<em>case" not in h
 
 
-@pytest.mark.parametrize("md", [
-    "<script>alert(1)</script>", "[x](javascript:alert(1))", "[x](data:text/html;base64,AAAA)",
-    '<img src=x onerror="alert(1)">', "[x](JAVASCRIPT:alert(1))", "<a href='x' HREF='https://e.test'>y</a>",
-    "# <script>alert(1)</script>", "[<script>](https://a.test)",
-])
+@pytest.mark.parametrize(
+    "md",
+    [
+        "<script>alert(1)</script>",
+        "[x](javascript:alert(1))",
+        "[x](data:text/html;base64,AAAA)",
+        '<img src=x onerror="alert(1)">',
+        "[x](JAVASCRIPT:alert(1))",
+        "<a href='x' HREF='https://e.test'>y</a>",
+        "# <script>alert(1)</script>",
+        "[<script>](https://a.test)",
+    ],
+)
 def test_md_a_html_no_deja_pasar_html_ni_esquemas_peligrosos(md):
     h = L.md_a_html(md)
     import re
+
     assert not re.search(r"<script|<img|<a href='|href=\"javascript|href=\"data", h, re.I), h
     for m in re.finditer(r"<a [^>]*>", h):
         assert 'target="_blank"' in m.group(0) and "noopener" in m.group(0)
@@ -580,24 +703,27 @@ def test_md_a_html_frontmatter_y_vacio():
 
 # --------------------------------------------------------------- buscar (criterios 4, 11)
 
+
 def test_buscar_ordena_con_bm25_3_1_y_solo_presentes(mundo):
     a = _w(mundo.ses / "s1" / "a.md", "# Migraciones\n\nlo otro")
     b = _w(mundo.ses / "s1" / "b.md", "# Otra cosa\n\nmigraciones migraciones en el cuerpo")
     L.recorrer(mundo.conn, mundo.env)
     r = L.buscar(mundo.conn, "migraciones")
-    assert [x["titulo"] for x in r][:2] == ["Migraciones", "Otra cosa"]      # título pesa 3 veces
+    assert [x["titulo"] for x in r][:2] == ["Migraciones", "Otra cosa"]  # título pesa 3 veces
     assert all(x["estado"] == "presente" for x in r)
     mundo.conn.execute("UPDATE library_items SET estado='ausente' WHERE titulo='Migraciones'")
     assert "Migraciones" not in [x["titulo"] for x in L.buscar(mundo.conn, "migraciones")]
 
 
-@pytest.mark.parametrize("q", ['"', 'a AND', '(( OR', 'NEAR(x', "mig*", "x' OR 1=1 --", 'titulo:migraciones', "ñandú", "*"])
+@pytest.mark.parametrize(
+    "q", ['"', "a AND", "(( OR", "NEAR(x", "mig*", "x' OR 1=1 --", "titulo:migraciones", "ñandú", "*"]
+)
 def test_buscar_sanea_la_consulta(mundo, q):
     L.recorrer(mundo.conn, mundo.env)
     try:
         assert isinstance(L.buscar(mundo.conn, q), list)
     except ValueError:
-        pass                               # «búsqueda vacía» es el único error permitido
+        pass  # «búsqueda vacía» es el único error permitido
 
 
 def test_buscar_sin_palabras_util_es_valueerror(mundo):
@@ -611,7 +737,10 @@ def test_buscar_filtra_por_clase_y_fechas_y_ordena_por_fecha(mundo):
     r = L.buscar(mundo.conn, clase="revista")
     assert [x["fecha"] for x in r] == sorted((x["fecha"] for x in r), reverse=True)
     assert {x["fecha"] for x in L.buscar(mundo.conn, clase="revista", desde="2026-10-29")} == {"2026-10-29"}
-    assert {x["fecha"] for x in L.buscar(mundo.conn, clase="revista", hasta="2026-10-28")} == {"2026-10-23", "2026-10-28"}
+    assert {x["fecha"] for x in L.buscar(mundo.conn, clase="revista", hasta="2026-10-28")} == {
+        "2026-10-23",
+        "2026-10-28",
+    }
     assert len(L.buscar(mundo.conn, limite=2)) == 2
 
 
@@ -624,6 +753,7 @@ def test_criterio_11_documentacion_con_raices_de_fichero(mundo):
 
 # --------------------------------------------------------------- revisión 2 (SV1-SV4)
 
+
 def _viva(mundo):
     L.recorrer(mundo.conn, mundo.env)
     return _filas(mundo.conn, titulo="Página Viva ñandú")[0]
@@ -635,10 +765,11 @@ def test_sv1_ausente_que_vuelve_con_el_mismo_mtime_se_republica(mundo):
     copia = f.read_bytes()
     st = f.stat()
     f.unlink()
-    L.recorrer(mundo.conn, mundo.env); L.recorrer(mundo.conn, mundo.env)
+    L.recorrer(mundo.conn, mundo.env)
+    L.recorrer(mundo.conn, mundo.env)
     assert _filas(mundo.conn, id=fila["id"])[0]["estado"] == "ausente"
     f.write_bytes(copia)
-    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns))             # mismo mtime y tamaño
+    os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns))  # mismo mtime y tamaño
     L.recorrer(mundo.conn, mundo.env)
     de_nuevo = _filas(mundo.conn, id=fila["id"])[0]
     assert de_nuevo["estado"] == "presente" and de_nuevo["publicado"]
@@ -657,11 +788,12 @@ def test_sv1_lo_retenido_por_secretos_no_se_reescanea_en_cada_pasada(mundo, monk
     _w(mundo.ses / "s1" / "peligro.html", "<html><title>Peligro</title><script>1</script> sk-" + "Q" * 30 + "</html>")
     L.recorrer(mundo.conn, mundo.env)
     fila = _filas(mundo.conn, titulo="Peligro")[0]
-    assert fila["interactivo"] == 1 and fila["publicado"] == ""          # '' = retenido; NULL = aún sin publicar
+    assert fila["interactivo"] == 1 and fila["publicado"] == ""  # '' = retenido; NULL = aún sin publicar
     llamadas = []
     real = L._registrar_dentro
     monkeypatch.setattr(L, "_registrar_dentro", lambda *a, **k: llamadas.append(1) or real(*a, **k))
-    L.recorrer(mundo.conn, mundo.env); L.recorrer(mundo.conn, mundo.env)
+    L.recorrer(mundo.conn, mundo.env)
+    L.recorrer(mundo.conn, mundo.env)
     assert llamadas == []
     assert _filas(mundo.conn, titulo="Peligro")[0]["publicado"] == ""
 
@@ -672,7 +804,9 @@ def test_sv2_la_carpeta_de_revistas_html_sale_de_config_json(tmp_path, monkeypat
     (casa / "biblioteca" / "raices.json").write_text("[]", encoding="utf-8")
     monkeypatch.setenv("FAROS_HOME", str(casa))
     assert L.entorno_de_la_casa().html_revista_dir is None
-    (casa / "biblioteca" / "config.json").write_text(json.dumps({"html_revista_dir": str(tmp_path / "h")}), encoding="utf-8")
+    (casa / "biblioteca" / "config.json").write_text(
+        json.dumps({"html_revista_dir": str(tmp_path / "h")}), encoding="utf-8"
+    )
     assert L.entorno_de_la_casa().html_revista_dir == tmp_path / "h"
     (casa / "biblioteca" / "config.json").write_text("{roto", encoding="utf-8")
     assert L.entorno_de_la_casa().html_revista_dir is None
@@ -684,13 +818,15 @@ def test_sv2_el_codigo_no_lleva_rutas_ni_nombres_de_la_casa():
         assert not re.search(patron, fuente), patron
 
 
-@pytest.mark.parametrize("q", ['a"b', '"', '""', '"a', "*", "NEAR(", "AND", "OR a", 'x"y"z', "a\x00b", "NOT NOT", "ab -cd"])
+@pytest.mark.parametrize(
+    "q", ['a"b', '"', '""', '"a', "*", "NEAR(", "AND", "OR a", 'x"y"z', "a\x00b", "NOT NOT", "ab -cd"]
+)
 def test_sv3_buscar_no_rompe_fts5_con_comillas_ni_operadores(mundo, q):
     L.recorrer(mundo.conn, mundo.env)
     try:
         L.buscar(mundo.conn, q)
     except ValueError:
-        pass                                           # el único error permitido (la API lo hace 400)
+        pass  # el único error permitido (la API lo hace 400)
 
 
 def test_sv3_comilla_interior_no_corta_la_palabra(mundo):
@@ -719,6 +855,7 @@ def test_sv4_se_publica_exactamente_lo_que_se_escaneo(mundo):
 
 # --------------------------------------------------------------- revisión 2b (Code_Adversarial: BC1-BC8, mutaciones)
 
+
 def test_bc1_md_a_html_no_lanza_nunca():
     L.md_a_html(">" * 3000 + " hola")
     L.md_a_html("\n".join(">" * 50 + " x" for _ in range(50)))
@@ -729,8 +866,17 @@ def test_bc1_md_a_html_no_lanza_nunca():
 
 def test_bc2_lineas_enormes_se_escapan_sin_regex_cuadratica():
     import time
-    for linea in ("*" * 20000, "[" * 20000, "`" * 20000, "_a" * 10000, "[a](" * 5000, "**a*" * 5000,
-                  "<b>" * 7000, "x" * 40000):
+
+    for linea in (
+        "*" * 20000,
+        "[" * 20000,
+        "`" * 20000,
+        "_a" * 10000,
+        "[a](" * 5000,
+        "**a*" * 5000,
+        "<b>" * 7000,
+        "x" * 40000,
+    ):
         t0 = time.time()
         h = L.md_a_html(linea + " fin")
         assert time.time() - t0 < 2, linea[:6]
@@ -763,6 +909,7 @@ def test_bc3_la_copia_vieja_no_se_borra_si_el_registro_se_deshace(mundo, monkeyp
     def rompe_al_final(*a, **k):
         real(*a, **k)
         raise RuntimeError("falla ya con la copia nueva escrita")
+
     monkeypatch.setattr(L, "_registrar_dentro", rompe_al_final)
     assert L.registrar(mundo.conn, f, env=mundo.env) is None
     assert vieja.is_file()
@@ -819,8 +966,16 @@ def test_bc6_una_carpeta_solo_vale_bajo_raiz_no_recursiva_con_patron(mundo):
     assert not L.permitida(mundo.ses, e) and not L.permitida(mundo.ses / "s1", e)
     assert not L.permitida(mundo.art / "run_5" / "sub", e)
     assert not L.permitida(mundo.art / "otra_cosa", e)
-    sin_patrones = [{"clase": "faro", "ruta": str(mundo.ses / "s1"), "tipo": "carpeta", "patrones": [],
-                     "recursivo": False, "_real": L._norm(mundo.ses / "s1")}]
+    sin_patrones = [
+        {
+            "clase": "faro",
+            "ruta": str(mundo.ses / "s1"),
+            "tipo": "carpeta",
+            "patrones": [],
+            "recursivo": False,
+            "_real": L._norm(mundo.ses / "s1"),
+        }
+    ]
     assert not L.permitida(mundo.ses / "s1" / "x", sin_patrones)
     assert L.registrar(mundo.conn, mundo.ses / "s1", env=mundo.env) is None
 
@@ -839,16 +994,29 @@ def test_pf1_commits_por_lote_y_no_uno_por_fichero(mundo):
 
         def __getattr__(self, n):
             return getattr(self._c, n)
+
     L.recorrer(Espia(mundo.conn), mundo.env)
     assert len(commits) <= 2, commits
 
 
 def test_mut_recorrer_no_registra_con_la_clase_de_otra_raiz(mundo, monkeypatch):
-    mundo.env.raices.append({"clase": "documentacion", "ruta": str(mundo.ses / "s1"), "tipo": "carpeta",
-                             "patrones": ["*.md"], "recursivo": False, "_real": L._norm(mundo.ses / "s1")})
+    mundo.env.raices.append(
+        {
+            "clase": "documentacion",
+            "ruta": str(mundo.ses / "s1"),
+            "tipo": "carpeta",
+            "patrones": ["*.md"],
+            "recursivo": False,
+            "_real": L._norm(mundo.ses / "s1"),
+        }
+    )
     llamadas = []
     real = L.registrar
-    monkeypatch.setattr(L, "registrar", lambda conn, ruta, clase=None, *a, **k: llamadas.append((clase, str(ruta))) or real(conn, ruta, clase, *a, **k))
+    monkeypatch.setattr(
+        L,
+        "registrar",
+        lambda conn, ruta, clase=None, *a, **k: llamadas.append((clase, str(ruta))) or real(conn, ruta, clase, *a, **k),
+    )
     L.recorrer(mundo.conn, mundo.env)
     assert not [1 for c, r in llamadas if c == "documentacion" and r.endswith("informe.md")]
 
@@ -864,6 +1032,7 @@ def test_mut_toctou_de_registrar_deshace_si_la_ruta_cambia(mundo, monkeypatch):
         shutil.rmtree(mundo.ses / "s1")
         _junction(mundo.ses / "s1", fuera)
         return r
+
     monkeypatch.setattr(L, "_registrar_dentro", y_luego_cambia)
     assert L.registrar(mundo.conn, f, env=mundo.env) is None
     assert _filas(mundo.conn) == []
@@ -874,8 +1043,16 @@ def test_mut_cambio_de_clase_no_lo_traga_el_fast_path(mundo):
     L.recorrer(mundo.conn, mundo.env)
     f = mundo.ses / "s1" / "informe.md"
     assert _filas(mundo.conn, titulo="Informe uno")[0]["clase"] == "faro"
-    mundo.env.raices[:] = [{"clase": "documentacion", "ruta": str(f), "tipo": "fichero", "patrones": [],
-                            "recursivo": False, "_real": L._norm(f)}]
+    mundo.env.raices[:] = [
+        {
+            "clase": "documentacion",
+            "ruta": str(f),
+            "tipo": "fichero",
+            "patrones": [],
+            "recursivo": False,
+            "_real": L._norm(f),
+        }
+    ]
     L.recorrer(mundo.conn, mundo.env)
     assert _filas(mundo.conn, titulo="Informe uno")[0]["clase"] == "documentacion"
 
@@ -885,7 +1062,9 @@ def test_mut_candidatas_poda_lista_negra_y_enlaces(mundo):
     _w(fuera / "x.md", "# nunca")
     _junction(mundo.ses / "lazo2", fuera)
     cand = L._candidatas(mundo.env.raices[2])
-    assert cand and not any(("lazo2" in c) or (".git" in c) or ("beta_textos" in c) or ("AREA_Textos" in c) for c in cand)
+    assert cand and not any(
+        ("lazo2" in c) or (".git" in c) or ("beta_textos" in c) or ("AREA_Textos" in c) for c in cand
+    )
     assert any(c.endswith("informe.md") for c in cand)
 
 
@@ -903,10 +1082,15 @@ def test_lista_negra_generica_archivo_asterisco():
 
 # --------------------------------------------------------------- revisión 2c (Security: VT1, VT2, VT4, VT6)
 
-@pytest.mark.parametrize("basura", ["<img " * 40000, "<script " * 40000, "<a " * 40000, "<style>" * 30000, "<" * 80000],
-                         ids=["img", "script", "a", "style", "lt"])
+
+@pytest.mark.parametrize(
+    "basura",
+    ["<img " * 40000, "<script " * 40000, "<a " * 40000, "<style>" * 30000, "<" * 80000],
+    ids=["img", "script", "a", "style", "lt"],
+)
 def test_vt1_regex_de_html_acotadas(basura):
     import time
+
     t0 = time.time()
     L._texto_de_html(basura)
     L._INTERACTIVO.search(basura)
@@ -931,6 +1115,7 @@ def test_vt2_leer_contenido_no_entrega_si_la_ruta_cambia_durante_la_lectura(mund
         shutil.rmtree(mundo.ses / "s1")
         _junction(mundo.ses / "s1", fuera)
         return t
+
     monkeypatch.setattr(L, "_leer", lee_y_cambia)
     assert L.leer_contenido(f, mundo.env) is None
 
@@ -942,17 +1127,33 @@ def test_vt2_leer_contenido_valida_la_ruta_resuelta(mundo):
     assert L.leer_contenido(mundo.ses / "puente" / "x.md", mundo.env) is None
 
 
-@pytest.mark.parametrize("texto,bloquea", [
-    ("sk-" + "a" * 20, True), ("sk-ant-api03-" + "A1_" * 12, True), ("sk-proj-" + "Z9-" * 10, True),
-    ('"api_key": "x"', True), ("'apiKey' : 'x'", True), ('apikey="x"', True), ("api-key = x", True),
-    # The key headers are built in pieces, like the tokens around them, so that secret
-    # scanners (the public repo's pre-push and gitleaks) don't read the test data as a key.
-    ("ghp_" + "A" * 24, True), ("-----BEGIN RSA " + "PRIVATE KEY-----", True), ("-----BEGIN " + "PRIVATE KEY-----", True),
-    ("123456789:" + "AbC_-" * 7, True), ("X-FarOS-Token", True),
-    ("risk-assessment-and-mitigation-of-everything", False), ("task-force-management-for-teams", False),
-    ("la api key de ejemplo", False), ("sk-corto", False), ("ghp_corto", False), ("2026-11-04:12:00", False),
-    ("-----BEGIN CERTIFICATE-----", False), ("apikeys are listed", False),
-])
+@pytest.mark.parametrize(
+    "texto,bloquea",
+    [
+        ("sk-" + "a" * 20, True),
+        ("sk-ant-api03-" + "A1_" * 12, True),
+        ("sk-proj-" + "Z9-" * 10, True),
+        ('"api_key": "x"', True),
+        ("'apiKey' : 'x'", True),
+        ('apikey="x"', True),
+        ("api-key = x", True),
+        # The key headers are built in pieces, like the tokens around them, so that secret
+        # scanners (the public repo's pre-push and gitleaks) don't read the test data as a key.
+        ("ghp_" + "A" * 24, True),
+        ("-----BEGIN RSA " + "PRIVATE KEY-----", True),
+        ("-----BEGIN " + "PRIVATE KEY-----", True),
+        ("123456789:" + "AbC_-" * 7, True),
+        ("X-FarOS-Token", True),
+        ("risk-assessment-and-mitigation-of-everything", False),
+        ("task-force-management-for-teams", False),
+        ("la api key de ejemplo", False),
+        ("sk-corto", False),
+        ("ghp_corto", False),
+        ("2026-11-04:12:00", False),
+        ("-----BEGIN CERTIFICATE-----", False),
+        ("apikeys are listed", False),
+    ],
+)
 def test_vt4_escaneo_de_secretos_ampliado(texto, bloquea):
     assert bool(L._SECRETOS.search(texto)) is bloquea, texto
 
@@ -964,9 +1165,9 @@ def test_vt6_bajo_raiz_no_recursiva_la_profundidad_solo_vale_en_resultado(mundo)
     _w(mundo.rev / "2026-10-27.md" / "dentro.md", "# no")
     assert not L.permitida(mundo.rev / "carpeta.md", e)
     assert not L.permitida(mundo.rev / "2026-10-27.md" / "dentro.md", e)
-    assert not L.permitida(mundo.rev / "2026-10-27.md", e)                    # un directorio con nombre de revista
+    assert not L.permitida(mundo.rev / "2026-10-27.md", e)  # un directorio con nombre de revista
     assert L.leer_contenido(mundo.rev / "2026-10-27.md" / "dentro.md", mundo.env) is None
-    assert L.permitida(mundo.art / "run_5" / "out.txt", e)                    # resultado: sigue legible
+    assert L.permitida(mundo.art / "run_5" / "out.txt", e)  # resultado: sigue legible
     assert L.permitida(mundo.rev / "2026-10-28.md", e)
 
 
@@ -997,27 +1198,31 @@ def test_mut_blockquote_profundo_se_degrada_a_texto_sin_recurrir_en_exceso(mundo
 
 def test_vt7_titulo_acotado():
     import time
+
     for basura in ("<title>" * 20000, "<h1>" * 20000, "<title " * 20000, "<title>" + "x" * 300000):
         t0 = time.time()
         L._titulo(basura, True, "f.html")
         assert time.time() - t0 < 1, basura[:9]
     assert L._titulo("<html><title>Hola</title>", True, "f.html") == "Hola"
-    assert L._titulo("x" * 70000 + "<title>Tarde</title>", True, "f.html") == "f"       # solo se busca en los primeros 64 KB
+    assert L._titulo("x" * 70000 + "<title>Tarde</title>", True, "f.html") == "f"  # solo se busca en los primeros 64 KB
 
 
 def test_vt8_enlaces_md_acotados():
     import time
+
     patrones = ["[a](", "**a ", "*a ", "_a ", "[", "`a", "a*b ", "[a" + "x" * 40 + "]("]
     SEP = chr(10) * 2
-    docs = [SEP.join([(p * 5000)[:19500]] * 20) for p in patrones]            # 20 parrafos de 19,5 KB
-    docs += [SEP.join([(p * 5000)[:4900]] * 20) for p in patrones]           # y de 4,9 KB (justo bajo el tope)
+    docs = [SEP.join([(p * 5000)[:19500]] * 20) for p in patrones]  # 20 parrafos de 19,5 KB
+    docs += [SEP.join([(p * 5000)[:4900]] * 20) for p in patrones]  # y de 4,9 KB (justo bajo el tope)
     for d in docs:
         t0 = time.time()
         L.md_a_html(d)
         assert time.time() - t0 < 1, d[:12]
-    assert ">" + "a" * 600 + "</a>" not in L.md_a_html("[" + "a" * 600 + "](https://a.test)")          # etiqueta > 500: no es enlace [..](..)
+    assert ">" + "a" * 600 + "</a>" not in L.md_a_html(
+        "[" + "a" * 600 + "](https://a.test)"
+    )  # etiqueta > 500: no es enlace [..](..)
     assert ">" + "a" * 400 + "</a>" in L.md_a_html("[" + "a" * 400 + "](https://a.test/x)")
-    assert ">a</a>" not in L.md_a_html("[a](https://a.test/" + "x" * 2500 + ")")                # URL larga: tampoco
+    assert ">a</a>" not in L.md_a_html("[a](https://a.test/" + "x" * 2500 + ")")  # URL larga: tampoco
 
 
 # --------------------------------------------------------------- lote final de revisión (raices.json, paginación, supervivientes)
@@ -1044,7 +1249,7 @@ def test_raices_ilegibles_no_retiran_nada(mundo, tmp_path, monkeypatch, contenid
     assert env.raices_ilegibles and env.raices == []
     res = L.recorrer(mundo.conn, env)
     assert res["ausentes"] == 0 and len(L.buscar(mundo.conn, limite=500)) == n
-    assert {r["id"]: dict(r) for r in _filas(mundo.conn)} == copias                 # ni una fila tocada
+    assert {r["id"]: dict(r) for r in _filas(mundo.conn)} == copias  # ni una fila tocada
     assert mundo.conn.execute("SELECT count(*) FROM library_fts").fetchone()[0] == n
 
 
@@ -1072,7 +1277,7 @@ def test_leer_raices_distingue_ilegible_de_lista_vacia(tmp_path):
     assert L.leer_raices(tmp_path / "no_esta.json") is None
     (tmp_path / "r.json").write_text("{", encoding="utf-8")
     assert L.leer_raices(tmp_path / "r.json") is None
-    assert L.cargar_raices(tmp_path / "r.json") == []                                    # compat
+    assert L.cargar_raices(tmp_path / "r.json") == []  # compat
 
 
 def test_el_entorno_cacheado_conserva_el_ultimo_bueno_si_raices_json_se_rompe(mundo, tmp_path, monkeypatch, caplog):
@@ -1091,9 +1296,9 @@ def test_unreadable_root_conserva_sus_entradas_aunque_ya_no_pasen_raiz_de(mundo)
     L.recorrer(mundo.conn, mundo.env)
     informe = _filas(mundo.conn, titulo="Informe uno")[0]
     ses = dict(mundo.env.raices[2])
-    ses["patrones"] = ["*.html"]                          # el patrón nuevo ya no cubre informe.md...
+    ses["patrones"] = ["*.html"]  # el patrón nuevo ya no cubre informe.md...
     mundo.env.raices[:] = [ses]
-    os.rename(mundo.ses, mundo.t / "Faro" / "Sesiones_movida")       # ...y la raíz no se puede abrir
+    os.rename(mundo.ses, mundo.t / "Faro" / "Sesiones_movida")  # ...y la raíz no se puede abrir
     res = L.recorrer(mundo.conn, mundo.env)
     assert res["raices_saltadas"] == 1
     assert _filas(mundo.conn, id=informe["id"])[0]["estado"] == "presente"
@@ -1107,40 +1312,48 @@ def test_rutas_de_texto_no_devuelve_una_carpeta_por_un_prefijo(mundo):
     assert any(x.endswith("Faro Notes\\gone.md") for x in r)
     assert L.al_cerrar(mundo.conn, 1, "file_path", gone, mundo.env) == 0
     assert all("faro notes" not in x["ruta"] for x in _filas(mundo.conn)) and not any(
-        x["ruta"].endswith("\\faro") for x in _filas(mundo.conn))
+        x["ruta"].endswith("\\faro") for x in _filas(mundo.conn)
+    )
 
 
 def test_rutas_de_texto_no_toca_el_disco_en_unidades_de_red(monkeypatch):
     import ctypes
+
     tocadas = []
     for n in ("exists", "isfile", "isdir"):
         real = getattr(os.path, n)
         monkeypatch.setattr(os.path, n, lambda p, _r=real: tocadas.append(str(p)) or _r(p))
-    monkeypatch.setattr(ctypes.windll.kernel32, "GetDriveTypeW", lambda p: 4, raising=False)     # DRIVE_REMOTE
+    monkeypatch.setattr(ctypes.windll.kernel32, "GetDriveTypeW", lambda p: 4, raising=False)  # DRIVE_REMOTE
     assert L.rutas_de_texto(r"mira Z:\compartido\informe.md y Y:\otra\cosa.md") == []
     assert not [t for t in tocadas if t[:2].upper() in ("Z:", "Y:")], tocadas
-    monkeypatch.setattr(ctypes.windll.kernel32, "GetDriveTypeW", lambda p: 3, raising=False)     # DRIVE_FIXED
+    monkeypatch.setattr(ctypes.windll.kernel32, "GetDriveTypeW", lambda p: 3, raising=False)  # DRIVE_FIXED
     assert L.rutas_de_texto(r"mira Z:\compartido\informe.md") == [r"Z:\compartido\informe.md"]
 
 
 # --------------------------------------------------------------- #1154: evidencia que es una CARPETA
 
+
 def _enlazados(conn, ticket_id):
-    return sorted(os.path.basename(r[0]) for r in conn.execute(
-        "SELECT i.ruta FROM library_links l JOIN library_items i ON i.id = l.item_id WHERE l.ticket_id=?",
-        (ticket_id,)))
+    return sorted(
+        os.path.basename(r[0])
+        for r in conn.execute(
+            "SELECT i.ruta FROM library_links l JOIN library_items i ON i.id = l.item_id WHERE l.ticket_id=?",
+            (ticket_id,),
+        )
+    )
 
 
 def test_cierre_con_carpeta_enlaza_sus_ficheros_admitidos(mundo):
     n = L.al_cerrar(mundo.conn, 21, "file_path", f"todo en {mundo.ses / 's1'}", mundo.env)
     assert n == 3
-    assert _enlazados(mundo.conn, 21) == ["estatica.html", "informe.md", "viva.html"]    # datos.json no: patrón
+    assert _enlazados(mundo.conn, 21) == ["estatica.html", "informe.md", "viva.html"]  # datos.json no: patrón
 
 
 def test_cierre_con_carpeta_no_entra_en_lo_prohibido(mundo):
     L.al_cerrar(mundo.conn, 22, "command_output", f"ver {mundo.ses}", mundo.env)
     enlazados = mundo.conn.execute(
-        "SELECT i.ruta FROM library_links l JOIN library_items i ON i.id = l.item_id WHERE l.ticket_id=22").fetchall()
+        "SELECT i.ruta FROM library_links l JOIN library_items i ON i.id = l.item_id WHERE l.ticket_id=22"
+    ).fetchall()
     rutas = [r[0] for r in enlazados]
     assert rutas and not any(("textos" in r) or (os.sep + ".git" + os.sep in r) for r in rutas)
     L.esperar_pendientes()

@@ -11,7 +11,8 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from faros import api, db, decisions as dec
+from faros import api, db
+from faros import decisions as dec
 
 TOKEN = "t-718"
 H = {"X-FarOS-Token": TOKEN}

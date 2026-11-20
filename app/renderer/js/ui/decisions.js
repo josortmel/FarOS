@@ -87,13 +87,19 @@ export function renderDecisionsPane(pane, state, handlers) {
     const a = ev.target.closest('[data-goto]');
     if (!a) return;
     ev.preventDefault();
-    const card = pane.querySelector(`.dec[data-id="${a.dataset.goto}"]`);
-    if (!card) return;
-    const box = card.closest('details');
-    if (box) box.open = true;
-    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    card.classList.remove('dec--flash'); void card.offsetWidth; card.classList.add('dec--flash');
+    resaltarPregunta(pane, a.dataset.goto);
   });
+}
+
+/* Lleva a una tarjeta y la hace parpadear (abre las superadas si está dentro). También la usa la lupa (#1320). */
+export function resaltarPregunta(pane, id) {
+  const card = pane.querySelector(`.dec[data-id="${id}"]`);
+  if (!card) return false;
+  const box = card.closest('details');
+  if (box) box.open = true;
+  card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  card.classList.remove('dec--flash'); void card.offsetWidth; card.classList.add('dec--flash');
+  return true;
 }
 
 const KIND = { total: 'del todo', parcial: 'en parte', nunca_valida: 'nunca fue válida' };

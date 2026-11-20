@@ -62,17 +62,27 @@ def v2_db(tmp_path):
     c.executescript(SCHEMA_V2)
     c.execute("INSERT INTO projects (id, name, created_at) VALUES (1, 'Casa', '2026-09-01')")
     for i in range(1, 4):
-        c.execute("INSERT INTO tickets (id, project_id, kind, title, created_by, created_at)"
-                  " VALUES (?, 1, ?, ?, 'alice', '2026-09-01')",
-                  (i, "agentic" if i == 3 else "manual", f"ticket {i}"))
-        c.execute("INSERT INTO ticket_history (ticket_id, new_status, changed_by, changed_at)"
-                  " VALUES (?, 'proposed', 'alice', '2026-09-01')", (i,))
-    c.execute("INSERT INTO workflows (id, name, phases, coordinator, status, created_at)"
-              " VALUES (5, 'wf-v2', '[\"core\"]', 'alice', 'closed', '2026-09-01')")
-    c.execute("INSERT INTO agent_jobs (id, ticket_id, prompt, enabled, created_at)"
-              " VALUES (7, 3, 'di hola', 0, '2026-09-01')")
-    c.execute("INSERT INTO runs (id, job_id, ticket_id, started_at, status, cost_usd)"
-              " VALUES (11, 7, 3, '2026-09-01T10:00', 'ok', 0.03)")
+        c.execute(
+            "INSERT INTO tickets (id, project_id, kind, title, created_by, created_at)"
+            " VALUES (?, 1, ?, ?, 'alice', '2026-09-01')",
+            (i, "agentic" if i == 3 else "manual", f"ticket {i}"),
+        )
+        c.execute(
+            "INSERT INTO ticket_history (ticket_id, new_status, changed_by, changed_at)"
+            " VALUES (?, 'proposed', 'alice', '2026-09-01')",
+            (i,),
+        )
+    c.execute(
+        "INSERT INTO workflows (id, name, phases, coordinator, status, created_at)"
+        " VALUES (5, 'wf-v2', '[\"core\"]', 'alice', 'closed', '2026-09-01')"
+    )
+    c.execute(
+        "INSERT INTO agent_jobs (id, ticket_id, prompt, enabled, created_at) VALUES (7, 3, 'di hola', 0, '2026-09-01')"
+    )
+    c.execute(
+        "INSERT INTO runs (id, job_id, ticket_id, started_at, status, cost_usd)"
+        " VALUES (11, 7, 3, '2026-09-01T10:00', 'ok', 0.03)"
+    )
     c.commit()
     c.close()
     return path
@@ -82,11 +92,11 @@ def test_migrates_v2_to_v3_keeping_rows_and_links(v2_db):
     conn = db.connect(v2_db)
     assert db.schema_version(conn) == db.SCHEMA_VERSION
     tcols = {r["name"] for r in conn.execute("PRAGMA table_info(tickets)")}
-    assert {"scheduled_at", "duration_min", "all_day", "preferred_time",
-            "next_due_override"} <= tcols
+    assert {"scheduled_at", "duration_min", "all_day", "preferred_time", "next_due_override"} <= tcols
     jcols = {r["name"]: r for r in conn.execute("PRAGMA table_info(agent_jobs)")}
-    assert {"name", "status", "project_id", "inherit_mcp", "add_dirs", "effort",
-            "billing_mode", "verify_level"} <= set(jcols)
+    assert {"name", "status", "project_id", "inherit_mcp", "add_dirs", "effort", "billing_mode", "verify_level"} <= set(
+        jcols
+    )
     assert jcols["ticket_id"]["notnull"] == 0  # jobs desligados (decisión 3)
     rcols = {r["name"]: r for r in conn.execute("PRAGMA table_info(runs)")}
     assert {"verdict", "verdict_reason", "verified_at", "cost_kind"} <= set(rcols)
@@ -145,11 +155,13 @@ def test_rebuild_keeps_table_triggers_in_the_migrating_connection(v2_db):
     se llevaba los triggers jobs_fts_* que SCHEMA había creado, y no volvían hasta
     la conexión siguiente. El daemon vive con la conexión que migra."""
     conn = db.connect(v2_db)
-    trig = {r["name"] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='agent_jobs'")}
+    trig = {
+        r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='agent_jobs'")
+    }
     assert trig == {"jobs_fts_ai", "jobs_fts_au", "jobs_fts_ad"}
-    conn.execute("INSERT INTO agent_jobs (id, name, prompt, created_at)"
-                 " VALUES (8, 'job nuevo', 'busca zanahoria', '2026-10-14')")
+    conn.execute(
+        "INSERT INTO agent_jobs (id, name, prompt, created_at) VALUES (8, 'job nuevo', 'busca zanahoria', '2026-10-14')"
+    )
     hits = conn.execute("SELECT rowid FROM jobs_fts WHERE jobs_fts MATCH 'zanahoria'").fetchall()
     assert [h[0] for h in hits] == [8]
     conn.close()
@@ -159,8 +171,9 @@ def test_broken_foreign_key_rolls_the_migration_back(v2_db):
     """#471 (paso 10): foreign_key_check va DENTRO de la transacción. Antes corría
     después del COMMIT y la base quedaba migrada con la FK rota."""
     c = sqlite3.connect(str(v2_db))
-    c.execute("INSERT INTO runs (id, job_id, ticket_id, started_at, status)"
-              " VALUES (12, 999, 3, '2026-09-01T11:00', 'ok')")  # job 999 no existe
+    c.execute(
+        "INSERT INTO runs (id, job_id, ticket_id, started_at, status) VALUES (12, 999, 3, '2026-09-01T11:00', 'ok')"
+    )  # job 999 no existe
     c.commit()
     c.close()
     with pytest.raises(RuntimeError, match="foreign_key_check"):

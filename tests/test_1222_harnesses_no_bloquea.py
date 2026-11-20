@@ -8,13 +8,13 @@ la primera vez que abre Agentes › Ajustes. Mientras un harness tarda, lo demá
 """
 
 import asyncio
-import sqlite3
 import time
 
 import httpx
 import pytest
 
-from faros import api, db, harness as h
+from faros import api, db
+from faros import harness as h
 from faros.harness.base import HarnessAdapter
 
 TOKEN = "t-1222"
@@ -27,8 +27,13 @@ class _Lento(HarnessAdapter):
 
     def describe(self, settings=None, refresh=False):
         time.sleep(LENTO)  # como un `claude --version` frío
-        return {"name": self.name, "installed": True, "models": [], "models_source": "prueba",
-                "models_refreshed_at": None}
+        return {
+            "name": self.name,
+            "installed": True,
+            "models": [],
+            "models_source": "prueba",
+            "models_refreshed_at": None,
+        }
 
 
 @pytest.fixture
@@ -45,7 +50,7 @@ async def _a_la_vez(app, lenta):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as cl:
         t0 = time.monotonic()
         tarea = asyncio.create_task(cl.get(lenta, headers=H))
-        await asyncio.sleep(0.05)               # la lenta ya está dentro
+        await asyncio.sleep(0.05)  # la lenta ya está dentro
         # Si la lenta para el bucle, este sleep no vuelve hasta que acabe: por eso
         # el tiempo de /api/health se cuenta desde que DEBÍA salir (t0 + 0,05 s).
         r = await cl.get("/api/health")
@@ -58,5 +63,5 @@ async def _a_la_vez(app, lenta):
 def test_health_contesta_mientras_un_harness_tarda(app, ruta):
     sh, health, sl, total = asyncio.run(_a_la_vez(app, ruta))
     assert sh == 200 and sl == 200
-    assert total >= LENTO                      # la lenta de verdad ha tardado
+    assert total >= LENTO  # la lenta de verdad ha tardado
     assert health < 0.3, f"/api/health esperó {health:.2f} s detrás de {ruta}"

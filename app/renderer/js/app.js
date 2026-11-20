@@ -25,7 +25,8 @@ import { createTaskModal, evidenceDialog, clearEvidenceDraft, reasonDialog, proj
 import { initWorkflow, renderWorkflowSidebar, renderWorkflowBar, renderMilestoneBanner, renderPhaseStrip, renderWorkflowBoard, renderWorkflowPane, renderFindingsDrawer, renderSurfaceBadge, renderHandoff } from './ui/workflow.js';
 import { toast, toastReject } from './ui/toast.js';
 import { recordar as recordarAvisosCriterio } from './ui/criterio_avisos.js';   // #1136
-import { renderDecisionsPane } from './ui/decisions.js';   // #645
+import { renderDecisionsPane, resaltarPregunta } from './ui/decisions.js';   // #645
+import { initLupa } from './ui/lupa.js';   // #1320
 import { abrirBiblioteca, refrescarIdioma, salirDeBiblioteca, seguirRutas } from './ui/library.js';   // #851
 import { esc, projectColor, humanError, fmtDayShort } from './util.js';
 
@@ -465,8 +466,13 @@ function renderDecRoot(state) {
     ...all.filter(d => d.status !== 'decided'),
     ...all.filter(d => d.status === 'decided').sort((a, b) => (b.decided_at ?? '').localeCompare(a.decided_at ?? '')).slice(0, 10),
   ];
+  /* #1320: la que se abrió desde la lupa sale aunque sea antigua, mientras se siga en Preguntas, y se resalta una vez */
+  const foco = all?.find(d => d.id === decFoco);
+  if (foco && !list.includes(foco)) list.push(foco);
   renderDecisionsPane(root, { wfDecisions: list, workflow: { name: tr('la casa') }, paneTitle: tr('Preguntas') }, decisionHandlers);
+  if (foco && decResaltar) { decResaltar = false; requestAnimationFrame(() => resaltarPregunta(root, foco.id)); }
 }
+let decFoco = null, decResaltar = false;   // #1320
 
 /* ---------------- render raíz ---------------- */
 
@@ -518,6 +524,7 @@ function renderEs(state) {
   renderSurfaceBadge(state);
   renderAgentsSurfaceBadge(state);
   renderDecBadge(state);
+  if (state.surface !== 'decisions') decFoco = null;   // #1320: la pregunta de la lupa solo se queda mientras se mira
   if (state.surface === 'library') { refrescarIdioma(); return; }   // #851: se pinta sola; un aviso del daemon no recarga lo que Pepe lee
   if (state.surface === 'decisions') {
     renderDecRoot(state);
@@ -639,6 +646,20 @@ async function main() {
       } catch (err) {
         if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
         else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
+      }
+    },
+    /* #1348: marcar o desmarcar una tarea como tiempo libre; devuelve si el motor dijo que sí */
+    onTiempoLibre: async (t, libre) => {
+      try {
+        await api().tiempoLibre({ agent: getState().agent, ticket_id: t.id, libre });
+        toast(libre ? tr(`«${t.title}» es tiempo libre: su timbre suena como invitación.`) : tr(`«${t.title}» vuelve a ser trabajo.`), 'ok');
+        return true;
+      } catch (err) {
+        if (err instanceof ApiError && err.code === 'timbre.solo_las_suyas') {
+          toastReject(tr(`Esta tarea es de «${t.owner}»: solo «${t.owner}» o el dueño de la casa pueden marcarla como tiempo libre.`));
+        } else if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
+        else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
+        return false;
       }
     },
     onClose: () => { closePanel(); setState({ selected: null, selectedJob: null }); }, // el panel es uno: ticket o job
@@ -1188,6 +1209,37 @@ async function main() {
     fail: (err) => {
       if (err instanceof ApiError && (err.status === 400 || err.status === 409)) toastReject(humanError(err));
       else toast(`${tr('No se pudo guardar:')} ${humanError(err)}`, 'reject');
+    },
+  });
+  /* #1320: la lupa. Cada resultado se abre donde vive: la tarea en su ficha (sobre la superficie que haya),
+     la pregunta en Preguntas, el workflow en Workflows y el job en Agentes. En el móvil, Preguntas y la
+     barra de abajo son de mobile.js: se le avisa con un evento. */
+  const enMovil = () => { const n = document.querySelector('.mob-tabs'); return !!n && getComputedStyle(n).display !== 'none'; };
+  const avisarMovil = (k) => { if (enMovil()) window.dispatchEvent(new CustomEvent('faros:superficie', { detail: { k } })); };
+  initLupa({
+    api,
+    onOpen: async (kind, it) => {
+      if (kind === 'ticket') { await openTicketById(it.id); return; }
+      closePanel(); setState({ selected: null, selectedJob: null });
+      if (kind === 'decision') {
+        if (enMovil()) { window.dispatchEvent(new CustomEvent('faros:pregunta', { detail: { id: it.id } })); return; }
+        salirDeBiblioteca();
+        await refetchAllDecisions();          // primero los datos: un solo pintado con la tarjeta ya dentro
+        decFoco = it.id; decResaltar = true;
+        setState({ surface: 'decisions' });
+        return;
+      }
+      if (kind === 'workflow') {
+        salirDeBiblioteca();
+        const archivado = it.status === 'archived';
+        setState({ surface: 'workflow', wfListMode: archivado ? 'archived' : 'active' });
+        avisarMovil('wf');
+        if (!getState().workflows) await refetchWorkflows();
+        if (archivado && getState().wfArchived == null) await refetchArchived();
+        await selectWorkflow(it.id);
+        return;
+      }
+      if (kind === 'job') { salirDeBiblioteca(); avisarMovil('ag'); await jumpToJob(it.id); }
     },
   });
   /* #1217: el timbre se aplica al tocarlo, como «máquina quieta»; el día elegido se queda en el estado

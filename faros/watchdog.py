@@ -23,10 +23,11 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+
 from . import env as _env
 
 DEFAULT_PORT = 8756
-DEFAULT_TASK = "FarOS-daemon"   # #288 (antes AgenticOS-daemon; las tareas pasan --task explícito)
+DEFAULT_TASK = "FarOS-daemon"  # #288 (antes AgenticOS-daemon; las tareas pasan --task explícito)
 
 
 def _data_dir() -> Path:
@@ -53,6 +54,7 @@ def health_ok(port: int, timeout: float = 5.0) -> bool:
 def start_task(task: str) -> tuple[int, str]:
     """schtasks /Run sin ventana. Devuelve (returncode, salida)."""
     from .procutil import run_hidden
+
     exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "schtasks.exe")
     try:
         r = run_hidden([exe, "/Run", "/TN", task], capture_output=True, text=True, timeout=30)
@@ -63,8 +65,13 @@ def start_task(task: str) -> tuple[int, str]:
         return -1, str(exc)
 
 
-def check(port: int = DEFAULT_PORT, task: str = DEFAULT_TASK, data_dir: Path | None = None,
-          _health=health_ok, _start=start_task) -> bool:
+def check(
+    port: int = DEFAULT_PORT,
+    task: str = DEFAULT_TASK,
+    data_dir: Path | None = None,
+    _health=health_ok,
+    _start=start_task,
+) -> bool:
     """Una pasada del vigilante. True si el daemon estaba vivo o se relanzó."""
     data_dir = data_dir or _data_dir()
     if _health(port):

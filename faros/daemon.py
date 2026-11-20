@@ -18,7 +18,7 @@ import uvicorn
 from uvicorn.config import LOGGING_CONFIG
 
 from . import acl, db
-from .api import create_app, EventBus
+from .api import EventBus, create_app
 from .runner import DATA_DIR
 from .scheduler import scheduler_loop
 
@@ -54,13 +54,12 @@ def coger_puerto(port: int) -> socket.socket | None:
 
 
 async def main(port: int, db_path: str | None):
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     sock = coger_puerto(port)
     if sock is None:
         logging.getLogger("faros.daemon").warning(
-            "el puerto %s ya es de otro daemon: me voy sin abrir la base (#1134)", port)
+            "el puerto %s ya es de otro daemon: me voy sin abrir la base (#1134)", port
+        )
         return
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     file_handler = logging.FileHandler(DATA_DIR / "daemon.log", encoding="utf-8")
@@ -70,17 +69,19 @@ async def main(port: int, db_path: str | None):
 
     conn = db.connect(db_path, house_migration_ok=True)  # #157: la casa solo la migra el daemon
     from . import service
+
     orphans = service.recover_orphan_runs(conn)
     if orphans:
-        logging.getLogger("faros.daemon").warning(
-            "%s run(s) huérfanos cerrados como error al arrancar", orphans)
+        logging.getLogger("faros.daemon").warning("%s run(s) huérfanos cerrados como error al arrancar", orphans)
     bus = EventBus()
     from . import deepseek_proxy
-    deepseek_proxy.PUERTO = port   # #1109: el reenvío de DeepSeek vive en este daemon
+
+    deepseek_proxy.PUERTO = port  # #1109: el reenvío de DeepSeek vive en este daemon
     app = create_app(conn, bus)
     barredor = None
-    try:    # Biblioteca (#850): recorrido al arrancar y cada hora, en su hilo y con su conexión
+    try:  # Biblioteca (#850): recorrido al arrancar y cada hora, en su hilo y con su conexión
         from . import library
+
         db_file = conn.execute("PRAGMA database_list").fetchone()["file"]
         barredor = library.Barredor(db_file)
         barredor.start()
@@ -89,11 +90,13 @@ async def main(port: int, db_path: str | None):
 
     stop_event = asyncio.Event()
     sched_task = asyncio.create_task(scheduler_loop(conn, emit=bus.emit, stop_event=stop_event))
-    from . import telegram_bot   # #1189: el bot de Telegram del dueño (timbres aparte, en el scheduler)
+    from . import telegram_bot  # #1189: el bot de Telegram del dueño (timbres aparte, en el scheduler)
+
     bot_task = asyncio.create_task(telegram_bot.bucle(conn, stop_event, emit=bus.emit))
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", loop="asyncio",
-                            log_config=uvicorn_log_config())
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=port, log_level="info", loop="asyncio", log_config=uvicorn_log_config()
+    )
     server = uvicorn.Server(config)
     try:
         await server.serve(sockets=[sock])
@@ -102,6 +105,7 @@ async def main(port: int, db_path: str | None):
         if barredor is not None:
             await asyncio.to_thread(barredor.stop)
             from . import library
+
             await asyncio.to_thread(library.parar_worker, 10)
         await sched_task
         await bot_task

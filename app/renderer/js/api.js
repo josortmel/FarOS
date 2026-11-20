@@ -111,6 +111,10 @@ const live = {
   /* #1217: el timbre de las franjas — encendido o no y qué ha sonado ese día y a quién */
   timbre:   (fecha)       => http(`/api/timbre${fecha ? `?fecha=${encodeURIComponent(fecha)}` : ''}`),
   timbreSilencio: (b)     => http('/api/timbre/silencio', { method: 'POST', body: JSON.stringify(b) }),
+  /* #1348: {agent, ticket_id, libre} — cada uno las suyas, el dueño las de todos (400 timbre.solo_las_suyas) */
+  tiempoLibre: (b)        => http('/api/timbre/tiempo_libre', { method: 'POST', body: JSON.stringify(b) }),
+  /* #1320: la lupa — tareas, preguntas, workflows y jobs en una consulta (máx. 10 por grupo) */
+  search:   (q)           => http(`/api/search?q=${encodeURIComponent(q)}`),
   board:    (view, project) => http(`/api/board?view=${view || 'all'}${project ? `&project=${project}` : ''}`),
   projects: ()            => http('/api/projects'),
   createProject: (p)      => http('/api/projects', { method: 'POST', body: JSON.stringify(p) }),
@@ -389,6 +393,25 @@ function makeMock() {
        agente nuevo aparecía en la app aunque nadie volviera a pedir meta — el mock
        escondía justo el fallo que en vivo sí pasa (canario del e2e del #252). */
     async meta()   { if (!db) await load(); return structuredClone(db.meta); },
+    /* #1320, espejo de search.py: cualquier palabra de 2+ letras, máximo 10 por grupo */
+    async search(q) {
+      if (!db) await load();
+      const ws = String(q ?? '').toLowerCase().split(/\s+/).map(w => w.replace(/"/g, '')).filter(w => w.length > 1).slice(0, 8);
+      if (!ws.length) return Promise.reject(new ApiError(400, { reason: 'búsqueda vacía (mínimo una palabra de 2+ letras)' }));
+      const hit = (...txt) => ws.some(w => txt.join(' ').toLowerCase().includes(w));
+      const tickets = [...db.tickets.values()].filter(t => hit(t.title, t.description ?? ''))
+        .slice(0, 10).map(t => ({ id: t.id, title: t.title, status: t.status, owner: t.owner, project_id: t.project_id ?? null,
+          workflow_id: t.workflow_id ?? null, section: t.workflow_id ? 'oficina' : 'tablero' }));
+      const decisions = (await this._dec()).filter(d => hit(d.title, d.context ?? '')).slice(0, 10)
+        .map(d => ({ id: d.id, title: d.title, status: d.status, workflow_id: d.workflow_id ?? null, decided_by: d.decided_by ?? null, section: 'oficina' }));
+      const { wfList } = await this._wf();
+      const workflows = wfList.filter(w => hit(w.name)).slice(0, 10)
+        .map(w => ({ id: w.id, name: w.name, status: w.status, kind: w.kind ?? null, project_id: w.project_id ?? null, coordinator: w.coordinator ?? null, section: 'oficina' }));
+      await this._ag();
+      const jobs = [...db.jobs.values()].filter(j => j.status !== 'archived' && hit(j.name, j.prompt ?? '')).slice(0, 10)
+        .map(j => ({ id: j.id, name: j.name, status: j.status, harness: j.harness ?? null, model: j.model ?? null, ticket_id: j.ticket_id ?? null, section: 'agentes' }));
+      return { q, tickets, jobs, decisions, workflows, total: tickets.length + jobs.length + decisions.length + workflows.length };
+    },
     /* #601, espejo: un ajuste suelto, proof_repos (los repos donde el verificador puede correr una prueba) */
     async settings() { if (!db) await load(); return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...TODAY_DEFAULT, ...(db.settings ?? {}) }; },
     async patchSettings({ agent, ...cambios }) {
@@ -402,6 +425,22 @@ function makeMock() {
       }
       db.settings = { ...(db.settings ?? {}), ...cambios };
       return { proof_repos: '', maquina_quieta: false, verifier_read_roots: '', ...TODAY_DEFAULT, ...db.settings };
+    },
+    /* #1348, espejo de timbre.marcar_libre: cada uno las suyas y el dueño de la casa las de todos */
+    async tiempoLibre({ agent, ticket_id, libre = true }) {
+      if (!db) await load();
+      const t = db.tickets.get(Number(ticket_id));
+      if (!t) return Promise.reject(new ApiError(404, { reason: `ticket #${ticket_id} no existe` }));
+      if (agent !== t.owner && agent !== db.meta.owner) {
+        return Promise.reject(new ApiError(400, { error: 'invalid_request', reason: 'cada uno marca solo sus tareas como tiempo libre', field: 'ticket_id', code: 'timbre.solo_las_suyas' }));
+      }
+      const actual = { tareas: [], textos: {}, ...(db.settings?.timbre_tiempo_libre ?? {}) };
+      const ids = actual.tareas.map(Number).filter(x => x !== Number(ticket_id));
+      if (libre) ids.push(Number(ticket_id));
+      actual.tareas = ids.sort((a, b) => a - b);
+      db.settings = { ...(db.settings ?? {}), timbre_tiempo_libre: actual };
+      emitChange('settings.changed', { keys: ['timbre_tiempo_libre'] });
+      return { ticket_id: Number(ticket_id), libre, tareas: actual.tareas };
     },
     /* #1217, espejo: el timbre lee su interruptor de los ajustes del mock; sin avisos apuntados */
     async timbre(fecha) {

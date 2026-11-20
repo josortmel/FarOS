@@ -2,7 +2,8 @@
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -21,13 +22,20 @@ def _propose(conn, **kw):
 
 def _propose_agentic(conn, **kw):
     job = kw.pop("job", None) or {"prompt": "di hola", "model": "haiku"}
-    args = dict(agent="alice", title="Resumen de correo", description="resumen matinal",
-                kind="agentic", verification_level="auto", job=job)
+    args = dict(
+        agent="alice",
+        title="Resumen de correo",
+        description="resumen matinal",
+        kind="agentic",
+        verification_level="auto",
+        job=job,
+    )
     args.update(kw)
     return s.propose_ticket(conn, **args)["ticket"]
 
 
 # ------------------------------------------------------------ ciclo completo (v0)
+
 
 def test_full_lifecycle_peer(conn):
     t = _propose(conn, owner="alice", verification_level="peer")
@@ -39,8 +47,7 @@ def test_full_lifecycle_peer(conn):
     v = s.verify_ticket(conn, "bob", t["id"], "pass", "comprobado en vivo")
     assert v["status"] == "verified" and v["verified_by"] == "bob" and v["closed_at"]
     hist = s.ticket_history(conn, t["id"])["history"]
-    assert [h["new_status"] for h in hist] == [
-        "proposed", "accepted", "in_progress", "done", "verified"]
+    assert [h["new_status"] for h in hist] == ["proposed", "accepted", "in_progress", "done", "verified"]
 
 
 def test_self_level_completes_directly_to_verified(conn):
@@ -79,8 +86,14 @@ def test_verify_fail_reopens_with_mandatory_note(conn):
 
 
 def test_recurrente_never_closes_and_stamps_chronology(conn):
-    t = _propose(conn, owner="alice", source="recurrente", cadence_days=7,
-                 title="Backup EcoDB", description="dump + grafo + media")
+    t = _propose(
+        conn,
+        owner="alice",
+        source="recurrente",
+        cadence_days=7,
+        title="Backup EcoDB",
+        description="dump + grafo + media",
+    )
     s.accept_ticket(conn, "owner", t["id"])
     for i in range(3):
         r = s.complete_ticket(conn, "alice", t["id"], "command_output", f"push OK run {i}")
@@ -186,8 +199,7 @@ def test_recurrente_peer_combo_rejected(conn):
 
 def test_dedup_finds_similar_open_ticket(conn):
     _propose(conn, title="Backup EcoDB semanal", description="dump grafo media github")
-    res = s.propose_ticket(conn, "bob", "Hacer backup de EcoDB",
-                           description="subir dump a github")
+    res = s.propose_ticket(conn, "bob", "Hacer backup de EcoDB", description="subir dump a github")
     dups = res["possible_duplicates"]
     assert any("Backup" in d["title"] for d in dups)
 
@@ -213,10 +225,8 @@ def test_dedup_short_title_needs_two_shared_words(conn):
 def test_my_board_sections(conn):
     t1 = _propose(conn, owner="alice", title="Tarea abierta uno")
     s.accept_ticket(conn, "owner", t1["id"])
-    t2 = _propose(conn, owner="alice", source="recurrente", cadence_days=7,
-                  title="Backup EcoDB")
-    t3 = _propose(conn, agent="bob", owner="bob", verification_level="peer",
-                  title="Spec de retrieval")
+    t2 = _propose(conn, owner="alice", source="recurrente", cadence_days=7, title="Backup EcoDB")
+    t3 = _propose(conn, agent="bob", owner="bob", verification_level="peer", title="Spec de retrieval")
     s.accept_ticket(conn, "owner", t3["id"])
     s.complete_ticket(conn, "bob", t3["id"], "file_path", "spec.md")
     board = s.my_board(conn, "alice")
@@ -228,6 +238,7 @@ def test_my_board_sections(conn):
 
 
 # ============================================================ nuevos: proyectos
+
 
 def test_project_crud_and_assignment(conn):
     p = s.create_project(conn, "owner", "La Casa", color="#e8590c")
@@ -244,6 +255,7 @@ def test_project_crud_and_assignment(conn):
 
 
 # ============================================================ nuevos: agentic
+
 
 def test_agentic_requires_job_prompt(conn):
     with pytest.raises(TicketError, match="requiere job"):
@@ -268,9 +280,14 @@ def test_agentic_ticket_embeds_job_and_last_run(conn):
 def test_update_job_reschedule_and_disable(conn):
     t = _propose_agentic(conn)
     jid = t["job"]["id"]
-    r = s.update_job(conn, "owner", jid,
-                     schedule={"type": "recurring", "every_days": 1, "at": "08:00"},
-                     model="sonnet", enabled=False)
+    r = s.update_job(
+        conn,
+        "owner",
+        jid,
+        schedule={"type": "recurring", "every_days": 1, "at": "08:00"},
+        model="sonnet",
+        enabled=False,
+    )
     assert r["job"]["schedule"]["at"] == ["08:00"]  # v3: lista de horas
     assert r["job"]["model"] == "sonnet" and r["job"]["enabled"] == 0
     with pytest.raises(TicketError, match="no editables"):
@@ -279,14 +296,22 @@ def test_update_job_reschedule_and_disable(conn):
 
 # ============================================================ nuevos: runs
 
+
 def test_run_lifecycle_ok_completes_to_done_queue(conn):
     t = _propose_agentic(conn)  # auto level
     run = s.create_run(conn, t["job"]["id"])
     assert run["status"] == "running"
     fresh = s.list_tickets(conn, kind="agentic")[0]
     assert fresh["status"] == "in_progress" and fresh["owner"] == "runner-bot"
-    done = s.finish_run(conn, run["id"], "ok", exit_code=0, cost_usd=0.01,
-                        output_path="artifacts/run_1/output.md", result_summary="hola")
+    done = s.finish_run(
+        conn,
+        run["id"],
+        "ok",
+        exit_code=0,
+        cost_usd=0.01,
+        output_path="artifacts/run_1/output.md",
+        result_summary="hola",
+    )
     assert done["status"] == "ok"
     fresh = s.list_tickets(conn, kind="agentic")[0]
     assert fresh["status"] == "done"  # cola de verificación, NO verified
@@ -330,6 +355,7 @@ def test_finish_run_twice_rejected(conn):
 
 # ============================================================ nuevos: verify auto
 
+
 def test_auto_level_verified_by_bot(conn):
     t = _propose_agentic(conn)
     run = s.create_run(conn, t["job"]["id"])
@@ -364,8 +390,9 @@ def test_runner_bot_cannot_verify(conn):
 
 def test_auto_accept_and_verify_criteria(conn):
     # Review carol: lo que crea owner desde la UI nace aceptado; criterio de verificación con campo propio
-    r = s.propose_ticket(conn, "owner", "Comprar dominio", auto_accept=True,
-                         verify_criteria="el dominio resuelve y está en el registrar")
+    r = s.propose_ticket(
+        conn, "owner", "Comprar dominio", auto_accept=True, verify_criteria="el dominio resuelve y está en el registrar"
+    )
     t = r["ticket"]
     assert t["status"] == "accepted"
     assert t["verify_criteria"].startswith("el dominio")
@@ -376,11 +403,12 @@ def test_auto_accept_and_verify_criteria(conn):
 def test_agentic_recurring_inherits_cadence_and_self(conn):
     # Review bob F10: recurring+auto se cerraría tras el primer run
     with pytest.raises(TicketError, match="agentic recurring exige"):
-        _propose_agentic(conn, job={"prompt": "x",
-                                    "schedule": {"type": "recurring", "every_days": 1, "at": "08:00"}})
-    t = _propose_agentic(conn, verification_level="self",
-                         job={"prompt": "resume el correo",
-                              "schedule": {"type": "recurring", "every_days": 1, "at": "08:00"}})
+        _propose_agentic(conn, job={"prompt": "x", "schedule": {"type": "recurring", "every_days": 1, "at": "08:00"}})
+    t = _propose_agentic(
+        conn,
+        verification_level="self",
+        job={"prompt": "resume el correo", "schedule": {"type": "recurring", "every_days": 1, "at": "08:00"}},
+    )
     assert t["cadence_days"] == 1
     run = s.create_run(conn, t["job"]["id"])
     s.finish_run(conn, run["id"], "ok", result_summary="resumen del día")
@@ -407,12 +435,12 @@ def test_kanban_backward_transitions(conn):
 
 
 def test_job_mcp_config_persisted(conn):
-    t = _propose_agentic(conn, job={"prompt": "lee el correo",
-                                    "mcp_config": '{"mcpServers":{"gmail":{}}}'})
+    t = _propose_agentic(conn, job={"prompt": "lee el correo", "mcp_config": '{"mcpServers":{"gmail":{}}}'})
     assert t["job"]["mcp_config"] == '{"mcpServers":{"gmail":{}}}'
 
 
 # ============================================================ nuevos: board
+
 
 def test_board_columns_and_views(conn):
     p = s.create_project(conn, "owner", "Correo")
@@ -433,13 +461,15 @@ def test_board_columns_and_views(conn):
 
 def test_board_views_are_distinct(conn):
     from datetime import date, timedelta
+
     p = s.create_project(conn, "owner", "Vistas")
     today = date.today().isoformat()
     next_month = (date.today() + timedelta(days=20)).isoformat()
     # #364: sin ancla automática; lo que nace sin fecha va a «por ubicar» de su dueño.
     # El backlog lejano se programa a 20 días: solo en 'future' y 'all'.
-    backlog = _propose(conn, owner="alice", project_id=p["id"], title="backlog lejano",
-                       scheduled_at=f"{next_month}T14:00")
+    backlog = _propose(
+        conn, owner="alice", project_id=p["id"], title="backlog lejano", scheduled_at=f"{next_month}T14:00"
+    )
     s.accept_ticket(conn, "owner", backlog["id"])
     auto = _propose(conn, owner="alice", project_id=p["id"], title="nace sin hora")
     assert auto["scheduled_at"] is None
@@ -465,10 +495,10 @@ def test_board_views_are_distinct(conn):
 
 def test_recurrente_buckets_by_next_due(conn):
     from datetime import date, timedelta
+
     p = s.create_project(conn, "owner", "Recurr")
     # recurrente cadencia 7, hecha hace 6 días → next_due mañana → week, no today
-    t = _propose(conn, owner="alice", project_id=p["id"], source="recurrente",
-                 cadence_days=7, title="casi vence")
+    t = _propose(conn, owner="alice", project_id=p["id"], source="recurrente", cadence_days=7, title="casi vence")
     s.accept_ticket(conn, "owner", t["id"])
     six_ago = (date.today() - timedelta(days=6)).isoformat()
     conn.execute("UPDATE tickets SET last_done_at=? WHERE id=?", (six_ago, t["id"]))
@@ -480,6 +510,7 @@ def test_recurrente_buckets_by_next_due(conn):
 
 
 # ------------------------------------------------------------ v3: T0.2 last_change / T0.3 temporales
+
 
 def test_last_change_after_three_transitions(conn):
     t = _propose(conn, owner="alice", verification_level="peer")
@@ -507,8 +538,7 @@ def test_temporal_fields_validate_and_persist(conn):
         s.update_ticket(conn, "alice", t["id"], preferred_time="9am")
     with pytest.raises(TicketError, match="recurrentes"):
         s.update_ticket(conn, "alice", t["id"], next_due_override="2026-09-10")
-    u = s.update_ticket(conn, "alice", t["id"], scheduled_at="2026-09-04T14:30", all_day=1,
-                        duration_min="")
+    u = s.update_ticket(conn, "alice", t["id"], scheduled_at="2026-09-04T14:30", all_day=1, duration_min="")
     assert u["scheduled_at"] == "2026-09-04T14:30" and u["all_day"] == 1 and u["duration_min"] is None
     hist = s.ticket_history(conn, t["id"])["history"]
     assert any("editado: all_day, duration_min, scheduled_at" in (h["note"] or "") for h in hist)
@@ -516,6 +546,7 @@ def test_temporal_fields_validate_and_persist(conn):
 
 def test_recurrente_override_moves_only_next_due(conn):
     from datetime import date, timedelta
+
     today = date.today()
     t = _propose(conn, owner="alice", cadence_days=7, preferred_time="09:00")
     assert t["preferred_time"] == "09:00" and t["next_due"] == today.isoformat() and t["due"]
@@ -523,10 +554,12 @@ def test_recurrente_override_moves_only_next_due(conn):
     s.start_ticket(conn, "alice", t["id"])
     done = s.complete_ticket(conn, "alice", t["id"], "command_output", "hecho")
     assert done["next_due"] == (today + timedelta(days=7)).isoformat() and done["due_state"] == "ok"
+
     # #224: un override en sáb/dom salta al lunes → se usan fechas que tras el snap
     # sigan siendo pasado (hoy-3 nunca aterriza en hoy) y el +30 se compara ya saltado.
     def _snap(d):
         return d + timedelta(days=7 - d.weekday()) if d.weekday() >= 5 else d
+
     ahead = s.update_ticket(conn, "alice", t["id"], next_due_override=(today - timedelta(days=3)).isoformat())
     assert ahead["due_state"] == "overdue" and ahead["cadence_days"] == 7
     later = s.update_ticket(conn, "alice", t["id"], next_due_override=(today + timedelta(days=30)).isoformat())
@@ -540,14 +573,17 @@ def test_recurrente_override_moves_only_next_due(conn):
 
 # ------------------------------------------------------------ v3: T1.14 linked_job / T2.11 vista Hoy
 
+
 def test_manual_ticket_exposes_linked_job(conn):
     from faros import jobs
+
     t = _propose(conn, owner="owner", verification_level="peer")
     s.accept_ticket(conn, "owner", t["id"])
     j = jobs.create_job(conn, "owner", "Brazo", "haz la tarea", ticket_id=t["id"])
     one = s._as_dict(conn, s._get(conn, t["id"]))
     assert one["linked_job"]["id"] == j["id"] and one["linked_job"]["last_run"] is None and "job" not in one
-    run = jobs.create_run(conn, j["id"]); jobs.finish_run(conn, run["id"], "ok", result_summary="x")
+    run = jobs.create_run(conn, j["id"])
+    jobs.finish_run(conn, run["id"], "ok", result_summary="x")
     jobs.set_verdict(conn, run["id"], "fail", "no vale")
     lj = [x for x in s.list_tickets(conn) if x["id"] == t["id"]][0]["linked_job"]
     assert lj["last_run"]["verdict"] == "fail" and lj["last_run"]["verdict_reason"] == "no vale"
@@ -555,7 +591,9 @@ def test_manual_ticket_exposes_linked_job(conn):
 
 def test_board_today_uses_scheduled_date_and_window(conn):
     from datetime import date, timedelta
+
     from faros import settings
+
     today = date.today().isoformat()
     tomorrow = (date.today() + timedelta(days=1)).isoformat()
     a = _propose(conn, title="Programada hoy", owner="alice", scheduled_at=f"{today}T10:00", due_at=tomorrow)
@@ -574,9 +612,10 @@ def test_owner_can_complete_on_behalf_of_agent(conn):
     """Regla 3-sep: owner (dueño de la Casa) puede completar/estampar tickets de agentes
     desde la app; otro agente que no sea el owner sigue rechazado."""
     from faros import service as s
-    t = s.propose_ticket(conn, "owner", "Briefing I+D", owner="bob", cadence_days=7,
-                         auto_accept=True)["ticket"]
+
+    t = s.propose_ticket(conn, "owner", "Briefing I+D", owner="bob", cadence_days=7, auto_accept=True)["ticket"]
     import pytest
+
     with pytest.raises(s.TicketError):
         s.complete_ticket(conn, "dave", t["id"], "file_path", "no soy el owner")
     r = s.complete_ticket(conn, "owner", t["id"], "file_path", "lo vi hecho")
@@ -585,6 +624,7 @@ def test_owner_can_complete_on_behalf_of_agent(conn):
 
 
 # ------------------------------------------------------------ Lote 1 (14-sep): #224, 3a, bug6, evidence
+
 
 def test_next_due_override_weekend_snaps_to_monday(conn):
     """#224 (owner 12-sep: snap, no rechazar). Sáb/dom no hay trabajo (13-ago):
@@ -624,8 +664,10 @@ def test_update_ticket_clears_temporal_with_none(conn):
     # #392: el override va LEJOS de hoy. Con una fecha fija, el día en que coincidía con
     # el next_due natural (el 30-sep) el test fallaba sin que nada estuviera roto.
     from datetime import date, timedelta
-    lejos = s.update_ticket(conn, "alice", t["id"],
-                            next_due_override=(date.today() + timedelta(days=40)).isoformat())["next_due_override"]
+
+    lejos = s.update_ticket(conn, "alice", t["id"], next_due_override=(date.today() + timedelta(days=40)).isoformat())[
+        "next_due_override"
+    ]
     u = s.update_ticket(conn, "alice", t["id"], scheduled_at=None, next_due_override=None)
     assert u["scheduled_at"] is None and u["next_due_override"] is None
     assert u["next_due"] != lejos
@@ -635,6 +677,7 @@ def test_mcp_update_ticket_clear_sends_nulls(monkeypatch):
     """3a, capa MCP: clear=[...] viaja como null en el PATCH; un campo no borrable
     no llega al daemon."""
     from faros import mcp_server as m
+
     sent = {}
     monkeypatch.setattr(m, "_call", lambda method, path, **kw: sent.update(method=method, path=path, **kw) or {"ok": 1})
     m.update_ticket("carol", 7, clear=["next_due_override", "scheduled_at"])
@@ -650,8 +693,10 @@ def test_mcp_update_job_fields_are_real_parameters(monkeypatch):
     lo rechazaba. Se prueba a través de FastMCP (como un cliente real), no llamando
     a la función de Python, que sí aceptaba **kwargs."""
     import asyncio
+
     from faros import jobs
     from faros import mcp_server as m
+
     sent = {}
     monkeypatch.setattr(m, "_call", lambda method, path, **kw: sent.update(method=method, path=path, **kw) or {"ok": 1})
     tool = [t for t in asyncio.run(m.mcp.list_tools()) if t.name == "update_job"][0]
@@ -677,10 +722,14 @@ def test_ninguna_herramienta_mcp_declara_kwargs():
     deja de servir sin que nada falle. Ninguna herramienta lo puede volver a usar."""
     import asyncio
     import inspect
+
     from faros import mcp_server as m
-    con_kwargs = [t.name for t in asyncio.run(m.mcp.list_tools())
-                  if any(p.kind is p.VAR_KEYWORD
-                         for p in inspect.signature(getattr(m, t.name)).parameters.values())]
+
+    con_kwargs = [
+        t.name
+        for t in asyncio.run(m.mcp.list_tools())
+        if any(p.kind is p.VAR_KEYWORD for p in inspect.signature(getattr(m, t.name)).parameters.values())
+    ]
     assert con_kwargs == []
 
 
@@ -705,7 +754,9 @@ def test_board_recurrente_with_scheduled_at_uses_next_due(conn):
     además tiene scheduled_at se coloca en Hoy por su next_due, como hace
     agenda.occurrences, no por la fecha programada."""
     from datetime import date, timedelta
+
     from faros import agenda as cal
+
     today = date.today()
     # #376: la fecha del dueño ancla el día de la semana; a 21 días cae en el de hoy, así
     # que next_due sigue siendo hoy y el test prueba lo mismo que antes (tablero = agenda).

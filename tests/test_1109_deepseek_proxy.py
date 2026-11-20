@@ -10,7 +10,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from faros import api, db, deepseek_proxy as dsp, harness, runner, settings
+from faros import api, db, harness, runner, settings
+from faros import deepseek_proxy as dsp
 
 CLAVE = "sk-prueba-1109-" + "9" * 20
 TOKEN_CASA = "t" * 32
@@ -37,8 +38,12 @@ def cli(tmp_path, monkeypatch):
 
 
 def _post(cli, token, **kw):
-    return cli.post(dsp.RUTA + "/v1/messages?beta=true", headers={"Authorization": f"Bearer {token}"},
-                    json={"model": "deepseek-flash", "stream": True, "messages": []}, **kw)
+    return cli.post(
+        dsp.RUTA + "/v1/messages?beta=true",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"model": "deepseek-flash", "stream": True, "messages": []},
+        **kw,
+    )
 
 
 def test_con_token_de_run_reenvia_con_la_clave_y_devuelve_el_stream(cli):
@@ -86,10 +91,13 @@ def test_el_token_del_run_muere_con_el_run_aunque_el_proceso_no_arranque(tmp_pat
 
     async def no_arranca(*a, **k):
         raise OSError("exe borrado")
+
     monkeypatch.setattr(asyncio, "create_subprocess_exec", no_arranca)
     from faros import jobs
-    job = jobs.create_job(conn, "owner", name="ds", harness="claude-cli-deepseek", prompt="hola",
-                          model="deepseek-flash")
+
+    job = jobs.create_job(
+        conn, "owner", name="ds", harness="claude-cli-deepseek", prompt="hola", model="deepseek-flash"
+    )
     asyncio.run(runner.execute_job(conn, job["id"]))
     assert len(emitidos) == 1 and not dsp.vigente(emitidos[0])
 

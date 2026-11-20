@@ -2,7 +2,9 @@
 
 import pytest
 
-from faros import db, decisions as dec, workflows as w
+from faros import db
+from faros import decisions as dec
+from faros import workflows as w
 from faros.service import TicketError
 
 
@@ -13,9 +15,11 @@ def conn():
     c.close()
 
 
-OPTS = [{"label": "opencode", "text": "opencode (deepseek por API; valida el presupuesto real)"},
-        {"label": "ninguno", "text": "ninguno, solo el contrato"},
-        {"label": "copilot", "text": "copilot"}]
+OPTS = [
+    {"label": "opencode", "text": "opencode (deepseek por API; valida el presupuesto real)"},
+    {"label": "ninguno", "text": "ninguno, solo el contrato"},
+    {"label": "copilot", "text": "copilot"},
+]
 
 
 def test_ask_decide_once(conn):
@@ -37,7 +41,9 @@ def test_free_text_decision_and_required_rationale(conn):
         dec.decide(conn, "owner", d["id"], option="ninguno")
     with pytest.raises(TicketError, match="opción desconocida"):
         dec.decide(conn, "owner", d["id"], option="D", rationale="x")
-    d = dec.decide(conn, "owner", d["id"], decision="congelado de referencia hasta betatestear", rationale="mi criterio")
+    d = dec.decide(
+        conn, "owner", d["id"], decision="congelado de referencia hasta betatestear", rationale="mi criterio"
+    )
     assert d["decision"].startswith("congelado")
 
 
@@ -53,9 +59,15 @@ def test_options_must_be_literal(conn):
 
 
 def test_defer_reopen_list_and_workflow_link(conn):
-    wf = w.import_plan(conn, "alice", {
-        "workflow": {"name": "demo", "coordinator": "alice"}, "phases": ["f"],
-        "tasks": [{"key": "T1", "phase": "f", "title": "t", "criterio": "c"}]})
+    wf = w.import_plan(
+        conn,
+        "alice",
+        {
+            "workflow": {"name": "demo", "coordinator": "alice"},
+            "phases": ["f"],
+            "tasks": [{"key": "T1", "phase": "f", "title": "t", "criterio": "c"}],
+        },
+    )
     d = dec.ask(conn, "alice", "bisagra del workflow", OPTS, workflow_id=wf["id"])
     d = dec.defer(conn, "owner", d["id"], until="2026-09-10", note="cuando vuelva")
     assert d["status"] == "deferred" and d["deferred_until"] == "2026-09-10"
@@ -70,10 +82,20 @@ def test_defer_reopen_list_and_workflow_link(conn):
 
 
 def test_workflow_status_and_handoff_draft_show_pending_decisions(conn, tmp_path):
-    wf = w.import_plan(conn, "alice", {
-        "workflow": {"name": "demo2", "coordinator": "alice", "plan_path": "plans/agenticos-v3.plan.json",
-                     "spec_path": "docs/SPEC.md"},
-        "phases": ["f"], "tasks": [{"key": "T1", "phase": "f", "title": "t", "criterio": "c"}]})
+    wf = w.import_plan(
+        conn,
+        "alice",
+        {
+            "workflow": {
+                "name": "demo2",
+                "coordinator": "alice",
+                "plan_path": "plans/agenticos-v3.plan.json",
+                "spec_path": "docs/SPEC.md",
+            },
+            "phases": ["f"],
+            "tasks": [{"key": "T1", "phase": "f", "title": "t", "criterio": "c"}],
+        },
+    )
     d = dec.ask(conn, "alice", "¿Segundo harness?", OPTS, workflow_id=wf["id"])
     st = w.workflow_status(conn, wf["id"])
     assert st["decisions_pending_count"] == 1 and st["decisions_pending"][0]["id"] == d["id"]

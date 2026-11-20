@@ -13,12 +13,14 @@ import logging
 import re
 import sqlite3
 import unicodedata
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, timedelta
+
+from . import harness as _harness  # registro de adapters; harness solo depende de procutil (sin ciclo)
+from . import roster  # #1186: roster.WORKFLOW_EXTRA se lee en caliente
 
 # Roster de la casa: configuración, no código (roster.py). El público no trae
 # los nombres de nadie dentro del .py.
 from .roster import AGENTS, HOUSE_OWNER  # noqa: F401  (re-export histórico)
-from . import roster  # #1186: roster.WORKFLOW_EXTRA se lee en caliente
 
 log = logging.getLogger(__name__)
 
@@ -46,27 +48,40 @@ SOURCES = {"encargo", "recurrente", "cola_autonoma", "proposed"}
 PRIORITIES = {"alta", "media", "baja"}
 VERIFICATION_LEVELS = {"self", "peer", "auto", "external"}  # external: #465, decisión 22 (DeepSeek ×3)
 # #414 (decisión 48): el criterio pide que verifique otro, pero el nivel es self (pasó con #285 y #367)
-_PIDE_OTRO = re.compile(r"otra persona|otro miembro|\bpeer\b|no lo verifica quien|"
-                        r"verific\w*\s+(?:de|por)\s+otr|lo verifica(?:n)?\s+(?!quien)\w+", re.I)
-AVISO_PIDE_OTRO = ("AVISO: el criterio pide que verifique otra persona, pero el nivel es «self» (propia) y"
-                   " se sella sola: súbelo con update_ticket(verification_level=\"peer\")")
+_PIDE_OTRO = re.compile(
+    r"otra persona|otro miembro|\bpeer\b|no lo verifica quien|"
+    r"verific\w*\s+(?:de|por)\s+otr|lo verifica(?:n)?\s+(?!quien)\w+",
+    re.I,
+)
+AVISO_PIDE_OTRO = (
+    "AVISO: el criterio pide que verifique otra persona, pero el nivel es «self» (propia) y"
+    ' se sella sola: súbelo con update_ticket(verification_level="peer")'
+)
 
 
 def _pide_otro(verification_level, cadence_days, verify_criteria) -> bool:
-    return (verification_level == "self" and not cadence_days
-            and bool(_PIDE_OTRO.search(verify_criteria or "")))
-EVIDENCE_TYPES = {"file_path", "command_output", "memory_id", "peer_attestation", "run_output",
-                  "proof"}  # proof: #594, la prueba que el verificador corre en una copia (decisión 49)
+    return verification_level == "self" and not cadence_days and bool(_PIDE_OTRO.search(verify_criteria or ""))
+
+
+EVIDENCE_TYPES = {
+    "file_path",
+    "command_output",
+    "memory_id",
+    "peer_attestation",
+    "run_output",
+    "proof",
+}  # proof: #594, la prueba que el verificador corre en una copia (decisión 49)
 
 
 def proof_repos(conn) -> list[str]:
     from . import settings
+
     return [r.strip() for r in (settings.get(conn, "proof_repos") or "").split(";") if r.strip()]
+
+
 KINDS = {"manual", "agentic"}
-from . import harness as _harness  # registro de adapters (agenticos/harness)
 HARNESSES = set(_harness.names())
 PERMISSION_MODES = {"acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"}
-OPEN_STATUSES = {"proposed", "accepted", "in_progress", "blocked", "done"}
 CLOSED_STATUSES = {"verified", "rejected", "expired"}
 DEDUP_CLOSED_WINDOW_DAYS = 60
 
@@ -86,8 +101,7 @@ class TicketError(Exception):
     errores que de verdad llegan al usuario sin tocar los 211 sitios de golpe
     la víspera de publicar."""
 
-    def __init__(self, message: str, field: str | None = None,
-                 code: str | None = None):
+    def __init__(self, message: str, field: str | None = None, code: str | None = None):
         super().__init__(message)
         self.field = field
         self.code = code
@@ -119,15 +133,17 @@ def _check_provenance(declared, agent=None):
     if declared is None:
         return None
     if agent == "verifier-bot" and declared.startswith("external:"):
-        tool = declared[len("external:"):]
+        tool = declared[len("external:") :]
     else:
-        tool = declared[len("deterministic:"):] if declared.startswith("deterministic:") else ""
-    if (not tool.strip() or len(declared) > PROVENANCE_MAX
-            or any(c in declared for c in "\r\n\0")):
+        tool = declared[len("deterministic:") :] if declared.startswith("deterministic:") else ""
+    if not tool.strip() or len(declared) > PROVENANCE_MAX or any(c in declared for c in "\r\n\0"):
         raise TicketError(
             f"procedencia inválida: {declared[:60]!r}. Solo se declara 'deterministic:<herramienta>'"
             f" (una línea, hasta {PROVENANCE_MAX} caracteres); external y same-family las pone FarOS"
-            " según quién verifica", field="provenance", code="verify.provenance_invalid")
+            " según quién verifica",
+            field="provenance",
+            code="verify.provenance_invalid",
+        )
     return declared
 
 
@@ -147,20 +163,17 @@ def _expire_lazy(conn) -> None:
     rowcount gate: dos lectores concurrentes no duplican history (v0, fix F3)."""
     now = _now()
     rows = conn.execute(
-        "SELECT id, status FROM tickets WHERE closed_at IS NULL"
-        " AND expires_at IS NOT NULL AND expires_at < ?",
+        "SELECT id, status FROM tickets WHERE closed_at IS NULL AND expires_at IS NOT NULL AND expires_at < ?",
         (now,),
     ).fetchall()
     changed = False
     for row in rows:
         cur = conn.execute(
-            "UPDATE tickets SET status='expired', closed_at=?"
-            " WHERE id=? AND closed_at IS NULL",
+            "UPDATE tickets SET status='expired', closed_at=? WHERE id=? AND closed_at IS NULL",
             (now, row["id"]),
         )
         if cur.rowcount == 1:
-            _append_history(conn, row["id"], row["status"], "expired", "system",
-                            "caducado: expires_at vencido")
+            _append_history(conn, row["id"], row["status"], "expired", "system", "caducado: expires_at vencido")
             for hook in CLOSED_HOOKS:
                 hook(conn, row["id"], "expired")
             changed = True
@@ -197,8 +210,7 @@ def next_due_date(d: dict) -> str | None:
         # v3.2 (T1.1, el dueño 7-sep): recurrente SEMANAL anclada a un día de la semana —
         # la próxima cae siempre en ese día, aunque se estampe otro día. Sin
         # last_done: la primera ocurrencia >= hoy. Cadencia 14: una semana más.
-        base = (date.fromisoformat(d["last_done_at"][:10]) + timedelta(days=1)
-                if d.get("last_done_at") else date.today())
+        base = date.fromisoformat(d["last_done_at"][:10]) + timedelta(days=1) if d.get("last_done_at") else date.today()
         nxt = base + timedelta(days=(int(weekday) - base.weekday()) % 7)
         return (nxt + timedelta(weeks=cadence // 7 - 1)).isoformat()
     if d.get("last_done_at"):
@@ -214,9 +226,14 @@ def _as_dict(conn, row: sqlite3.Row) -> dict:
     lc = conn.execute(
         "SELECT old_status, new_status, changed_by, changed_at FROM ticket_history"
         " WHERE ticket_id=? AND old_status IS NOT NULL AND old_status != new_status"
-        " ORDER BY id DESC LIMIT 1", (d["id"],)).fetchone()
-    d["last_change"] = ({"at": lc["changed_at"], "by": lc["changed_by"],
-                         "from": lc["old_status"], "to": lc["new_status"]} if lc else None)
+        " ORDER BY id DESC LIMIT 1",
+        (d["id"],),
+    ).fetchone()
+    d["last_change"] = (
+        {"at": lc["changed_at"], "by": lc["changed_by"], "from": lc["old_status"], "to": lc["new_status"]}
+        if lc
+        else None
+    )
     _enrich_due(d)
     job = conn.execute("SELECT * FROM agent_jobs WHERE ticket_id=?", (d["id"],)).fetchone()
     if job:
@@ -225,25 +242,38 @@ def _as_dict(conn, row: sqlite3.Row) -> dict:
         last = conn.execute(
             "SELECT id, status, started_at, finished_at, result_summary, cost_usd, cost_kind,"
             " verdict, verdict_reason FROM runs WHERE job_id=? ORDER BY id DESC LIMIT 1",
-            (job["id"],)).fetchone()
+            (job["id"],),
+        ).fetchone()
         if d.get("kind") == "agentic":
             d["job"] = jd
             d["last_run"] = dict(last) if last else None
         else:
             d["linked_job"] = _linked_job(jd, dict(last) if last else None)
-            if (d.get("closed_at") and jd["status"] == "active" and jd["enabled"]
-                    and jd["schedule"].get("type") != "manual"):
+            if (
+                d.get("closed_at")
+                and jd["status"] == "active"
+                and jd["enabled"]
+                and jd["schedule"].get("type") != "manual"
+            ):
                 # #518: cerrar la tarea apaga al job que cuelga de ella; que se diga al cerrar
-                d["job_warning"] = (f"el job #{jd['id']} «{jd['name']}» cuelga de esta tarea cerrada y no se"
-                                    " dispara: desenlázalo (update_job con clear=[\"ticket_id\"]) o páusalo")
+                d["job_warning"] = (
+                    f"el job #{jd['id']} «{jd['name']}» cuelga de esta tarea cerrada y no se"
+                    ' dispara: desenlázalo (update_job con clear=["ticket_id"]) o páusalo'
+                )
     _apply_virtual_expiry(d)
     return d
 
 
 def _linked_job(jd: dict, last: dict | None) -> dict:
     """Brazo automático de una tarea manual (T1.14): lo justo para el chip."""
-    return {"id": jd["id"], "name": jd["name"], "status": jd["status"],
-            "harness": jd["harness"], "model": jd["model"], "last_run": last}
+    return {
+        "id": jd["id"],
+        "name": jd["name"],
+        "status": jd["status"],
+        "harness": jd["harness"],
+        "model": jd["model"],
+        "last_run": last,
+    }
 
 
 def _enrich_due(d: dict) -> None:
@@ -259,8 +289,7 @@ def _enrich_due(d: dict) -> None:
     elif d.get("due_at") and d.get("closed_at") is None:
         due_day = d["due_at"][:10]
         today_iso = date.today().isoformat()
-        d["due_state"] = ("overdue" if due_day < today_iso
-                          else "due" if due_day == today_iso else "ok")
+        d["due_state"] = "overdue" if due_day < today_iso else "due" if due_day == today_iso else "ok"
     else:
         d["due_state"] = "ok"
 
@@ -268,9 +297,12 @@ def _enrich_due(d: dict) -> None:
 def _apply_virtual_expiry(d: dict, now_iso: str | None = None) -> None:
     """T4.5: mark a ticket as expired in memory if expires_at < now, without DB write.
     The scheduler writes the real expiry every 60s; this keeps reads consistent."""
-    if (d.get("expires_at") and d.get("closed_at") is None
-            and d["status"] not in CLOSED_STATUSES
-            and d["expires_at"] < (now_iso or _now())):
+    if (
+        d.get("expires_at")
+        and d.get("closed_at") is None
+        and d["status"] not in CLOSED_STATUSES
+        and d["expires_at"] < (now_iso or _now())
+    ):
         d["status"] = "expired"
         d["closed_at"] = d["expires_at"]
         d["due_state"] = "ok"
@@ -299,10 +331,13 @@ def _batch_enrich(conn, rows: list[sqlite3.Row]) -> list[dict]:
         "   FROM ticket_history"
         f"  WHERE ticket_id IN ({placeholders})"
         "   AND old_status IS NOT NULL AND old_status != new_status"
-        ") WHERE rn = 1", params).fetchall()
-    lc_map = {r["ticket_id"]: {"at": r["changed_at"], "by": r["changed_by"],
-                                "from": r["old_status"], "to": r["new_status"]}
-              for r in lc_rows}
+        ") WHERE rn = 1",
+        params,
+    ).fetchall()
+    lc_map = {
+        r["ticket_id"]: {"at": r["changed_at"], "by": r["changed_by"], "from": r["old_status"], "to": r["new_status"]}
+        for r in lc_rows
+    }
 
     # 2+3. Jobs (agénticas → job embebido; manuales → linked_job) con su último run,
     # en UNA consulta (T0.5: workflow_status ≤ 10 queries).
@@ -315,18 +350,26 @@ def _batch_enrich(conn, rows: list[sqlite3.Row]) -> list[dict]:
         " FROM agent_jobs j LEFT JOIN ("
         "   SELECT * FROM (SELECT runs.*, ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY id DESC) AS rn"
         "                  FROM runs) WHERE rn = 1) r ON r.job_id = j.id"
-        f" WHERE j.ticket_id IN ({placeholders})", params).fetchall()
+        f" WHERE j.ticket_id IN ({placeholders})",
+        params,
+    ).fetchall()
     for jr in job_rows:
         jd = {k: jr[k] for k in jr.keys() if not k.startswith("r_")}
         jd["schedule"] = json.loads(jd["schedule"])
         job_map[jr["ticket_id"]] = jd
         if jr["r_id"] is not None:
             run_map[jr["ticket_id"]] = {
-                "job_id": jr["id"], "id": jr["r_id"], "status": jr["r_status"],
-                "started_at": jr["r_started_at"], "finished_at": jr["r_finished_at"],
-                "result_summary": jr["r_result_summary"], "cost_usd": jr["r_cost_usd"],
-                "cost_kind": jr["r_cost_kind"], "verdict": jr["r_verdict"],
-                "verdict_reason": jr["r_verdict_reason"]}
+                "job_id": jr["id"],
+                "id": jr["r_id"],
+                "status": jr["r_status"],
+                "started_at": jr["r_started_at"],
+                "finished_at": jr["r_finished_at"],
+                "result_summary": jr["r_result_summary"],
+                "cost_usd": jr["r_cost_usd"],
+                "cost_kind": jr["r_cost_kind"],
+                "verdict": jr["r_verdict"],
+                "verdict_reason": jr["r_verdict_reason"],
+            }
 
     # Assemble
     now_iso = _now()
@@ -342,14 +385,14 @@ def _batch_enrich(conn, rows: list[sqlite3.Row]) -> list[dict]:
     return tickets
 
 
-def _validate_agent(agent: str, allow_system: bool = False,
-                    family_only: bool = False) -> str:
+def _validate_agent(agent: str, allow_system: bool = False, family_only: bool = False) -> str:
     valid = AGENTS if family_only else (AGENTS | WORKFLOW_AGENTS | roster.WORKFLOW_EXTRA)
     if allow_system:
         valid = valid | SYSTEM_AGENTS
     if agent not in valid:
-        raise TicketError(f"agente desconocido o sin permiso: {agent!r} (válidos: {sorted(valid)})",
-                          code="agent.unknown")
+        raise TicketError(
+            f"agente desconocido o sin permiso: {agent!r} (válidos: {sorted(valid)})", code="agent.unknown"
+        )
     return agent
 
 
@@ -358,11 +401,14 @@ def _unmet_deps(conn, ticket_id) -> list[dict]:
     rows = conn.execute(
         "SELECT t.id, t.plan_key, t.title, t.status FROM ticket_deps d"
         " JOIN tickets t ON t.id = d.depends_on"
-        " WHERE d.ticket_id=? AND t.status != 'verified'", (ticket_id,)).fetchall()
+        " WHERE d.ticket_id=? AND t.status != 'verified'",
+        (ticket_id,),
+    ).fetchall()
     return [dict(r) for r in rows]
 
 
 # ------------------------------------------------------------------ proyectos
+
 
 def create_project(conn, agent, name, color=None) -> dict:
     _validate_agent(agent, family_only=True)
@@ -373,8 +419,8 @@ def create_project(conn, agent, name, color=None) -> dict:
         raise TicketError(f"proyecto {name!r} ya existe (#{dup['id']})")
     pos = conn.execute("SELECT COALESCE(MAX(position),0)+1 AS p FROM projects").fetchone()["p"]
     cur = conn.execute(
-        "INSERT INTO projects (name, color, position, created_at) VALUES (?, ?, ?, ?)",
-        (name, color, pos, _now()))
+        "INSERT INTO projects (name, color, position, created_at) VALUES (?, ?, ?, ?)", (name, color, pos, _now())
+    )
     conn.commit()
     return dict(conn.execute("SELECT * FROM projects WHERE id=?", (cur.lastrowid,)).fetchone())
 
@@ -394,11 +440,14 @@ def update_project(conn, agent, project_id, name=None, color=None, archived=None
         raise TicketError(f"proyecto #{project_id} no existe")
     sets, params = [], []
     if name is not None:
-        sets.append("name=?"); params.append(name)
+        sets.append("name=?")
+        params.append(name)
     if color is not None:
-        sets.append("color=?"); params.append(color)
+        sets.append("color=?")
+        params.append(color)
     if archived is not None:
-        sets.append("archived=?"); params.append(1 if archived else 0)
+        sets.append("archived=?")
+        params.append(1 if archived else 0)
     if sets:
         params.append(project_id)
         conn.execute(f"UPDATE projects SET {', '.join(sets)} WHERE id=?", params)
@@ -415,8 +464,7 @@ def _validate_project(conn, project_id):
 
 # ---------------------------------------------------------------- operaciones
 
-TEMPORAL_FIELDS = {"scheduled_at", "duration_min", "all_day", "preferred_time",
-                   "next_due_override", "weekday"}
+TEMPORAL_FIELDS = {"scheduled_at", "duration_min", "all_day", "preferred_time", "next_due_override", "weekday"}
 
 
 def _validate_temporal(fields: dict, cadence_days, weekday=None) -> dict:
@@ -435,17 +483,17 @@ def _validate_temporal(fields: dict, cadence_days, weekday=None) -> dict:
             try:
                 dt = datetime.fromisoformat(str(v))
             except ValueError:
-                raise TicketError(f"scheduled_at inválido: {v!r} (esperado YYYY-MM-DDTHH:MM)",
-                                  field="scheduled_at")
+                raise TicketError(f"scheduled_at inválido: {v!r} (esperado YYYY-MM-DDTHH:MM)", field="scheduled_at")
             if len(str(v)) < 16:
-                raise TicketError(f"scheduled_at necesita hora: {v!r} (YYYY-MM-DDTHH:MM); "
-                                  "para 'todo el día' usa all_day=1", field="scheduled_at")
+                raise TicketError(
+                    f"scheduled_at necesita hora: {v!r} (YYYY-MM-DDTHH:MM); para 'todo el día' usa all_day=1",
+                    field="scheduled_at",
+                )
             out[k] = dt.strftime("%Y-%m-%dT%H:%M")
         elif k == "weekday":
             # v3.2 (T1.1): día de la semana de una recurrente semanal (0=lunes … 6=domingo)
             if not cadence_days or int(cadence_days) % 7 != 0:
-                raise TicketError("weekday solo aplica a recurrentes con cadencia múltiplo de 7",
-                                  field="weekday")
+                raise TicketError("weekday solo aplica a recurrentes con cadencia múltiplo de 7", field="weekday")
             try:
                 n = int(v)
             except (TypeError, ValueError):
@@ -497,12 +545,29 @@ def _weekday_de_su_fecha(cadence_days, *fechas) -> int | None:
     return None
 
 
-def propose_ticket(conn, agent, title, description="", owner=None, source="proposed",
-                   priority="media", verification_level="self", expires_at=None,
-                   cadence_days=None, project_id=None, kind="manual", due_at=None,
-                   verify_criteria=None, auto_accept=False, job=None,
-                   scheduled_at=None, duration_min=None, all_day=0,
-                   preferred_time=None, weekday=None) -> dict:
+def propose_ticket(
+    conn,
+    agent,
+    title,
+    description="",
+    owner=None,
+    source="proposed",
+    priority="media",
+    verification_level="self",
+    expires_at=None,
+    cadence_days=None,
+    project_id=None,
+    kind="manual",
+    due_at=None,
+    verify_criteria=None,
+    auto_accept=False,
+    job=None,
+    scheduled_at=None,
+    duration_min=None,
+    all_day=0,
+    preferred_time=None,
+    weekday=None,
+) -> dict:
     """Crea un ticket. kind='agentic' exige bloque job (prompt al menos).
 
     auto_accept (review Eco): lo que creal dueño desde la UI nace aceptado — el gate
@@ -520,8 +585,7 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
     if priority not in PRIORITIES:
         raise TicketError(f"priority inválida: {priority!r}", field="priority")
     if verification_level not in VERIFICATION_LEVELS:
-        raise TicketError(f"verification_level inválido: {verification_level!r}",
-                          field="verification_level")
+        raise TicketError(f"verification_level inválido: {verification_level!r}", field="verification_level")
     if kind not in KINDS:
         raise TicketError(f"kind inválido: {kind!r}", field="kind")
     if owner is not None:
@@ -535,13 +599,13 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
         raise TicketError(
             "las recurrentes son verification_level=self — con peer/auto nunca"
             " alcanzarían 'verified' porque complete no las cierra (SPEC §4)",
-            field="verification_level")
+            field="verification_level",
+        )
     if due_at:
         try:
             datetime.fromisoformat(str(due_at))
         except ValueError:
-            raise TicketError(f"due_at inválido: {due_at!r} (YYYY-MM-DD o YYYY-MM-DDTHH:MM)",
-                              field="due_at")
+            raise TicketError(f"due_at inválido: {due_at!r} (YYYY-MM-DD o YYYY-MM-DDTHH:MM)", field="due_at")
     try:
         _validate_project(conn, project_id)
     except TicketError as exc:
@@ -560,12 +624,19 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
                 raise TicketError(
                     "agentic recurring exige verification_level=self: el ticket no se"
                     " cierra por diseño (se estampa cada run); la verificación de runs"
-                    " individuales es deuda v1.1 (SPEC §12)")
+                    " individuales es deuda v1.1 (SPEC §12)"
+                )
 
-    temporal = _validate_temporal({"scheduled_at": scheduled_at, "duration_min": duration_min,
-                                   "all_day": all_day, "preferred_time": preferred_time,
-                                   "weekday": weekday},
-                                  cadence_days)
+    temporal = _validate_temporal(
+        {
+            "scheduled_at": scheduled_at,
+            "duration_min": duration_min,
+            "all_day": all_day,
+            "preferred_time": preferred_time,
+            "weekday": weekday,
+        },
+        cadence_days,
+    )
     if temporal.get("weekday") is None:
         temporal["weekday"] = _weekday_de_su_fecha(cadence_days, temporal.get("scheduled_at"), due_at)
 
@@ -583,10 +654,27 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
         " cadence_days, created_by, created_at,"
         " scheduled_at, duration_min, all_day, preferred_time, weekday)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (project_id, kind, title, description, owner, source, priority, due_at,
-         verify_criteria, verification_level, expires_at, cadence_days, agent, now,
-         temporal["scheduled_at"], temporal["duration_min"], temporal["all_day"],
-         temporal["preferred_time"], temporal["weekday"]),
+        (
+            project_id,
+            kind,
+            title,
+            description,
+            owner,
+            source,
+            priority,
+            due_at,
+            verify_criteria,
+            verification_level,
+            expires_at,
+            cadence_days,
+            agent,
+            now,
+            temporal["scheduled_at"],
+            temporal["duration_min"],
+            temporal["all_day"],
+            temporal["preferred_time"],
+            temporal["weekday"],
+        ),
     )
     ticket_id = cur.lastrowid
     # #152: el único 500 de dispatch_finding (3-sep) fue este INSERT con el rowid ya ocupado
@@ -594,11 +682,16 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
     # fuerza. Se quita, se indexa la tarea y el log dice qué había, para seguirle la pista.
     huerfana = conn.execute("SELECT title FROM tickets_fts WHERE rowid=?", (ticket_id,)).fetchone()
     if huerfana:
-        log.warning("#152 fila huérfana en tickets_fts con rowid %s (título %r): se quita al "
-                    "indexar la tarea nueva %r", ticket_id, huerfana[0], title)
+        log.warning(
+            "#152 fila huérfana en tickets_fts con rowid %s (título %r): se quita al indexar la tarea nueva %r",
+            ticket_id,
+            huerfana[0],
+            title,
+        )
         conn.execute("DELETE FROM tickets_fts WHERE rowid=?", (ticket_id,))
-    conn.execute("INSERT INTO tickets_fts (rowid, title, description) VALUES (?, ?, ?)",
-                 (ticket_id, title, description))
+    conn.execute(
+        "INSERT INTO tickets_fts (rowid, title, description) VALUES (?, ?, ?)", (ticket_id, title, description)
+    )
     _append_history(conn, ticket_id, None, "proposed", agent, None)
     if auto_accept:
         conn.execute("UPDATE tickets SET status='accepted' WHERE id=?", (ticket_id,))
@@ -610,16 +703,26 @@ def propose_ticket(conn, agent, title, description="", owner=None, source="propo
         # ticket done → verificador de tickets. Las agénticas nuevas se crean
         # en la sección Agentes, no aquí (T1.14).
         from . import jobs as _jobs
-        _jobs.create_job(conn, agent, name=title, prompt=job["prompt"],
-                         harness_name=job.get("harness", "claude-cli"),
-                         model=job.get("model", "haiku"),
-                         schedule=job.get("schedule", {"type": "manual"}),
-                         ticket_id=ticket_id, project_id=project_id,
-                         cwd=job.get("cwd"), permission_mode=job.get("permission_mode", "dontAsk"),
-                         allowed_tools=job.get("allowed_tools"), mcp_config=job.get("mcp_config"),
-                         max_budget_usd=job.get("max_budget_usd"),
-                         timeout_s=job.get("timeout_s", 1800), verify_level="none",
-                         _legacy=True)
+
+        _jobs.create_job(
+            conn,
+            agent,
+            name=title,
+            prompt=job["prompt"],
+            harness_name=job.get("harness", "claude-cli"),
+            model=job.get("model", "haiku"),
+            schedule=job.get("schedule", {"type": "manual"}),
+            ticket_id=ticket_id,
+            project_id=project_id,
+            cwd=job.get("cwd"),
+            permission_mode=job.get("permission_mode", "dontAsk"),
+            allowed_tools=job.get("allowed_tools"),
+            mcp_config=job.get("mcp_config"),
+            max_budget_usd=job.get("max_budget_usd"),
+            timeout_s=job.get("timeout_s", 1800),
+            verify_level="none",
+            _legacy=True,
+        )
     res = {"ticket": _as_dict(conn, _get(conn, ticket_id)), "possible_duplicates": duplicates}
     if _pide_otro(verification_level, cadence_days, verify_criteria):
         res["warning"] = AVISO_PIDE_OTRO
@@ -651,8 +754,20 @@ def update_job(conn, agent, job_id, **fields) -> dict:
     """Wrapper v1 (PATCH /api/jobs/{id} del Tablero): edita el job de un ticket
     agéntico y devuelve el TICKET. El vínculo no se cambia desde aquí."""
     from . import jobs as _jobs
-    allowed = {"harness", "model", "prompt", "cwd", "permission_mode", "allowed_tools",
-               "mcp_config", "max_budget_usd", "timeout_s", "schedule", "enabled"}
+
+    allowed = {
+        "harness",
+        "model",
+        "prompt",
+        "cwd",
+        "permission_mode",
+        "allowed_tools",
+        "mcp_config",
+        "max_budget_usd",
+        "timeout_s",
+        "schedule",
+        "enabled",
+    }
     unknown = set(fields) - allowed
     if unknown:
         raise TicketError(f"campos no editables: {sorted(unknown)}")
@@ -696,8 +811,7 @@ def _find_duplicates(conn, title, description) -> list[dict]:
     for r in rows:
         cand_words = {_normalize_word(w) for w in r["title"].split()} - _STOPWORDS_ES - {""}
         shared = len(words & cand_words)
-        if (cand_words and shared / len(words) >= _DEDUP_OVERLAP_MIN
-                and shared >= min(_DEDUP_SHARED_MIN, len(words))):
+        if cand_words and shared / len(words) >= _DEDUP_OVERLAP_MIN and shared >= min(_DEDUP_SHARED_MIN, len(words)):
             result.append(dict(r))
     return result[:5]
 
@@ -713,12 +827,11 @@ def reject_ticket(conn, agent, ticket_id, reason) -> dict:
     # reprogramar. Rechazar vacía la fecha; lo que tenía queda en la nota del historial.
     fecha = _fecha_de(_get(conn, ticket_id))
     nota = f"{reason} [#666, fecha vaciada al rechazar: {fecha}]" if fecha else reason
-    _transition(conn, agent, ticket_id,
-                from_={"proposed", "accepted", "blocked"}, to="rejected",
-                note=nota, close=True)
+    _transition(conn, agent, ticket_id, from_={"proposed", "accepted", "blocked"}, to="rejected", note=nota, close=True)
     if fecha:
-        conn.execute("UPDATE tickets SET scheduled_at=NULL, duration_min=NULL, preferred_time=NULL"
-                     " WHERE id=?", (ticket_id,))
+        conn.execute(
+            "UPDATE tickets SET scheduled_at=NULL, duration_min=NULL, preferred_time=NULL WHERE id=?", (ticket_id,)
+        )
     for hook in CLOSED_HOOKS:
         hook(conn, ticket_id, "rejected")
     conn.commit()
@@ -727,8 +840,7 @@ def reject_ticket(conn, agent, ticket_id, reason) -> dict:
 
 def _fecha_de(t) -> str:
     """#666: «scheduled_at=…, duration_min=…» con los campos de fecha que tiene, o "" si ninguno."""
-    return ", ".join(f"{k}={t[k]}" for k in ("scheduled_at", "duration_min", "preferred_time")
-                     if t[k] is not None)
+    return ", ".join(f"{k}={t[k]}" for k in ("scheduled_at", "duration_min", "preferred_time") if t[k] is not None)
 
 
 def _en_nombre_del_dueno(t, agent) -> str:
@@ -750,8 +862,7 @@ def start_ticket(conn, agent, ticket_id, note="") -> dict:
     t = _get(conn, ticket_id)
     marca = _en_nombre_del_dueno(t, agent)
     if t["status"] not in {"accepted", "blocked"}:
-        raise TicketError(f"start ilegal desde {t['status']!r} (requiere accepted|blocked)",
-                          code="transition.illegal")
+        raise TicketError(f"start ilegal desde {t['status']!r} (requiere accepted|blocked)", code="transition.illegal")
     if t["workflow_id"]:
         unmet = _unmet_deps(conn, ticket_id)
         if unmet:
@@ -761,15 +872,18 @@ def start_ticket(conn, agent, ticket_id, note="") -> dict:
         # claim implícito: quien arranca sin dueño se convierte en owner (v0)
         conn.execute("UPDATE tickets SET owner=? WHERE id=?", (agent, ticket_id))
         note = (note + " " if note else "") + f"[claim: {agent} se hace owner]"
-    elif (t["owner"] != agent and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER
-          and t["verification_level"] != "peer" and not marca):
+    elif (
+        t["owner"] != agent
+        and agent not in SYSTEM_AGENTS
+        and agent != HOUSE_OWNER
+        and t["verification_level"] != "peer"
+        and not marca
+    ):
         # v3.1: el dueño (dueño de la Casa) arranca cualquiera; queda en el history como suyo.
         # #367 (Pepe, salida A): con verificación peer lo arranca también quien lo ejecuta.
         # #640: y cualquiera de la casa arranca una tarea DEL dueño, en su nombre.
-        raise TicketError(f"start solo puede hacerlo el owner ({t['owner']}), no {agent}",
-                          code="transition.not_owner")
-    conn.execute("UPDATE tickets SET status='in_progress', blocked_reason=NULL WHERE id=?",
-                 (ticket_id,))
+        raise TicketError(f"start solo puede hacerlo el owner ({t['owner']}), no {agent}", code="transition.not_owner")
+    conn.execute("UPDATE tickets SET status='in_progress', blocked_reason=NULL WHERE id=?", (ticket_id,))
     _append_history(conn, ticket_id, t["status"], "in_progress", agent, _con_marca(note, marca))
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
@@ -786,15 +900,21 @@ def block_ticket(conn, agent, ticket_id, reason) -> dict:
         if reason == t["blocked_reason"]:
             return _as_dict(conn, t)
         conn.execute("UPDATE tickets SET blocked_reason=? WHERE id=?", (reason, ticket_id))
-        _append_history(conn, ticket_id, "blocked", "blocked", agent,
-                        f"motivo cambiado: «{t['blocked_reason'] or '-'}» → «{reason}»")
+        _append_history(
+            conn,
+            ticket_id,
+            "blocked",
+            "blocked",
+            agent,
+            f"motivo cambiado: «{t['blocked_reason'] or '-'}» → «{reason}»",
+        )
         conn.commit()
         return _as_dict(conn, _get(conn, ticket_id))
     if t["status"] not in {"accepted", "in_progress"}:
-        raise TicketError(f"block ilegal desde {t['status']!r} (requiere accepted|in_progress|blocked)",
-                          code="transition.illegal")
-    conn.execute("UPDATE tickets SET status='blocked', blocked_reason=? WHERE id=?",
-                 (reason, ticket_id))
+        raise TicketError(
+            f"block ilegal desde {t['status']!r} (requiere accepted|in_progress|blocked)", code="transition.illegal"
+        )
+    conn.execute("UPDATE tickets SET status='blocked', blocked_reason=? WHERE id=?", (reason, ticket_id))
     _append_history(conn, ticket_id, t["status"], "blocked", agent, reason)
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
@@ -807,17 +927,20 @@ def pause_ticket(conn, agent, ticket_id, note) -> dict:
     _validate_agent(agent)
     note = (note or "").strip()
     if len(note) < REWORK_MIN_REASON:
-        raise TicketError(f"pause requiere una nota de al menos {REWORK_MIN_REASON} caracteres"
-                          " (por qué no está en curso de verdad)", field="note", code="pause.note_required")
+        raise TicketError(
+            f"pause requiere una nota de al menos {REWORK_MIN_REASON} caracteres (por qué no está en curso de verdad)",
+            field="note",
+            code="pause.note_required",
+        )
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
     if t["status"] != "in_progress":
-        raise TicketError(f"pause ilegal desde {t['status']!r} (requiere in_progress)",
-                          code="transition.illegal")
+        raise TicketError(f"pause ilegal desde {t['status']!r} (requiere in_progress)", code="transition.illegal")
     marca = _en_nombre_del_dueno(t, agent)
     if agent not in {t["owner"], HOUSE_OWNER} and not marca:
-        raise TicketError(f"pause solo puede hacerlo la dueña ({t['owner']}) o {HOUSE_OWNER}, no {agent}",
-                          code="pause.not_owner")
+        raise TicketError(
+            f"pause solo puede hacerlo la dueña ({t['owner']}) o {HOUSE_OWNER}, no {agent}", code="pause.not_owner"
+        )
     conn.execute("UPDATE tickets SET status='accepted' WHERE id=?", (ticket_id,))
     _append_history(conn, ticket_id, "in_progress", "accepted", agent, _con_marca(f"[pausa] {note}", marca))
     conn.commit()
@@ -828,44 +951,64 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=
     """Completa con evidencia obligatoria. Sin evidencia no hay done (SPEC §4)."""
     _validate_agent(agent, allow_system=True)
     if evidence_type not in EVIDENCE_TYPES:
-        raise TicketError(f"evidence_type inválido: {evidence_type!r} (válidos: {sorted(EVIDENCE_TYPES)})",
-                          field="evidence_type", code="complete.evidence_required")
+        raise TicketError(
+            f"evidence_type inválido: {evidence_type!r} (válidos: {sorted(EVIDENCE_TYPES)})",
+            field="evidence_type",
+            code="complete.evidence_required",
+        )
     if not (evidence or "").strip():
-        raise TicketError("complete requiere evidencia — 'done' sin evidencia no existe",
-                          field="evidence", code="complete.evidence_required")
+        raise TicketError(
+            "complete requiere evidencia — 'done' sin evidencia no existe",
+            field="evidence",
+            code="complete.evidence_required",
+        )
     provenance = _check_provenance(provenance, agent)
     if evidence_type == "proof":
         from . import prueba
+
         try:
             prueba.leer(evidence, proof_repos(conn))
         except prueba.PruebaError as e:
-            raise TicketError(f"{e} (los repos admitidos están en Ajustes › proof_repos)",
-                              field="evidence", code="complete.proof_invalid")
+            raise TicketError(
+                f"{e} (los repos admitidos están en Ajustes › proof_repos)",
+                field="evidence",
+                code="complete.proof_invalid",
+            )
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
     marca = _en_nombre_del_dueno(t, agent)
     if t["status"] not in {"in_progress", "accepted"}:
-        raise TicketError(f"complete ilegal desde {t['status']!r} (requiere in_progress|accepted)",
-                          code="transition.illegal")
+        raise TicketError(
+            f"complete ilegal desde {t['status']!r} (requiere in_progress|accepted)", code="transition.illegal"
+        )
     if provenance and (t["cadence_days"] or t["verification_level"] != "self"):
         # Solo verifica quien completa una tarea de nivel self; en las demás lo hará otro.
-        raise TicketError("la procedencia va con una verificación: este complete no verifica"
-                          f" (nivel {t['verification_level']}{', recurrente' if t['cadence_days'] else ''})",
-                          field="provenance", code="verify.provenance_not_a_verification")
+        raise TicketError(
+            "la procedencia va con una verificación: este complete no verifica"
+            f" (nivel {t['verification_level']}{', recurrente' if t['cadence_days'] else ''})",
+            field="provenance",
+            code="verify.provenance_not_a_verification",
+        )
     if t["owner"] is None:
         # Claim implícito (fix F1 de v0): evita bypass del guard de peer con owner=None.
         conn.execute("UPDATE tickets SET owner=? WHERE id=?", (agent, ticket_id))
         t = _get(conn, ticket_id)
-    elif (t["owner"] != agent and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER
-          and t["verification_level"] != "peer" and not marca):
+    elif (
+        t["owner"] != agent
+        and agent not in SYSTEM_AGENTS
+        and agent != HOUSE_OWNER
+        and t["verification_level"] != "peer"
+        and not marca
+    ):
         # #640: cualquiera de la casa completa una tarea DEL dueño, en su nombre.
         # #367 (Pepe, salida A): con verificación peer lo completa también quien lo ejecutó;
         # el sello sigue siendo de un tercero (verify_ticket rechaza al que completó).
         # el dueño es el dueño de la Casa: puede completar/estampar por cualquiera desde la
         # app (regla del 3-sep, hallazgo de Lienzo en T2.9). Queda en el history como
         # transición del dueño sobre un ticket ajeno; verifier != owner sigue intacto.
-        raise TicketError(f"complete solo puede hacerlo el owner ({t['owner']}), no {agent}",
-                          code="transition.not_owner")
+        raise TicketError(
+            f"complete solo puede hacerlo el owner ({t['owner']}), no {agent}", code="transition.not_owner"
+        )
     now = _now()
     aviso = _pide_otro(t["verification_level"], t["cadence_days"], t["verify_criteria"])
 
@@ -876,18 +1019,30 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=
             " evidence_type=?, evidence=?, next_due_override=NULL WHERE id=?",
             (now, evidence_type, evidence, ticket_id),
         )
-        _append_history(conn, ticket_id, t["status"], "accepted", agent,
-                        _con_marca(f"recurrente ejecutada [{evidence_type}] {evidence}", marca))
+        _append_history(
+            conn,
+            ticket_id,
+            t["status"],
+            "accepted",
+            agent,
+            _con_marca(f"recurrente ejecutada [{evidence_type}] {evidence}", marca),
+        )
     elif t["verification_level"] == "self":
         conn.execute(
-            "UPDATE tickets SET status='verified', evidence_type=?, evidence=?,"
-            " verified_by=?, closed_at=? WHERE id=?",
+            "UPDATE tickets SET status='verified', evidence_type=?, evidence=?, verified_by=?, closed_at=? WHERE id=?",
             (evidence_type, evidence, agent, now, ticket_id),
         )
-        _append_history(conn, ticket_id, t["status"], "verified", agent,
-                        _con_marca(f"self-verified [{evidence_type}] {evidence}"
-                                   + (f" — {AVISO_PIDE_OTRO}" if aviso else ""), marca),
-                        provenance=_provenance(agent, t, provenance))
+        _append_history(
+            conn,
+            ticket_id,
+            t["status"],
+            "verified",
+            agent,
+            _con_marca(
+                f"self-verified [{evidence_type}] {evidence}" + (f" — {AVISO_PIDE_OTRO}" if aviso else ""), marca
+            ),
+            provenance=_provenance(agent, t, provenance),
+        )
         for hook in VERIFIED_HOOKS:
             hook(conn, ticket_id)
     else:  # peer | auto → cola de verificación (columna "Hechas sin verificar")
@@ -895,14 +1050,14 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=
             "UPDATE tickets SET status='done', evidence_type=?, evidence=? WHERE id=?",
             (evidence_type, evidence, ticket_id),
         )
-        _append_history(conn, ticket_id, t["status"], "done", agent,
-                        _con_marca(f"[{evidence_type}] {evidence}", marca))
+        _append_history(conn, ticket_id, t["status"], "done", agent, _con_marca(f"[{evidence_type}] {evidence}", marca))
     conn.commit()
     out = _as_dict(conn, _get(conn, ticket_id))
     if aviso:
         out["warning"] = AVISO_PIDE_OTRO  # #414: se sella igual (es un aviso), pero lo dice
-    try:    # Biblioteca (#850): DESPUÉS del commit; cerrar nunca falla ni cambia por esto
+    try:  # Biblioteca (#850): DESPUÉS del commit; cerrar nunca falla ni cambia por esto
         from . import library
+
         library.al_cerrar(conn, ticket_id, evidence_type, evidence)
     except Exception:
         log.exception("biblioteca: el gancho de cierre falló en #%s", ticket_id)
@@ -914,54 +1069,71 @@ def verify_ticket(conn, agent, ticket_id, verdict, note="", provenance=None) -> 
     #377: provenance solo admite 'deterministic:<herramienta>'; si no viene, se deduce."""
     _validate_agent(agent, allow_system=True)
     if verdict not in {"pass", "fail"}:
-        raise TicketError(f"verdict inválido: {verdict!r} (pass|fail)", field="verdict",
-                          code="verify.verdict_invalid")
+        raise TicketError(f"verdict inválido: {verdict!r} (pass|fail)", field="verdict", code="verify.verdict_invalid")
     provenance = _check_provenance(provenance, agent)
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
     if t["status"] != "done":
-        raise TicketError(f"verify ilegal desde {t['status']!r} (requiere done)",
-                          code="transition.illegal")
+        raise TicketError(f"verify ilegal desde {t['status']!r} (requiere done)", code="transition.illegal")
     if agent == "runner-bot":
         raise TicketError("runner-bot ejecuta, no verifica")
     if agent == t["owner"]:
-        raise TicketError(f"el verificador no puede ser el owner ({agent})",
-                          code="verify.owner_cannot_verify")
-    if (t["verify_claimed_by"] and t["verify_claimed_by"] != agent
-            and agent not in SYSTEM_AGENTS and agent != HOUSE_OWNER):
-        raise TicketError(f"la verificación la tiene {t['verify_claimed_by']} (#481); que la suelte primero",
-                          code="verify.claimed_by_other")
+        raise TicketError(f"el verificador no puede ser el owner ({agent})", code="verify.owner_cannot_verify")
+    if (
+        t["verify_claimed_by"]
+        and t["verify_claimed_by"] != agent
+        and agent not in SYSTEM_AGENTS
+        and agent != HOUSE_OWNER
+    ):
+        raise TicketError(
+            f"la verificación la tiene {t['verify_claimed_by']} (#481); que la suelte primero",
+            code="verify.claimed_by_other",
+        )
     if t["verification_level"] == "peer" and agent in SYSTEM_AGENTS:
         raise TicketError("verification_level=peer exige verificador humano/miembro, no un bot")
     if t["verification_level"] == "external" and agent not in {"verifier-bot", HOUSE_OWNER}:
         # #465 (decisión 22): se marcó «externa» para que NO la juzgue la familia que la hizo.
-        raise TicketError(f"una tarea de verificación externa la sella el verificador de otra familia"
-                          f" (DeepSeek) o {HOUSE_OWNER}, no {agent}", code="verify.external_only")
+        raise TicketError(
+            f"una tarea de verificación externa la sella el verificador de otra familia"
+            f" (DeepSeek) o {HOUSE_OWNER}, no {agent}",
+            code="verify.external_only",
+        )
     # #367: quien completó no sella su propio trabajo (puede no ser el owner desde la salida A)
     # #439: solo cuenta la transición HACIA done; editar un ticket ya hecho deja una fila
     # done→done a nombre de quien edita y no le convierte en quien lo completó.
     last_done = conn.execute(
         "SELECT changed_by FROM ticket_history WHERE ticket_id=? AND new_status='done'"
         " AND (old_status IS NULL OR old_status != 'done')"
-        " ORDER BY id DESC LIMIT 1", (ticket_id,)).fetchone()
+        " ORDER BY id DESC LIMIT 1",
+        (ticket_id,),
+    ).fetchone()
     if last_done and last_done["changed_by"] == agent:
-        raise TicketError(f"el verificador no puede ser quien lo completó ({agent})",
-                          code="verify.completer_cannot_verify")
+        raise TicketError(
+            f"el verificador no puede ser quien lo completó ({agent})", code="verify.completer_cannot_verify"
+        )
     if verdict == "pass":
         now = _now()
-        conn.execute("UPDATE tickets SET status='verified', verified_by=?, closed_at=? WHERE id=?",
-                     (agent, now, ticket_id))
-        _append_history(conn, ticket_id, "done", "verified", agent, note or None,
-                        provenance=_provenance(agent, t, provenance))
+        conn.execute(
+            "UPDATE tickets SET status='verified', verified_by=?, closed_at=? WHERE id=?", (agent, now, ticket_id)
+        )
+        _append_history(
+            conn, ticket_id, "done", "verified", agent, note or None, provenance=_provenance(agent, t, provenance)
+        )
         for hook in VERIFIED_HOOKS:
             hook(conn, ticket_id)
     else:
         if not (note or "").strip():
-            raise TicketError("verify fail requiere note (qué falta)", field="note",
-                              code="verify.note_required")
+            raise TicketError("verify fail requiere note (qué falta)", field="note", code="verify.note_required")
         conn.execute("UPDATE tickets SET status='in_progress' WHERE id=?", (ticket_id,))
-        _append_history(conn, ticket_id, "done", "in_progress", agent, f"verify FAIL: {note}",
-                        provenance=_provenance(agent, t, provenance))
+        _append_history(
+            conn,
+            ticket_id,
+            "done",
+            "in_progress",
+            agent,
+            f"verify FAIL: {note}",
+            provenance=_provenance(agent, t, provenance),
+        )
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
 
@@ -975,13 +1147,16 @@ def claim_verification(conn, agent, ticket_id) -> dict:
     if t["closed_at"] is not None:
         raise TicketError(f"ticket #{ticket_id} está cerrado ({t['status']})", code="transition.illegal")
     if t["verification_level"] == "self":
-        raise TicketError("es de nivel «self»: la sella quien la hace, no hay verificación que coger",
-                          code="verify.not_needed")
+        raise TicketError(
+            "es de nivel «self»: la sella quien la hace, no hay verificación que coger", code="verify.not_needed"
+        )
     if agent == t["owner"]:
         raise TicketError(f"el verificador no puede ser el owner ({agent})", code="verify.owner_cannot_verify")
-    cur = conn.execute("UPDATE tickets SET verify_claimed_by=?, verify_claimed_at=? WHERE id=?"
-                       " AND (verify_claimed_by IS NULL OR verify_claimed_by=?)",
-                       (agent, _now(), ticket_id, agent))
+    cur = conn.execute(
+        "UPDATE tickets SET verify_claimed_by=?, verify_claimed_at=? WHERE id=?"
+        " AND (verify_claimed_by IS NULL OR verify_claimed_by=?)",
+        (agent, _now(), ticket_id, agent),
+    )
     if cur.rowcount == 0:
         conn.rollback()
         quien = conn.execute("SELECT verify_claimed_by FROM tickets WHERE id=?", (ticket_id,)).fetchone()[0]
@@ -999,11 +1174,13 @@ def release_verification(conn, agent, ticket_id) -> dict:
     if t["verify_claimed_by"] is None:
         return _as_dict(conn, t)
     if agent != t["verify_claimed_by"] and agent != HOUSE_OWNER:
-        raise TicketError(f"la tiene {t['verify_claimed_by']}: solo la suelta quien la tiene o el dueño",
-                          code="verify.not_claimer")
+        raise TicketError(
+            f"la tiene {t['verify_claimed_by']}: solo la suelta quien la tiene o el dueño", code="verify.not_claimer"
+        )
     conn.execute("UPDATE tickets SET verify_claimed_by=NULL, verify_claimed_at=NULL WHERE id=?", (ticket_id,))
-    _append_history(conn, ticket_id, t["status"], t["status"], agent,
-                    f"[verificación] la suelta {t['verify_claimed_by']}")
+    _append_history(
+        conn, ticket_id, t["status"], t["status"], agent, f"[verificación] la suelta {t['verify_claimed_by']}"
+    )
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
 
@@ -1014,11 +1191,13 @@ def defer_to_peer(conn, agent, ticket_id, note) -> dict:
     _validate_agent(agent, allow_system=True)
     t = _get(conn, ticket_id)
     if t["status"] != "done" or t["verification_level"] != "auto":
-        raise TicketError(f"solo un ticket done de nivel auto pasa a par"
-                          f" (está {t['status']}/{t['verification_level']})")
+        raise TicketError(
+            f"solo un ticket done de nivel auto pasa a par (está {t['status']}/{t['verification_level']})"
+        )
     conn.execute("UPDATE tickets SET verification_level='peer' WHERE id=?", (ticket_id,))
-    _append_history(conn, ticket_id, "done", "done", agent,
-                    f"verificador incierto: {note} — pasa a verificación de par")
+    _append_history(
+        conn, ticket_id, "done", "done", agent, f"verificador incierto: {note} — pasa a verificación de par"
+    )
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
 
@@ -1034,24 +1213,30 @@ def defer_external(conn, agent, ticket_id, note) -> dict:
     t = _get(conn, ticket_id)
     if t["status"] != "done" or t["verification_level"] != "external":
         raise TicketError(f"solo un ticket done de nivel external (está {t['status']}/{t['verification_level']})")
-    _append_history(conn, ticket_id, "done", "done", agent,
-                    f"{EXTERNAL_NO_MAJORITY}: {note} — la decide {HOUSE_OWNER}")
+    _append_history(conn, ticket_id, "done", "done", agent, f"{EXTERNAL_NO_MAJORITY}: {note} — la decide {HOUSE_OWNER}")
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
 
 
 def external_deferred(conn, ticket_id) -> bool:
-    last = conn.execute("SELECT changed_by, new_status, note FROM ticket_history WHERE ticket_id=?"
-                        " ORDER BY id DESC LIMIT 1", (ticket_id,)).fetchone()
-    return bool(last and last["changed_by"] == "verifier-bot" and last["new_status"] == "done"
-                and (last["note"] or "").startswith(EXTERNAL_NO_MAJORITY))
+    last = conn.execute(
+        "SELECT changed_by, new_status, note FROM ticket_history WHERE ticket_id=? ORDER BY id DESC LIMIT 1",
+        (ticket_id,),
+    ).fetchone()
+    return bool(
+        last
+        and last["changed_by"] == "verifier-bot"
+        and last["new_status"] == "done"
+        and (last["note"] or "").startswith(EXTERNAL_NO_MAJORITY)
+    )
 
 
 def reopen_ticket(conn, agent, ticket_id, note="") -> dict:
     """Retroceso del kanban: done → in_progress (el dueño decide que lo 'hecho' no
     valía). No cierra nada, no salta evidencia. Las verificadas quedan cerradas."""
-    return _transition(conn, agent, ticket_id, from_={"done"}, to="in_progress",
-                       note=note or "reabierto desde el tablero")
+    return _transition(
+        conn, agent, ticket_id, from_={"done"}, to="in_progress", note=note or "reabierto desde el tablero"
+    )
 
 
 def rework_ticket(conn, agent, ticket_id, to, reason) -> dict:
@@ -1062,27 +1247,31 @@ def rework_ticket(conn, agent, ticket_id, to, reason) -> dict:
     Permitido a: owner, verificador anterior, dueño. Recurrentes: no aplica."""
     _validate_agent(agent)
     if to not in {"accepted", "in_progress"}:
-        raise TicketError(f"rework: destino inválido {to!r} (accepted|in_progress)",
-                          field="to", code="rework.to_invalid")
+        raise TicketError(
+            f"rework: destino inválido {to!r} (accepted|in_progress)", field="to", code="rework.to_invalid"
+        )
     reason = (reason or "").strip()
     if len(reason) < REWORK_MIN_REASON:
-        raise TicketError(f"rework requiere un motivo de al menos {REWORK_MIN_REASON} caracteres"
-                          " (por qué se devuelve — esa historia vale)",
-                          field="reason", code="rework.reason_required")
+        raise TicketError(
+            f"rework requiere un motivo de al menos {REWORK_MIN_REASON} caracteres"
+            " (por qué se devuelve — esa historia vale)",
+            field="reason",
+            code="rework.reason_required",
+        )
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
     if t["status"] not in {"done", "verified"}:
-        raise TicketError(f"rework ilegal desde {t['status']!r} (requiere done|verified)",
-                          code="transition.illegal")
+        raise TicketError(f"rework ilegal desde {t['status']!r} (requiere done|verified)", code="transition.illegal")
     if t["cadence_days"]:
         raise TicketError("las recurrentes no se devuelven: estampan y siguen", code="rework.recurring")
     allowed = agent == HOUSE_OWNER or agent == t["owner"] or (t["verified_by"] and agent == t["verified_by"])
     if not allowed:
-        raise TicketError(f"rework solo puede hacerlo el owner ({t['owner']}), quien la verificó"
-                          f" ({t['verified_by'] or '-'}) o {HOUSE_OWNER}, no {agent}")
+        raise TicketError(
+            f"rework solo puede hacerlo el owner ({t['owner']}), quien la verificó"
+            f" ({t['verified_by'] or '-'}) o {HOUSE_OWNER}, no {agent}"
+        )
     prev = t["status"]
-    conn.execute("UPDATE tickets SET status=?, closed_at=NULL, verified_by=NULL WHERE id=?",
-                 (to, ticket_id))
+    conn.execute("UPDATE tickets SET status=?, closed_at=NULL, verified_by=NULL WHERE id=?", (to, ticket_id))
     _append_history(conn, ticket_id, prev, to, agent, f"[rechazo] {reason}")
     # #364 (Pepe, 30-sep): tampoco aquí se coloca sola. Una devuelta sin fecha no
     # desaparece (T1.3): sale en «por ubicar» de su dueño, que es quien la recoloca.
@@ -1107,8 +1296,7 @@ def _transition(conn, agent, ticket_id, from_, to, note=None, close=False) -> di
     if t["status"] not in from_:
         raise TicketError(f"{to} ilegal desde {t['status']!r} (requiere {'|'.join(sorted(from_))})")
     if close:
-        conn.execute("UPDATE tickets SET status=?, closed_at=? WHERE id=?",
-                     (to, _now(), ticket_id))
+        conn.execute("UPDATE tickets SET status=?, closed_at=? WHERE id=?", (to, _now(), ticket_id))
     else:
         conn.execute("UPDATE tickets SET status=? WHERE id=?", (to, ticket_id))
     _append_history(conn, ticket_id, t["status"], to, agent, note)
@@ -1121,26 +1309,39 @@ def _transition(conn, agent, ticket_id, from_, to, note=None, close=False) -> di
 # v3: el dominio de jobs/runs vive en jobs.py. Estos wrappers mantienen la
 # superficie v1 (API del Tablero, tests) sin duplicar lógica.
 
+
 def get_job(conn, job_id) -> dict:
     from . import jobs as _jobs
+
     return _jobs.get_job(conn, job_id)
 
 
 def create_run(conn, job_id) -> dict:
     from . import jobs as _jobs
+
     return _jobs.create_run(conn, job_id)
 
 
-def finish_run(conn, run_id, status, exit_code=None, cost_usd=None, session_id=None,
-               output_path=None, result_summary=None) -> dict:
+def finish_run(
+    conn, run_id, status, exit_code=None, cost_usd=None, session_id=None, output_path=None, result_summary=None
+) -> dict:
     from . import jobs as _jobs
-    return _jobs.finish_run(conn, run_id, status, exit_code=exit_code, cost_usd=cost_usd,
-                            session_id=session_id, output_path=output_path,
-                            result_summary=result_summary)
+
+    return _jobs.finish_run(
+        conn,
+        run_id,
+        status,
+        exit_code=exit_code,
+        cost_usd=cost_usd,
+        session_id=session_id,
+        output_path=output_path,
+        result_summary=result_summary,
+    )
 
 
 def list_runs(conn, ticket_id=None, status=None, limit=50, job_id=None) -> list[dict]:
     from . import jobs as _jobs
+
     return _jobs.list_runs(conn, job_id=job_id, ticket_id=ticket_id, status=status, limit=limit)
 
 
@@ -1158,34 +1359,42 @@ def recover_orphan_runs(conn) -> int:
     es el estado)."""
     orphans = conn.execute("SELECT id FROM runs WHERE status='running'").fetchall()
     for row in orphans:
-        finish_run(conn, row["id"], "error",
-                   result_summary="(huérfano: el daemon se reinició con el run en curso)")
+        finish_run(conn, row["id"], "error", result_summary="(huérfano: el daemon se reinició con el run en curso)")
     return len(orphans)
 
 
 # ------------------------------------------------------------------ lecturas
 
-def list_tickets(conn, status=None, owner=None, query=None, include_closed=False,
-                 project_id=None, kind=None, workflow_id=None) -> list[dict]:
+
+def list_tickets(
+    conn, status=None, owner=None, query=None, include_closed=False, project_id=None, kind=None, workflow_id=None
+) -> list[dict]:
     where, params = [], []
     if query:
         terms = " OR ".join(f'"{w}"' for w in set(query.split()) if len(w) > 2)
-        ids = [r["rowid"] for r in conn.execute(
-            "SELECT rowid FROM tickets_fts WHERE tickets_fts MATCH ? LIMIT 50", (terms,))]
+        ids = [
+            r["rowid"]
+            for r in conn.execute("SELECT rowid FROM tickets_fts WHERE tickets_fts MATCH ? LIMIT 50", (terms,))
+        ]
         if not ids:
             return []
         where.append(f"id IN ({','.join('?' * len(ids))})")
         params += ids
     if status:
-        where.append("status=?"); params.append(status)
+        where.append("status=?")
+        params.append(status)
     if owner:
-        where.append("owner=?"); params.append(owner)
+        where.append("owner=?")
+        params.append(owner)
     if project_id:
-        where.append("project_id=?"); params.append(project_id)
+        where.append("project_id=?")
+        params.append(project_id)
     if kind:
-        where.append("kind=?"); params.append(kind)
+        where.append("kind=?")
+        params.append(kind)
     if workflow_id:
-        where.append("workflow_id=?"); params.append(workflow_id)
+        where.append("workflow_id=?")
+        params.append(workflow_id)
     if not include_closed and not (status and status in CLOSED_STATUSES):
         where.append("closed_at IS NULL")
     sql = "SELECT * FROM tickets"
@@ -1198,25 +1407,46 @@ def list_tickets(conn, status=None, owner=None, query=None, include_closed=False
     return enriched
 
 
-UPDATABLE_FIELDS = {"title", "description", "priority", "due_at", "verify_criteria",
-                    "project_id", "owner", "evidence", "verification_level"} | TEMPORAL_FIELDS
+UPDATABLE_FIELDS = {
+    "title",
+    "description",
+    "priority",
+    "due_at",
+    "verify_criteria",
+    "project_id",
+    "owner",
+    "evidence",
+    "verification_level",
+} | TEMPORAL_FIELDS
 
 
 def _validate_level_change(t, agent, nivel) -> None:
     """#414 (decisión 48): subir el nivel lo hace cualquiera de la casa; BAJARLO a self, solo el
     dueño (si no, quien hizo el trabajo podría cambiarlo y sellárselo)."""
     if nivel not in VERIFICATION_LEVELS:
-        raise TicketError(f"verification_level inválido: {nivel!r} (válidos: {sorted(VERIFICATION_LEVELS)})",
-                          field="verification_level", code="ticket.level_invalid")
+        raise TicketError(
+            f"verification_level inválido: {nivel!r} (válidos: {sorted(VERIFICATION_LEVELS)})",
+            field="verification_level",
+            code="ticket.level_invalid",
+        )
     if t["closed_at"] is not None:
-        raise TicketError(f"ticket #{t['id']} está cerrado ({t['status']}) — su nivel ya no cambia",
-                          field="verification_level", code="ticket.level_closed")
+        raise TicketError(
+            f"ticket #{t['id']} está cerrado ({t['status']}) — su nivel ya no cambia",
+            field="verification_level",
+            code="ticket.level_closed",
+        )
     if t["cadence_days"] or t["kind"] == "agentic":
-        raise TicketError("las recurrentes y las agénticas no cambian de nivel (se verifican de otra forma)",
-                          field="verification_level", code="ticket.level_fixed")
+        raise TicketError(
+            "las recurrentes y las agénticas no cambian de nivel (se verifican de otra forma)",
+            field="verification_level",
+            code="ticket.level_fixed",
+        )
     if nivel == "self" and t["verification_level"] != "self" and agent != HOUSE_OWNER:
-        raise TicketError("bajar el nivel a «self» solo lo hace el dueño de la casa",
-                          field="verification_level", code="ticket.level_to_self_owner_only")
+        raise TicketError(
+            "bajar el nivel a «self» solo lo hace el dueño de la casa",
+            field="verification_level",
+            code="ticket.level_to_self_owner_only",
+        )
 
 
 def update_ticket(conn, agent, ticket_id, **fields) -> dict:
@@ -1244,8 +1474,7 @@ def update_ticket(conn, agent, ticket_id, **fields) -> dict:
         # 14-sep (Lienzo): la evidencia se puede reescribir cuando queda obsoleta —
         # el texto estampado sigue íntegro en el note del complete (history append-only).
         if not t["evidence_type"]:
-            raise TicketError(f"ticket #{ticket_id} no tiene evidencia que reescribir (sin estampar)",
-                              field="evidence")
+            raise TicketError(f"ticket #{ticket_id} no tiene evidencia que reescribir (sin estampar)", field="evidence")
         if not (fields["evidence"] or "").strip():
             raise TicketError("evidence vacía", field="evidence")
     wd = fields.get("weekday", t["weekday"])
@@ -1260,10 +1489,11 @@ def update_ticket(conn, agent, ticket_id, **fields) -> dict:
     conn.execute(f"UPDATE tickets SET {sets} WHERE id=?", [*fields.values(), ticket_id])
     if "title" in fields or "description" in fields:
         fresh = _get(conn, ticket_id)
-        conn.execute("UPDATE tickets_fts SET title=?, description=? WHERE rowid=?",
-                     (fresh["title"], fresh["description"], ticket_id))
-    _append_history(conn, ticket_id, t["status"], t["status"], agent,
-                    f"editado: {', '.join(sorted(fields))}")
+        conn.execute(
+            "UPDATE tickets_fts SET title=?, description=? WHERE rowid=?",
+            (fresh["title"], fresh["description"], ticket_id),
+        )
+    _append_history(conn, ticket_id, t["status"], t["status"], agent, f"editado: {', '.join(sorted(fields))}")
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
 
@@ -1272,7 +1502,9 @@ def ticket_history(conn, ticket_id) -> dict:
     t = _get(conn, ticket_id)
     rows = conn.execute(
         "SELECT old_status, new_status, changed_by, changed_at, note, provenance"
-        " FROM ticket_history WHERE ticket_id=? ORDER BY id", (ticket_id,)).fetchall()
+        " FROM ticket_history WHERE ticket_id=? ORDER BY id",
+        (ticket_id,),
+    ).fetchall()
     return {"ticket": _as_dict(conn, t), "history": [dict(r) for r in rows]}
 
 
@@ -1282,6 +1514,7 @@ def board(conn, project_id=None, view="all") -> dict:
     si existe, si no due_at / next_due) y la ventana de Hoy es configurable
     (settings.today_window: overdue, due_today, in_progress)."""
     from . import settings as _settings
+
     open_tickets = list_tickets(conn, project_id=project_id)
     today = date.today()
     horizon = today + timedelta(days=7)
@@ -1340,9 +1573,11 @@ def board(conn, project_id=None, view="all") -> dict:
 
     visible = [t for t in open_tickets if _in_view(t)]
     columns = {s: [] for s in ("proposed", "accepted", "in_progress", "done")}
-    laterals = {"blocked": [],
-                # #364: lo que su dueño aún no ha colocado; sale en todas las vistas hasta que lo ubique
-                "por_ubicar": [t for t in open_tickets if _unplaced(t) and t["status"] != "blocked"]}
+    laterals = {
+        "blocked": [],
+        # #364: lo que su dueño aún no ha colocado; sale en todas las vistas hasta que lo ubique
+        "por_ubicar": [t for t in open_tickets if _unplaced(t) and t["status"] != "blocked"],
+    }
     for t in visible:
         if t["status"] == "blocked":
             laterals["blocked"].append(t)
@@ -1356,7 +1591,9 @@ def board(conn, project_id=None, view="all") -> dict:
     if view == "today":
         verified_col = [t for t in verified_all if (t.get("closed_at") or "")[:10] == today_iso]
     elif view == "week":
-        verified_col = [t for t in verified_all if (t.get("closed_at") or "")[:10] >= (today - timedelta(days=7)).isoformat()]
+        verified_col = [
+            t for t in verified_all if (t.get("closed_at") or "")[:10] >= (today - timedelta(days=7)).isoformat()
+        ]
     else:
         verified_col = verified_all[:30]
 
@@ -1365,8 +1602,10 @@ def board(conn, project_id=None, view="all") -> dict:
     # Cualquier estado y cualquier proyecto; las agénticas viven en Agentes y no cuentan.
     # Si ya hay alguna a la vista no hace falta preguntar: la consulta extra solo corre
     # cuando lo cargado está vacío (test_board_query_count sigue en 8).
-    started = any(t.get("kind") != "agentic" for t in (*open_tickets, *verified_all)) or conn.execute(
-        "SELECT EXISTS(SELECT 1 FROM tickets WHERE kind != 'agentic')").fetchone()[0] == 1
+    started = (
+        any(t.get("kind") != "agentic" for t in (*open_tickets, *verified_all))
+        or conn.execute("SELECT EXISTS(SELECT 1 FROM tickets WHERE kind != 'agentic')").fetchone()[0] == 1
+    )
 
     return {
         "view": view,
@@ -1375,18 +1614,45 @@ def board(conn, project_id=None, view="all") -> dict:
         "projects": list_projects(conn),
         "columns": {**columns, "verified": verified_col},
         "laterals": laterals,
-        "counts": {**{k: len(v) for k, v in columns.items()},
-                   "verified": len(verified_col), "blocked": len(laterals["blocked"]),
-                   "por_ubicar": len(laterals["por_ubicar"])},
+        "counts": {
+            **{k: len(v) for k, v in columns.items()},
+            "verified": len(verified_col),
+            "blocked": len(laterals["blocked"]),
+            "por_ubicar": len(laterals["por_ubicar"]),
+        },
     }
 
 
-_SLIM_KEYS = ("id", "title", "status", "priority", "owner", "kind", "project_id", "source",
-              "created_by", "created_at", "scheduled_at", "duration_min", "due_at", "due_state",
-              "cadence_days", "preferred_time", "weekday", "next_due", "due", "overdue",
-              "verification_level", "verified_by", "verify_claimed_by", "blocked_reason",
-              "last_change", "workflow_id",
-              "plan_key", "age_days")
+_SLIM_KEYS = (
+    "id",
+    "title",
+    "status",
+    "priority",
+    "owner",
+    "kind",
+    "project_id",
+    "source",
+    "created_by",
+    "created_at",
+    "scheduled_at",
+    "duration_min",
+    "due_at",
+    "due_state",
+    "cadence_days",
+    "preferred_time",
+    "weekday",
+    "next_due",
+    "due",
+    "overdue",
+    "verification_level",
+    "verified_by",
+    "verify_claimed_by",
+    "blocked_reason",
+    "last_change",
+    "workflow_id",
+    "plan_key",
+    "age_days",
+)
 
 
 def _slim(t: dict) -> dict:
@@ -1413,18 +1679,15 @@ def _my_board_full(conn, agent) -> dict:
         "due_recurrentes": [t for t in mine if t.get("cadence_days") and t["due"]],
         "recurrentes_al_dia": [t for t in mine if t.get("cadence_days") and not t["due"]],
         "needs_my_verification": [
-            t for t in list_tickets(conn, status="done")
-            if t["verification_level"] == "peer" and t["owner"] != agent
-            and t.get("verify_claimed_by") in (None, agent)
+            t
+            for t in list_tickets(conn, status="done")
+            if t["verification_level"] == "peer" and t["owner"] != agent and t.get("verify_claimed_by") in (None, agent)
         ],
         # #481: las que me he cogido para verificar (abiertas, hechas o todavía no)
         "verifications_i_claimed": [
-            t for t in list_tickets(conn) if t.get("verify_claimed_by") == agent
-            and t["status"] not in CLOSED_STATUSES
+            t for t in list_tickets(conn) if t.get("verify_claimed_by") == agent and t["status"] not in CLOSED_STATUSES
         ],
-        "my_proposals_pending": [
-            t for t in list_tickets(conn, status="proposed") if t["created_by"] == agent
-        ],
+        "my_proposals_pending": [t for t in list_tickets(conn, status="proposed") if t["created_by"] == agent],
         # #364: lo mío sin fecha. Colocarlo es trabajo mío, no de quien lo creó ni de Pepe.
         "por_ubicar": [t for t in mine if _unplaced(t)],
     }

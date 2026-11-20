@@ -12,8 +12,8 @@ import pytest
 _tmp = tempfile.mkdtemp(prefix="agenticos_backup_test_")
 os.environ["AGENTICOS_BACKUP_DIR"] = _tmp
 
-from faros.db import connect  # noqa: E402
 from faros import backup  # noqa: E402
+from faros.db import connect  # noqa: E402
 
 
 @pytest.fixture
@@ -34,7 +34,7 @@ class TestCreateBackup:
         now = datetime(2026, 9, 2, 8, 0)
         path = backup.create_backup(conn, now)
         assert path.exists()
-        assert path.name == "faros_2026-09-02.db"   # se escribe con el nombre nuevo
+        assert path.name == "faros_2026-09-02.db"  # se escribe con el nombre nuevo
         assert path.stat().st_size > 0
 
     def test_idempotent(self, conn):
@@ -109,8 +109,15 @@ class TestPruneRollbackCopies:
 
     def test_order_is_by_date_not_by_version_text(self, bdir):
         # «pre_339» ordena después de «pre_3320» como texto: tiene que mandar la fecha del fichero.
-        self._copias(bdir, ["pre_339_20261022_100000.db", "pre_3318_20261102_100000.db",
-                            "pre_3319_20261103_100000.db", "pre_3320_20261104_100000.db"])
+        self._copias(
+            bdir,
+            [
+                "pre_339_20261022_100000.db",
+                "pre_3318_20261102_100000.db",
+                "pre_3319_20261103_100000.db",
+                "pre_3320_20261104_100000.db",
+            ],
+        )
         assert backup.prune_rollback_copies() == ["pre_339_20261022_100000.db"]
 
     def test_leaves_daily_backups_and_unknown_files(self, bdir):
@@ -120,8 +127,10 @@ class TestPruneRollbackCopies:
         assert sorted(p.name for p in bdir.iterdir()) == sorted(otros)
 
     def test_removes_orphan_wal_and_shm_only(self, bdir):
-        self._copias(bdir, ["faros_2026-09-28.db-shm", "faros_2026-09-28.db-wal",
-                            "faros_2026-11-04.db", "faros_2026-11-04.db-wal"])
+        self._copias(
+            bdir,
+            ["faros_2026-09-28.db-shm", "faros_2026-09-28.db-wal", "faros_2026-11-04.db", "faros_2026-11-04.db-wal"],
+        )
         backup.prune_rollback_copies()
         assert sorted(p.name for p in bdir.iterdir()) == ["faros_2026-11-04.db", "faros_2026-11-04.db-wal"]
 
@@ -160,24 +169,21 @@ class TestSecretScrub:
     def test_secrets_blanked_in_backup(self, conn):
         """Backup must NOT contain secret settings in clear (F-SEG-01)."""
         from faros import settings
-        settings.patch(conn, "carol", {"telegram_token": "SECRET_TOKEN_VALUE",
-                                       "deepseek_api_key": "SECRET_KEY_VALUE"})
+
+        settings.patch(conn, "carol", {"telegram_token": "SECRET_TOKEN_VALUE", "deepseek_api_key": "SECRET_KEY_VALUE"})
         now = datetime(2026, 9, 3, 8, 0)
         path = backup.create_backup(conn, now)
         bk = sqlite3.connect(str(path))
-        rows = {r[0]: r[1] for r in bk.execute(
-            "SELECT key, value FROM settings WHERE secret = 1"
-        ).fetchall()}
+        rows = {r[0]: r[1] for r in bk.execute("SELECT key, value FROM settings WHERE secret = 1").fetchall()}
         bk.close()
         for key in ("telegram_token", "deepseek_api_key"):
             assert rows.get(key) == '""', f"{key} not scrubbed in backup"
-        prod_token = conn.execute(
-            "SELECT value FROM settings WHERE key = 'telegram_token'"
-        ).fetchone()[0]
+        prod_token = conn.execute("SELECT value FROM settings WHERE key = 'telegram_token'").fetchone()[0]
         assert "SECRET_TOKEN_VALUE" in prod_token, "production DB must keep secrets intact"
 
     def test_verify_warns_about_blanked_secrets(self, conn):
         from faros import settings
+
         settings.patch(conn, "carol", {"telegram_token": "TOK"})
         now = datetime(2026, 9, 3, 9, 0)
         path = backup.create_backup(conn, now)

@@ -4,7 +4,9 @@ from datetime import date, timedelta
 
 import pytest
 
-from faros import db, service as s, agenda as cal
+from faros import agenda as cal
+from faros import db
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -16,9 +18,11 @@ def conn():
 
 
 def _recurrente(conn, last_done, cadence=7, **kw):
-    t = s.propose_ticket(conn, "owner", kw.pop("title", "Backup EcoDB"), owner="alice",
-                         cadence_days=cadence, auto_accept=True, **kw)["ticket"]
-    conn.execute("UPDATE tickets SET last_done_at=? WHERE id=?", (last_done, t["id"])); conn.commit()
+    t = s.propose_ticket(
+        conn, "owner", kw.pop("title", "Backup EcoDB"), owner="alice", cadence_days=cadence, auto_accept=True, **kw
+    )["ticket"]
+    conn.execute("UPDATE tickets SET last_done_at=? WHERE id=?", (last_done, t["id"]))
+    conn.commit()
     return t
 
 
@@ -56,12 +60,15 @@ def test_overdue_recurrente_appears_on_range_start(conn):
 
 
 def test_scheduled_and_due_items(conn):
-    a = s.propose_ticket(conn, "owner", "Reunión", owner="owner", auto_accept=True,
-                         scheduled_at="2026-09-03T09:00", duration_min=60)["ticket"]
-    b = s.propose_ticket(conn, "owner", "Entregar informe", owner="bob", auto_accept=True,
-                         due_at="2026-09-04")["ticket"]
-    c = s.propose_ticket(conn, "owner", "Todo el día", owner="carol", auto_accept=True,
-                         scheduled_at="2026-09-05T00:00", all_day=1)["ticket"]
+    a = s.propose_ticket(
+        conn, "owner", "Reunión", owner="owner", auto_accept=True, scheduled_at="2026-09-03T09:00", duration_min=60
+    )["ticket"]
+    b = s.propose_ticket(conn, "owner", "Entregar informe", owner="bob", auto_accept=True, due_at="2026-09-04")[
+        "ticket"
+    ]
+    c = s.propose_ticket(
+        conn, "owner", "Todo el día", owner="carol", auto_accept=True, scheduled_at="2026-09-05T00:00", all_day=1
+    )["ticket"]
     res = cal.occurrences(conn, "2026-09-01", "2026-09-07")
     by = {i["ticket_id"]: i for i in res["items"]}
     assert by[a["id"]]["kind"] == "scheduled" and by[a["id"]]["start"] == "09:00" and by[a["id"]]["end"] == "10:00"
@@ -72,9 +79,16 @@ def test_scheduled_and_due_items(conn):
 
 
 def test_agentic_tickets_never_in_calendar(conn):
-    t = s.propose_ticket(conn, "alice", "Resumen correo", kind="agentic", verification_level="auto",
-                         auto_accept=True, due_at="2026-09-03",
-                         job={"prompt": "x"})["ticket"]
+    t = s.propose_ticket(
+        conn,
+        "alice",
+        "Resumen correo",
+        kind="agentic",
+        verification_level="auto",
+        auto_accept=True,
+        due_at="2026-09-03",
+        job={"prompt": "x"},
+    )["ticket"]
     res = cal.occurrences(conn, "2026-09-01", "2026-09-07")
     assert t["id"] not in [i["ticket_id"] for i in res["items"]]
 
@@ -119,14 +133,18 @@ def test_closed_ticket_shows_on_closing_day_only(conn):
     t = s.propose_ticket(conn, "owner", "Informe semanal", owner="alice", auto_accept=True)["ticket"]
     s.start_ticket(conn, "alice", t["id"])
     s.complete_ticket(conn, "alice", t["id"], "file_path", "docs/x.md")
-    conn.execute("UPDATE tickets SET closed_at='2026-09-03T10:15:00', scheduled_at='2026-09-03T09:00:00' WHERE id=?", (t["id"],)); conn.commit()
+    conn.execute(
+        "UPDATE tickets SET closed_at='2026-09-03T10:15:00', scheduled_at='2026-09-03T09:00:00' WHERE id=?", (t["id"],)
+    )
+    conn.commit()
     res = cal.occurrences(conn, "2026-09-01", "2026-09-30")
     mine = [i for i in res["items"] if i["ticket_id"] == t["id"]]
     assert [i["date"] for i in mine] == ["2026-09-03"]
     assert mine[0]["kind"] == "closed" and mine[0]["status"] in ("done", "verified")
     assert mine[0]["start"] == "09:00" and mine[0]["closed_at"] == "2026-09-03T10:15:00"
     assert cal.occurrences(conn, "2026-09-04", "2026-09-30")["items"] == [
-        i for i in cal.occurrences(conn, "2026-09-04", "2026-09-30")["items"] if i["ticket_id"] != t["id"]]
+        i for i in cal.occurrences(conn, "2026-09-04", "2026-09-30")["items"] if i["ticket_id"] != t["id"]
+    ]
 
 
 def test_diaria_solo_de_lunes_a_viernes(conn):
@@ -135,8 +153,15 @@ def test_diaria_solo_de_lunes_a_viernes(conn):
     t = _recurrente(conn, "2026-11-06T12:00:00", 1, preferred_time="12:00", duration_min=30)
     assert s.next_due_date(dict(s._get(conn, t["id"]))) == "2026-11-09"
     items = cal.occurrences(conn, "2026-11-06", "2026-11-17")["items"]
-    assert _dates(items, t["id"]) == ["2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12",
-                                      "2026-11-13", "2026-11-16", "2026-11-17"]
+    assert _dates(items, t["id"]) == [
+        "2026-11-09",
+        "2026-11-10",
+        "2026-11-11",
+        "2026-11-12",
+        "2026-11-13",
+        "2026-11-16",
+        "2026-11-17",
+    ]
 
 
 def test_semanal_de_sabado_sigue_saliendo_en_sabado(conn):

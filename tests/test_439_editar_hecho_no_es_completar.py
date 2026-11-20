@@ -9,7 +9,8 @@ completó. Solo cuenta la transición HACIA done.
 
 import pytest
 
-from faros import db, service as s
+from faros import db
+from faros import service as s
 from faros.service import TicketError
 
 
@@ -21,8 +22,9 @@ def conn():
 
 
 def _hecho_por_alice(conn):
-    t = s.propose_ticket(conn, "owner", "trabajo de alice", owner="owner",
-                         verification_level="peer", scheduled_at="2031-03-05T10:00")["ticket"]
+    t = s.propose_ticket(
+        conn, "owner", "trabajo de alice", owner="owner", verification_level="peer", scheduled_at="2031-03-05T10:00"
+    )["ticket"]
     s.accept_ticket(conn, "alice", t["id"])
     s.complete_ticket(conn, "alice", t["id"], "file_path", "informe.md")
     return t["id"]

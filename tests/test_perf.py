@@ -5,14 +5,11 @@ Target: board() <= 8 queries on 200 tickets; workflow_status() <= 10.
 """
 
 import sqlite3
-import threading
 from datetime import datetime
 
 import pytest
 
-from faros import db
-from faros import service
-from faros import workflows
+from faros import db, service, workflows
 
 
 class QueryCounter:
@@ -49,8 +46,7 @@ class QueryCounter:
         return list(self._statements)
 
 
-def _seed_tickets(conn, n: int, project_id: int, workflow_id: int | None = None,
-                  phase: str | None = None):
+def _seed_tickets(conn, n: int, project_id: int, workflow_id: int | None = None, phase: str | None = None):
     """Seed n tickets quickly (bypassing service.propose_ticket for speed)."""
     now = datetime.now().isoformat(timespec="seconds")
     for i in range(n):
@@ -62,20 +58,21 @@ def _seed_tickets(conn, n: int, project_id: int, workflow_id: int | None = None,
             " closed_at, verification_level)"
             " VALUES (?, ?, ?, 'manual', ?, '', 'alice', 'proposed', ?, 'media',"
             " 'alice', ?, ?, 'self')",
-            (project_id, workflow_id, phase, f"Test ticket {i}", status, now, closed))
+            (project_id, workflow_id, phase, f"Test ticket {i}", status, now, closed),
+        )
         tid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
         conn.execute(
             "INSERT INTO ticket_history (ticket_id, old_status, new_status,"
             " changed_by, changed_at) VALUES (?, NULL, 'proposed', 'alice', ?)",
-            (tid, now))
+            (tid, now),
+        )
         if status != "proposed":
             conn.execute(
                 "INSERT INTO ticket_history (ticket_id, old_status, new_status,"
                 " changed_by, changed_at) VALUES (?, 'proposed', ?, 'alice', ?)",
-                (tid, status, now))
-        conn.execute(
-            "INSERT INTO tickets_fts (rowid, title, description) VALUES (?, ?, '')",
-            (tid, f"Test ticket {i}"))
+                (tid, status, now),
+            )
+        conn.execute("INSERT INTO tickets_fts (rowid, title, description) VALUES (?, ?, '')", (tid, f"Test ticket {i}"))
     conn.commit()
 
 
@@ -88,7 +85,9 @@ def big_db():
     conn.execute("INSERT INTO projects (name, position, created_at) VALUES ('P2', 1, ?)", (now,))
     conn.execute(
         "INSERT INTO workflows (name, project_id, kind, phases, coordinator, created_at)"
-        " VALUES ('wf-test', 1, 'construccion', '[\"fase-1\",\"fase-2\"]', 'alice', ?)", (now,))
+        " VALUES ('wf-test', 1, 'construccion', '[\"fase-1\",\"fase-2\"]', 'alice', ?)",
+        (now,),
+    )
     conn.commit()
     _seed_tickets(conn, 100, project_id=1, workflow_id=1, phase="fase-1")
     _seed_tickets(conn, 100, project_id=2)
@@ -103,9 +102,8 @@ def test_board_query_count(big_db):
     n = counter.stop()
     total_tickets = sum(result["counts"].values())
     assert total_tickets > 0, "board returned no tickets"
-    assert n <= 8, (
-        f"board() used {n} queries (limit 8) on {total_tickets} tickets.\n"
-        f"Statements:\n" + "\n".join(f"  {i+1}. {s}" for i, s in enumerate(counter.statements))
+    assert n <= 8, f"board() used {n} queries (limit 8) on {total_tickets} tickets.\nStatements:\n" + "\n".join(
+        f"  {i + 1}. {s}" for i, s in enumerate(counter.statements)
     )
 
 
@@ -118,9 +116,8 @@ def test_workflow_status_query_count(big_db):
     n = counter.stop()
     total = sum(ps["total"] for ps in result["phases_summary"])
     assert total == 100, f"expected 100 tickets, got {total}"
-    assert n <= 11, (
-        f"workflow_status() used {n} queries (limit 10) on {total} tickets.\n"
-        f"Statements:\n" + "\n".join(f"  {i+1}. {s}" for i, s in enumerate(counter.statements))
+    assert n <= 11, f"workflow_status() used {n} queries (limit 10) on {total} tickets.\nStatements:\n" + "\n".join(
+        f"  {i + 1}. {s}" for i, s in enumerate(counter.statements)
     )
 
 
@@ -132,5 +129,4 @@ def test_board_returns_correct_data(big_db):
             assert "last_change" in t, f"ticket #{t['id']} missing last_change"
             assert "due_state" in t, f"ticket #{t['id']} missing due_state"
             if t["status"] not in ("proposed",):
-                assert t["last_change"] is not None, (
-                    f"ticket #{t['id']} status={t['status']} should have last_change")
+                assert t["last_change"] is not None, f"ticket #{t['id']} status={t['status']} should have last_change"

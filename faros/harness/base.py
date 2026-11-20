@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
+from dataclasses import asdict, dataclass
 
 from ..procutil import run_hidden
-import time
-from dataclasses import dataclass, field, asdict
 
 BILLING_MODES = {"subscription", "api", "local"}
 COST_KINDS = {"billed", "equivalent", "none"}
@@ -28,16 +28,16 @@ class ModelInfo:
     label: str
     source: str  # help | api | probe | cli | local | seed | measured
     tier: str | None = None
-    family: str | None = None       # v3.1 (T5.4): fable | opus | sonnet | haiku | otros
+    family: str | None = None  # v3.1 (T5.4): fable | opus | sonnet | haiku | otros
     alias_of: str | None = None
-    validated: bool | None = None   # True sonda/medición OK · False rechazado · None sin sondar
+    validated: bool | None = None  # True sonda/medición OK · False rechazado · None sin sondar
     validated_at: str | None = None
     note: str = ""
 
 
 @dataclass
 class RunResult:
-    status: str            # ok | error | timeout
+    status: str  # ok | error | timeout
     exit_code: int | None
     cost_usd: float | None
     session_id: str | None
@@ -85,8 +85,7 @@ class HarnessAdapter:
     def version(self) -> str | None:
         if self._version is None and self.installed():
             try:
-                out = run_hidden([self.find_exe(), "--version"], capture_output=True,
-                                 text=True, timeout=20)
+                out = run_hidden([self.find_exe(), "--version"], capture_output=True, text=True, timeout=20)
                 self._version = (out.stdout or out.stderr).strip().splitlines()[0][:80]
             except (subprocess.SubprocessError, OSError, IndexError):
                 self._version = None
@@ -114,10 +113,8 @@ class HarnessAdapter:
     def build_command(self, job: dict) -> list[str]:
         raise NotImplementedError
 
-    def stdin_payload(self, job: dict, prompt: str) -> bytes | None:
-        """Qué va por stdin (el prompt, por defecto). None si el adapter lo pasa
-        como argumento en build_command."""
-        return prompt.encode("utf-8")
+    # El prompt va SIEMPRE por stdin: lo decide runner.build_invocation, no el adapter (había un
+    # stdin_payload aquí que nadie consultaba; borrado el 20-nov, #1361).
 
     def env(self, settings: dict) -> dict:
         """Variables de entorno extra para el subproceso (p.ej. API keys leídas de
@@ -153,6 +150,7 @@ class HarnessAdapter:
             "capabilities": asdict(self.capabilities),
             "models": [asdict(m) for m in models],
             "models_source": self._models_source,
-            "models_refreshed_at": (time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(self._models_at))
-                                    if self._models_at else None),
+            "models_refreshed_at": (
+                time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(self._models_at)) if self._models_at else None
+            ),
         }

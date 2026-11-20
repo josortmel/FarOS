@@ -5,8 +5,6 @@ el puerto. Ahora el daemon coge el puerto LO PRIMERO y, si ya es de otro, se va 
 import asyncio
 import socket
 
-import pytest
-
 from faros import daemon
 
 
@@ -34,6 +32,7 @@ def test_con_el_puerto_ocupado_se_va_sin_abrir_la_base_ni_crear_la_casa(tmp_path
 
     def no(*a, **k):
         raise AssertionError("abrió la base con el puerto ocupado")
+
     monkeypatch.setattr(daemon.db, "connect", no)
     s, port = _ocupado()
     try:

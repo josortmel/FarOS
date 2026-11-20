@@ -34,10 +34,19 @@ SALIDA_MAX = 20000
 PREFIJO = "faros-prueba-"
 # lo único que hereda el comando del entorno del daemon; todo lo demás se construye
 # USERNAME (#595, 22-oct): sin él, test_acl_154 da KeyError y ninguna prueba «suite completa» podía pasar
-_HEREDA = ("PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "NUMBER_OF_PROCESSORS",
-           "PROCESSOR_ARCHITECTURE", "OS", "USERNAME")
-CAMPOS = {"repo", "commit", "en", "prueba", "rojo_en_padre", "pruebas", "ficheros", "memorias", "texto",
-          "comprueba"}
+_HEREDA = (
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "COMSPEC",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "OS",
+    "USERNAME",
+)
+CAMPOS = {"repo", "commit", "en", "prueba", "rojo_en_padre", "pruebas", "ficheros", "memorias", "texto", "comprueba"}
 
 
 class PruebaError(ValueError):
@@ -70,8 +79,9 @@ def leer(texto: str, repos_admitidos: list[str] | None = None) -> dict:
 
 
 def _git(repo: str, *args: str, timeout: int = 60) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout)
+    return subprocess.run(
+        ["git", "-C", repo, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout
+    )
 
 
 def entorno_limpio(base: Path, repo: str | None = None) -> dict:
@@ -87,10 +97,19 @@ def entorno_limpio(base: Path, repo: str | None = None) -> dict:
     tmp, home, casa = base / "tmp", base / "home", base / "casa"
     for d in (tmp, home, casa):
         d.mkdir(parents=True, exist_ok=True)
-    env.update(TEMP=str(tmp), TMP=str(tmp), HOME=str(home), USERPROFILE=str(home),
-               APPDATA=str(home / "Roaming"), LOCALAPPDATA=str(home / "Local"),
-               FAROS_HOME=str(casa), AGENTICOS_HOME=str(casa),
-               PYTHONUSERBASE=site.getuserbase(), PYTHONIOENCODING="utf-8", GIT_TERMINAL_PROMPT="0")
+    env.update(
+        TEMP=str(tmp),
+        TMP=str(tmp),
+        HOME=str(home),
+        USERPROFILE=str(home),
+        APPDATA=str(home / "Roaming"),
+        LOCALAPPDATA=str(home / "Local"),
+        FAROS_HOME=str(casa),
+        AGENTICOS_HOME=str(casa),
+        PYTHONUSERBASE=site.getuserbase(),
+        PYTHONIOENCODING="utf-8",
+        GIT_TERMINAL_PROMPT="0",
+    )
     if repo:
         modulos = Path(repo) / "app" / "node_modules"
         if modulos.is_dir():
@@ -115,6 +134,7 @@ def _borrar(base: Path) -> None:
     """Borra la copia entera, también si dentro quedaron ficheros de solo lectura (los objetos de
     git lo son). `ignore_errors=True` se rendía con ellos: el 16-oct dejaba faros-prueba-*/ en
     %TEMP% en 3 de 8 corridas. Aquí se quita el atributo de solo lectura y se reintenta."""
+
     def reintenta(func, ruta, *_exc):
         try:
             os.chmod(ruta, stat.S_IWRITE)
@@ -135,13 +155,16 @@ def cabecera_git(copia: str) -> tuple[str, str]:
     head = _git(copia, "rev-parse", "HEAD").stdout.strip()
     estado = _git(copia, "status", "--porcelain").stdout.rstrip()
     texto = f"git rev-parse HEAD: {head}\n" + (
-        "git status: limpio" if not estado else
-        "git status: CON CAMBIOS sin commitear (lo que se corrió no es solo ese commit):\n" + estado)
+        "git status: limpio"
+        if not estado
+        else "git status: CON CAMBIOS sin commitear (lo que se corrió no es solo ese commit):\n" + estado
+    )
     return head, texto
 
 
-def ejecutar(repo: str, commit: str, comando: str, timeout: int = TIMEOUT_S,
-             traer: tuple[str, list[str]] | None = None) -> dict:
+def ejecutar(
+    repo: str, commit: str, comando: str, timeout: int = TIMEOUT_S, traer: tuple[str, list[str]] | None = None
+) -> dict:
     """Corre `comando` en una copia desechable de `repo` en `commit`. Devuelve código, salida
     (cortada) y si se pasó de tiempo. La copia se borra siempre, también si algo falla.
     La salida empieza por la cabecera de git (#766): el hash y si había cambios sin commitear.
@@ -152,20 +175,23 @@ def ejecutar(repo: str, commit: str, comando: str, timeout: int = TIMEOUT_S,
     try:
         r = _git(repo, "worktree", "add", "--detach", str(copia), commit)
         if r.returncode != 0:
-            return {"code": None, "salida": f"no se pudo sacar la copia: {r.stderr.strip()[:500]}",
-                    "timeout": False}
+            return {"code": None, "salida": f"no se pudo sacar la copia: {r.stderr.strip()[:500]}", "timeout": False}
         if traer and traer[1]:
             rt = _git(str(copia), "checkout", traer[0], "--", *traer[1])
             if rt.returncode != 0:
-                return {"code": None, "salida": f"no se pudieron traer las pruebas: {rt.stderr.strip()[:500]}",
-                        "timeout": False}
+                return {
+                    "code": None,
+                    "salida": f"no se pudieron traer las pruebas: {rt.stderr.strip()[:500]}",
+                    "timeout": False,
+                }
         head, cabecera = cabecera_git(str(copia))
         try:
             args = shlex.split(comando)
         except ValueError as e:
             return {"code": None, "salida": f"comando mal escrito: {e}", "timeout": False}
-        proc = subprocess.Popen(args, cwd=str(copia), env=entorno_limpio(base, repo),
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(
+            args, cwd=str(copia), env=entorno_limpio(base, repo), stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
         try:
             out, _ = proc.communicate(timeout=timeout)
             excedido = False
@@ -175,9 +201,14 @@ def ejecutar(repo: str, commit: str, comando: str, timeout: int = TIMEOUT_S,
             excedido = True
         salida = (out or b"").decode("utf-8", errors="replace")
         if len(salida) > SALIDA_MAX:
-            salida = salida[:SALIDA_MAX // 2] + "\n…\n" + salida[-SALIDA_MAX // 2:]
-        return {"code": None if excedido else proc.returncode, "salida": cabecera + "\n\n" + salida,
-                "timeout": excedido, "head": head, "cabecera": cabecera}
+            salida = salida[: SALIDA_MAX // 2] + "\n…\n" + salida[-SALIDA_MAX // 2 :]
+        return {
+            "code": None if excedido else proc.returncode,
+            "salida": cabecera + "\n\n" + salida,
+            "timeout": excedido,
+            "head": head,
+            "cabecera": cabecera,
+        }
     finally:
         _git(repo, "worktree", "remove", "--force", str(copia))
         _git(repo, "worktree", "prune")
@@ -194,8 +225,7 @@ ECODB_TIMEOUT = 5.0
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 
-def _pregunta_a_ecodb(mid: str, clave: str, base: str | None = None,
-                      timeout: float = ECODB_TIMEOUT) -> dict:
+def _pregunta_a_ecodb(mid: str, clave: str, base: str | None = None, timeout: float = ECODB_TIMEOUT) -> dict:
     """Una memoria: existe o no, y quién la escribió. ok=None significa «no lo sé» — sin clave o
     con EcoDB sin responder NO se tumba el trabajo (decisión de Prima, 20-oct): un verificador que
     rebota trabajo bueno enseña a la gente a no usarlo."""
@@ -205,8 +235,7 @@ def _pregunta_a_ecodb(mid: str, clave: str, base: str | None = None,
         with urllib.request.urlopen(req, timeout=timeout) as r:
             datos = json.loads(r.read().decode("utf-8", errors="replace"))
         quien = (datos or {}).get("agent_identifier") or "?"
-        return {"id": mid, "ok": True, "agente": quien,
-                "detalle": f"existe; la escribió {quien}"}
+        return {"id": mid, "ok": True, "agente": quien, "detalle": f"existe; la escribió {quien}"}
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return {"id": mid, "ok": False, "agente": None, "detalle": "no existe en EcoDB (404)"}
@@ -215,24 +244,27 @@ def _pregunta_a_ecodb(mid: str, clave: str, base: str | None = None,
             # («no read access to this memory»). Es anti-discovery a propósito, así que el 403
             # no distingue «no existe» de «existe y no es tuya» — y fallar por eso rebotaría
             # citas legítimas de memorias ajenas. No se tumba: se le dice al juez y lo pesa.
-            return {"id": mid, "ok": None, "agente": None,
-                    "detalle": "EcoDB no la da a esta clave (403: no existe o no es visible)"}
+            return {
+                "id": mid,
+                "ok": None,
+                "agente": None,
+                "detalle": "EcoDB no la da a esta clave (403: no existe o no es visible)",
+            }
         return {"id": mid, "ok": None, "agente": None, "detalle": f"EcoDB respondió {e.code}"}
     except Exception as e:  # noqa: BLE001 — cualquier fallo de red es «no lo sé», no un rojo
-        return {"id": mid, "ok": None, "agente": None,
-                "detalle": f"no pude preguntar a EcoDB ({type(e).__name__})"}
+        return {"id": mid, "ok": None, "agente": None, "detalle": f"no pude preguntar a EcoDB ({type(e).__name__})"}
 
 
-def comprobar_memorias(ids: list[str], clave: str | None, base: str | None = None,
-                       timeout: float = ECODB_TIMEOUT) -> list[dict]:
+def comprobar_memorias(
+    ids: list[str], clave: str | None, base: str | None = None, timeout: float = ECODB_TIMEOUT
+) -> list[dict]:
     """Las memorias citadas por su id. Sin clave no se pregunta nada y todas quedan sin decidir."""
     if not clave:
         return [{"id": m, "ok": None, "agente": None, "detalle": "sin clave de EcoDB"} for m in ids]
     salida = []
     for m in ids:
         if not _UUID.match(str(m)):
-            salida.append({"id": m, "ok": None, "agente": None,
-                           "detalle": "no parece un id de memoria (UUID)"})
+            salida.append({"id": m, "ok": None, "agente": None, "detalle": "no parece un id de memoria (UUID)"})
         else:
             salida.append(_pregunta_a_ecodb(m, clave, base, timeout))
     return salida
@@ -265,10 +297,12 @@ def comprobar(p: dict, clave_ecodb: str | None = None) -> dict:
             integracion = rama_integracion(repo)
             rama = p.get("en") or integracion
             dentro = _git(repo, "merge-base", "--is-ancestor", commit, rama).returncode == 0
-            anota(f"commit en {rama}", dentro,
-                  f"{commit} {'está' if dentro else 'NO está'} en {rama}")
-            if dentro and rama != integracion and \
-                    _git(repo, "merge-base", "--is-ancestor", commit, integracion).returncode != 0:
+            anota(f"commit en {rama}", dentro, f"{commit} {'está' if dentro else 'NO está'} en {rama}")
+            if (
+                dentro
+                and rama != integracion
+                and _git(repo, "merge-base", "--is-ancestor", commit, integracion).returncode != 0
+            ):
                 no_fusionado = rama
     for f in p.get("ficheros", []):
         anota(f"existe {f}", Path(f).exists(), f"{Path(f).stat().st_size} bytes" if Path(f).exists() else "no existe")
@@ -276,8 +310,7 @@ def comprobar(p: dict, clave_ecodb: str | None = None) -> dict:
     if p.get("prueba") and all(c["ok"] for c in checks):
         r = ejecutar(repo, commit, p["prueba"])
         salida, head, cabecera = r["salida"], r.get("head"), r.get("cabecera")
-        anota("prueba en el commit", r["code"] == 0,
-              "timeout" if r["timeout"] else f"salió con {r['code']}")
+        anota("prueba en el commit", r["code"] == 0, "timeout" if r["timeout"] else f"salió con {r['code']}")
         if p.get("rojo_en_padre"):
             pruebas = p.get("pruebas") or ficheros_de_prueba(repo, commit)
             rp = ejecutar(repo, f"{commit}^", p["prueba"], traer=(commit, pruebas))
@@ -285,9 +318,13 @@ def comprobar(p: dict, clave_ecodb: str | None = None) -> dict:
             # pytest sale con 4 (fichero que no existe) o 5 (nada que correr) cuando el test es NUEVO
             # en el commit: el padre «falla» sin demostrar nada. Lo decimos para que lo pese el juez.
             trivial = rp["code"] in (4, 5)
-            anota("prueba en el padre (debe fallar)", rp["code"] not in (0, None),
-                  "timeout" if rp["timeout"] else
-                  f"salió con {rp['code']}" + (" (TRIVIAL: la prueba no existe en el padre)" if trivial else ""))
+            anota(
+                "prueba en el padre (debe fallar)",
+                rp["code"] not in (0, None),
+                "timeout"
+                if rp["timeout"]
+                else f"salió con {rp['code']}" + (" (TRIVIAL: la prueba no existe en el padre)" if trivial else ""),
+            )
     sin_decidir = []
     for m in comprobar_memorias(p.get("memorias", []), clave_ecodb):
         if m["ok"] is None:
@@ -298,6 +335,14 @@ def comprobar(p: dict, clave_ecodb: str | None = None) -> dict:
     if no_fusionado:
         # #693: no tumba (el commit está donde dice), pero el verificador no lo puede dar por bueno
         sin_decidir.append(f"commit {commit} no fusionado en {rama_integracion(repo)} (solo en {no_fusionado})")
-    return {"ok": all(c["ok"] for c in checks), "checks": checks,
-            "salida": salida, "salida_padre": salida_padre, "sin_decidir": sin_decidir,
-            "no_fusionado": no_fusionado, "head": head, "cabecera": cabecera, "cabecera_padre": cabecera_padre}
+    return {
+        "ok": all(c["ok"] for c in checks),
+        "checks": checks,
+        "salida": salida,
+        "salida_padre": salida_padre,
+        "sin_decidir": sin_decidir,
+        "no_fusionado": no_fusionado,
+        "head": head,
+        "cabecera": cabecera,
+        "cabecera_padre": cabecera_padre,
+    }

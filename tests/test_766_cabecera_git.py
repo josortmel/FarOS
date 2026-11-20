@@ -14,13 +14,15 @@ from faros import prueba, verifier
 
 
 def _git(repo, *args):
-    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args],
-                   check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", *args], check=True, capture_output=True
+    )
 
 
 def _sha(repo, ref="HEAD"):
-    return subprocess.run(["git", "-C", str(repo), "rev-parse", ref],
-                          capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", ref], capture_output=True, text=True, check=True
+    ).stdout.strip()
 
 
 @pytest.fixture
@@ -34,7 +36,8 @@ def repo(tmp_path):
     _git(r, "commit", "-q", "-m", "con el fallo")
     (r / "calc.py").write_text("def suma(a, b):\n    return a + b\n", encoding="utf-8")
     (r / "test_calc.py").write_text(
-        "import sys\nfrom calc import suma\nsys.exit(0 if suma(2, 2) == 4 else 1)\n", encoding="utf-8")
+        "import sys\nfrom calc import suma\nsys.exit(0 if suma(2, 2) == 4 else 1)\n", encoding="utf-8"
+    )
     _git(r, "commit", "-q", "-am", "arreglo y su prueba")
     return r
 
