@@ -274,7 +274,11 @@ def test_mezcla_de_cambiados_y_sin_cambios_no_lee_con_el_candado_cogido(mundo, m
 
     def leer(p, t=None):
         if str(p).endswith("f060.md"):
-            otra = sqlite3.connect(mundo.t / "faros.db", timeout=0)
+            # timeout 0.25 s, not 0 (#1361, 20-nov): the background writer below takes the write lock
+            # every 4 ms for a few ms, and with timeout=0 the probe sometimes caught IT (CI on main,
+            # Python 3.11: [False]). Its transactions end within the wait; if recorrer held the lock,
+            # it would hold it for the whole slow read (0.5 s, after this probe) and the probe fails.
+            otra = sqlite3.connect(mundo.t / "faros.db", timeout=0.25)
             try:
                 otra.execute("BEGIN IMMEDIATE")
                 otra.rollback()
