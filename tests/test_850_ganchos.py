@@ -107,20 +107,33 @@ def test_el_gancho_corre_despues_del_commit(m, monkeypatch):
     assert vistos == [(False, "verified")]
 
 
-def test_cierre_con_50_rutas_no_espera_y_acaba_registrando_las_50(m):
+def test_cierre_con_50_rutas_no_espera_y_acaba_registrando_las_50(m, monkeypatch):
+    # #1361 (20-nov): the property, not its symptom. «dt < 0.2 s» failed on the slow CI machine (0.51 s,
+    # Python 3.11) and could not tell a slow runner from the bug. Now the first registration in the
+    # background is held for 6 s: if closing waited for it, closing takes at least 6 s; it does not, so
+    # closing takes what it always takes (0.5 s on the slowest runner seen). 3 s sits between the two.
+    soltar = threading.Event()
+    real = L.registrar
+    primera = []
+
+    def registrar_retenido(*a, **k):
+        if not primera:
+            primera.append(True)
+            soltar.wait(6)
+        return real(*a, **k)
+
+    monkeypatch.setattr(L, "registrar", registrar_retenido)
     rutas = [str(_w(m.ses / "masa" / f"n{i}.md", f"# Nota {i}")) for i in range(50)]
     t = _ticket(m.conn)
     t0 = time.perf_counter()
     s.complete_ticket(m.conn, "owner", t["id"], "file_path", " ".join(rutas))
     dt = time.perf_counter() - t0
+    soltar.set()
     L.esperar_pendientes()
-    total = time.perf_counter() - t0
-    print(
-        f"cierre con 50 rutas: la peticion {dt * 1000:.0f} ms; con el registro en segundo plano {total * 1000:.0f} ms"
-    )
+    print(f"cierre con 50 rutas: la peticion {dt * 1000:.0f} ms con el registro de fondo retenido")
+    assert dt < 3, f"el cierre esperó al registro en segundo plano ({dt:.1f} s)"
     assert len(_filas(m.conn, origen="cierre")) == 50
     assert m.conn.execute("SELECT count(*) FROM library_links WHERE ticket_id=?", (t["id"],)).fetchone()[0] == 50
-    assert dt < 0.2
 
 
 def test_con_pocas_rutas_el_registro_es_en_linea(m):
