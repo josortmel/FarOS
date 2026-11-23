@@ -665,7 +665,8 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
 
     @app.get("/api/tickets/{ticket_id}", dependencies=dep)
     async def get_ticket(ticket_id: int):
-        return s._as_dict(conn, s._get(conn, ticket_id))
+        # #1349: deps/blocks solo en la ficha de UNA tarea (las listas siguen con unmet_deps)
+        return {**s._as_dict(conn, s._get(conn, ticket_id)), **w.deps_of(conn, ticket_id)}
 
     @app.post("/api/tickets/{ticket_id}/transition", dependencies=dep)
     async def transition(ticket_id: int, body: dict):

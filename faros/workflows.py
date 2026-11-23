@@ -311,6 +311,26 @@ def add_dep(conn, agent, ticket_id, depends_on) -> dict:
     return _as_dict(conn, _get(conn, ticket_id))
 
 
+def deps_of(conn, ticket_id) -> dict:
+    """#1349: todas las dependencias de UNA tarea, en las dos direcciones y sin filtrar por estado
+    (unmet_deps solo da las que faltan; la ficha necesita ver y poder quitar también las cumplidas).
+    deps = las tareas a las que espera; blocks = las tareas que la esperan."""
+
+    def _filas(sql):
+        return [dict(r) for r in conn.execute(sql, (ticket_id,))]
+
+    return {
+        "deps": _filas(
+            "SELECT t.id, t.plan_key, t.title, t.status FROM ticket_deps d"
+            " JOIN tickets t ON t.id = d.depends_on WHERE d.ticket_id=? ORDER BY t.id"
+        ),
+        "blocks": _filas(
+            "SELECT t.id, t.plan_key, t.title, t.status FROM ticket_deps d"
+            " JOIN tickets t ON t.id = d.ticket_id WHERE d.depends_on=? ORDER BY t.id"
+        ),
+    }
+
+
 def remove_dep(conn, agent, ticket_id, depends_on) -> dict:
     _validate_agent(agent, family_only=True)
     t = _get(conn, ticket_id)

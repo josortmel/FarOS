@@ -1064,3 +1064,40 @@
     order: -1;
   }
 }
+
+/* #1349: Dependencias en la ficha — dedos de 44 px, letra ≥ 14 px y 16 px en la búsqueda (iOS acerca la página si no) */
+@media (max-width: 540px),
+  (max-height: 500px) and (pointer: coarse),
+  (hover: none) and (pointer: coarse) and (max-width: 1366px) {
+  .dep__x {
+    width: 44px;
+    height: 44px;
+    font-size: 1.4rem;
+  }
+  .dep-find__in {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+  .dep-opt {
+    min-height: 44px;
+    align-items: center;
+  }
+  .dep__add {
+    min-height: 44px;
+  }
+}
+@media (max-width: 540px) {
+  .dep__key,
+  .dep__st,
+  .deps__gtitle,
+  .deps__err .bd__raw {
+    font-size: var(--text-small);
+  }
+  .dep {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .dep__title {
+    flex: 1 1 8rem;
+  }
+}

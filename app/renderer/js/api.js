@@ -133,6 +133,10 @@ const live = {
   createTicket: (t) => http('/api/tickets', { method: 'POST', body: JSON.stringify(t) }),
   patchTicket: (id, t) => http(`/api/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(t) }),
   ticket: (id) => http(`/api/tickets/${id}`),
+  /* #1349: dependencias de una tarea de workflow. Añadir {agent, depends_on}; quitar lleva el agente en la query */
+  addDep: (id, b) => http(`/api/tickets/${id}/deps`, { method: 'POST', body: JSON.stringify(b) }),
+  removeDep: (id, dependsOn, agent) =>
+    http(`/api/tickets/${id}/deps/${dependsOn}?agent=${encodeURIComponent(agent ?? '')}`, { method: 'DELETE' }),
   history: (id) => http(`/api/tickets/${id}/history`),
   transition: (id, body) => http(`/api/tickets/${id}/transition`, { method: 'POST', body: JSON.stringify(body) }),
   patchJob: (id, j) => http(`/api/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(j) }),
@@ -401,6 +405,38 @@ function makeMock() {
   /* #1318: los workflows importados en la demo llevan su propio detalle; el resto, el de fixtures */
   const importedWf = new Map();
   const detailOf = (id) => importedWf.get(Number(id)) ?? db.wfDetail;
+
+  /* #1349: las dependencias de la demo (ticket → los que espera), con las reglas del motor (workflows.add_dep) */
+  const demoDeps = new Map();
+  function wfTicketAny(id) {
+    for (const d of [db.wfDetail, ...importedWf.values()]) {
+      if (!d) continue;
+      const t = wfTicket(id, d);
+      if (t) return { t, wfId: d.id };
+    }
+    return null;
+  }
+  const depRow = (id) => {
+    const t = db.tickets.get(id) ?? wfTicketAny(id)?.t; // como transition(): manda el del tablero, si lo hay
+    return { id, plan_key: t?.plan_key ?? null, title: t?.title ?? `#${id}`, status: t?.status ?? 'accepted' };
+  };
+  function depsOf(id) {
+    return {
+      deps: [...(demoDeps.get(id) ?? [])].sort((a, b) => a - b).map(depRow),
+      blocks: [...demoDeps.entries()]
+        .filter(([, set]) => set.has(id))
+        .map(([k]) => k)
+        .sort((a, b) => a - b)
+        .map(depRow),
+    };
+  }
+  /* unmet_deps / ready de la tarjeta, como los calcula el motor: espera a lo que no está verificado */
+  function syncReady(id) {
+    const f = wfTicketAny(id);
+    if (!f) return;
+    f.t.unmet_deps = depsOf(id).deps.filter((d) => d.status !== 'verified');
+    f.t.ready = !f.t.unmet_deps.length;
+  }
 
   /* el resumen por fase se recalcula de las tarjetas: la tira de fases no puede mentir */
   function refreshPhaseSummary(wf) {
@@ -737,8 +773,10 @@ function makeMock() {
     },
 
     async ticket(id) {
-      const t = db.tickets.get(Number(id));
-      if (t) return t;
+      await this._wf();
+      const wf = wfTicketAny(Number(id));
+      const t = db.tickets.get(Number(id)) ?? wf?.t;
+      if (t) return { ...t, ...(wf ? { workflow_id: wf.wfId } : {}), ...depsOf(Number(id)) };
       /* T2.5: tickets que solo viven en el calendario de fixtures — el panel los abre igual */
       const it = (await this._cal()).items.find((i) => i.ticket_id === Number(id));
       if (!it)
@@ -769,6 +807,54 @@ function makeMock() {
     },
     async history(id) {
       return db.history.get(Number(id)) ?? [];
+    },
+    /* #1349: mismas comprobaciones y MISMOS textos que faros/workflows.py add_dep (400), en el mismo orden */
+    async addDep(id, { agent, depends_on }) {
+      await this._wf();
+      id = Number(id);
+      depends_on = Number(depends_on);
+      if (!agent) return reject400('falta agent', 'request.agent_required', 'agent');
+      const a = wfTicketAny(id);
+      const b = wfTicketAny(depends_on);
+      if (!a && !db.tickets.get(id)) return Promise.reject(new ApiError(404, { reason: 'El ticket no existe.' }));
+      if (id === depends_on) return reject400('una tarea no puede depender de sí misma', 'dep.self');
+      if (!a || !b || a.wfId !== b.wfId)
+        return reject400('las dependencias son entre tareas del MISMO workflow', 'dep.workflow');
+      const estado = (db.tickets.get(id) ?? a.t).status;
+      if (!['accepted', 'blocked', 'proposed'].includes(estado))
+        return reject400(
+          `no se añaden dependencias a una tarea en '${estado}' — solo antes de empezar (accepted|blocked|proposed)`,
+          'dep.status',
+        );
+      const stack = [depends_on];
+      const seen = new Set();
+      while (stack.length) {
+        const cur = stack.pop();
+        if (cur === id)
+          return reject400(
+            `dependencia rechazada: crearía un ciclo (#${depends_on} ya depende de #${id})`,
+            'dep.cycle',
+          );
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        stack.push(...(demoDeps.get(cur) ?? []));
+      }
+      if (!demoDeps.has(id)) demoDeps.set(id, new Set());
+      demoDeps.get(id).add(depends_on);
+      syncReady(id);
+      emitChange('ticket.updated', { ticket_id: id });
+      return { ...a.t, ...depsOf(id) };
+    },
+    async removeDep(id, dependsOn, agent) {
+      await this._wf();
+      id = Number(id);
+      if (!agent) return reject400('falta agent', 'request.agent_required', 'agent');
+      const set = demoDeps.get(id);
+      if (set?.delete(Number(dependsOn))) {
+        syncReady(id);
+        emitChange('ticket.updated', { ticket_id: id });
+      }
+      return { ...(wfTicketAny(id)?.t ?? {}), ...depsOf(id) };
     },
 
     async transition(id, { action, agent, evidence_type, evidence, note, to, reason }) {
@@ -1299,6 +1385,7 @@ function makeMock() {
         const unmet = (t.depende_de ?? []).map((k) => ({ id: byKey[k].id, plan_key: k, status: 'accepted' }));
         byKey[t.key].unmet_deps = unmet;
         byKey[t.key].ready = !unmet.length;
+        if (unmet.length) demoDeps.set(byKey[t.key].id, new Set(unmet.map((u) => u.id)));
       }
       const detail = {
         id,

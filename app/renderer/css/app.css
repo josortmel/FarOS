@@ -1174,25 +1174,161 @@ textarea:focus-visible {
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
 }
-.plan__dep {
+/* #1349 — Dependencias: «Espera a» / «La esperan». Solo tokens: lo que falta, en aviso; lo hecho, apagado con ✓;
+   lo que FRENA a otras, en el tono fuerte (danger) en el título del grupo. */
+.deps__group + .deps__group {
+  margin-top: var(--sp-3);
+}
+.deps__gtitle {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  letter-spacing: 0.06em;
+  color: var(--color-text-soft);
+  font-weight: 600;
+  margin-bottom: var(--sp-1);
+}
+.deps__group--frena .deps__gtitle {
+  color: var(--color-danger);
+}
+.deps__list {
+  list-style: none;
   display: flex;
-  gap: 0.5em;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: var(--sp-2);
+}
+.deps__empty,
+.deps__run {
+  font-size: var(--text-small);
+  color: var(--color-text-mute);
+  margin: 0 0 var(--sp-2);
+}
+.dep,
+.dep-opt {
+  display: flex;
   align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--text-small);
+  min-width: 0;
+}
+.dep {
+  padding: 0.2rem 0 0.2rem 0;
+  border-radius: 6px;
+}
+.dep__key {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: var(--color-bg-warm);
+  color: var(--color-text);
+}
+.dep__title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+}
+.dep__st {
+  flex: none;
   font-family: var(--font-mono);
   font-size: var(--text-meta);
 }
-.plan__dep-key {
-  font-weight: 700;
-  color: var(--color-orange-deep);
+.dep--falta .dep__st {
+  color: var(--color-warn);
+  font-weight: 600;
 }
-.plan__dep--met {
-  color: var(--color-ok);
+.dep--falta .dep__key {
+  background: var(--color-warn-wash);
+  color: var(--color-warn);
 }
-.plan__dep--unmet {
+.dep--hecha .dep__title,
+.dep--hecha .dep__st {
   color: var(--color-text-mute);
 }
-.plan__dep--unmet .plan__dep-key {
-  color: var(--color-text-soft);
+.dep--hecha .dep__key {
+  color: var(--color-text-mute);
+  font-weight: 500;
+}
+.dep--hecha .dep__st {
+  color: var(--color-ok);
+}
+.dep__x {
+  flex: none;
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-mute);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.dep__x:hover {
+  background: var(--color-danger-wash);
+  color: var(--color-danger);
+}
+.dep__x:focus-visible,
+.dep-find__in:focus-visible {
+  outline: 2px solid var(--color-orange-deep);
+  outline-offset: 1px;
+}
+.dep-find {
+  position: relative;
+}
+.dep-find__in {
+  width: 100%;
+  font: inherit;
+  font-size: var(--text-small);
+  padding: 0.45rem var(--sp-3);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+.dep-find__list {
+  list-style: none;
+  margin-top: var(--sp-1);
+  max-height: 14rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-card);
+  background: var(--color-bg);
+}
+.dep-opt {
+  padding: 0.45rem var(--sp-3);
+  cursor: pointer;
+}
+.dep-opt.is-active {
+  background: var(--color-bg-well);
+}
+.dep-opt.is-off {
+  color: var(--color-text-mute);
+  cursor: not-allowed;
+}
+.dep-opt.is-off .dep__title {
+  color: var(--color-text-mute);
+}
+.dep-opt--vacio {
+  color: var(--color-text-mute);
+  cursor: default;
+}
+.deps__err {
+  margin-bottom: var(--sp-3);
+}
+.deps__skel span {
+  display: block;
+  height: 1.4rem;
+  margin-bottom: 0.4rem;
+  border-radius: 6px;
+  background: var(--color-bg-well);
+}
+.deps__skel span:last-child {
+  width: 60%;
 }
 
 /* zona de máquina — Nivel B: panel oscuro, Commit Mono */
