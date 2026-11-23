@@ -2,6 +2,16 @@
 
 Notable changes to FarOS. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 3.3.53 — 2026-11-23
+
+### Fixed
+- **A finished or closed task no longer says «Already under way» in Dependencies.** Trying to add a dependency to a task that is done, rejected or closed now says it is already finished or closed (dependencies are set before starting).
+
+## 3.3.52 — 2026-11-23
+
+### Added
+- **Dependencies in the task panel.** A task of a workflow shows what it waits for and what waits for it, done or not, and dependencies can be added and removed from there, on desktop and phone. The API gives them in the single-task GET (`deps` and `blocks`); the lists keep only what is still missing.
+
 ## 3.3.51 — 2026-11-20
 
 ### Added

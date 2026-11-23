@@ -11,6 +11,7 @@ import { fmtWhen, fmtDate, fmtWhenScheduled, esc, projectColor } from '../util.j
 import { t as tr, applyI18n } from '../i18n.js'; // #314
 import { api } from '../api.js';
 import { notaHTML, avisosDe } from './criterio_avisos.js'; // #1136
+import { renderDepsSection } from './deps.js'; // #1349
 
 let handlers = null; // { onTransition(t, target, action), onOpenJob(jobId), onPatchTime(t, patch), onPatchFields(t, patch), onTiempoLibre(t, libre), onClose }
 
@@ -230,8 +231,7 @@ const PLAN_SECTIONS = [
   ['tests', 'Tests'],
   ['criterio', 'Criterio'],
   ['rollback', 'Rollback'],
-  ['depende_de', 'Depende de'],
-];
+]; // #1349: «Depende de» ya no está aquí: la verdad es el bloque «Dependencias»
 
 function parsePlan(t) {
   if (!t.plan_data) return null;
@@ -258,7 +258,6 @@ function renderPlanSections(t, plan) {
   s.innerHTML = `<div class="panel__section-title">${tr('Ficha del Plan')}${plan.key ? ` · ${esc(plan.key)}` : ''}</div>
     ${facts ? `<div class="plan__facts">${facts}</div>` : ''}`;
 
-  const unmet = new Map((t.unmet_deps ?? []).map((d) => [d.plan_key ?? `#${d.id}`, d]));
   const dl = document.createElement('dl');
   dl.className = 'plan__grid';
   for (const [field, label] of PLAN_SECTIONS) {
@@ -271,16 +270,6 @@ function renderPlanSections(t, plan) {
       dd.innerHTML = `<ul class="plan__list plan__list--files">${[]
         .concat(v)
         .map((f) => `<li><code>${esc(f)}</code></li>`)
-        .join('')}</ul>`;
-    } else if (field === 'depende_de') {
-      dd.innerHTML = `<ul class="plan__list plan__list--deps">${[]
-        .concat(v)
-        .map((k) => {
-          const d = unmet.get(k);
-          return d
-            ? `<li class="plan__dep plan__dep--unmet"><span class="plan__dep-key">${esc(k)}</span> ${esc(STATUS_LABEL[d.status] ?? d.status)} — ${tr('espera')}</li>`
-            : `<li class="plan__dep plan__dep--met"><span class="plan__dep-key">${esc(k)}</span> ✓</li>`;
-        })
         .join('')}</ul>`;
     } else if (field === 'criterio') {
       dd.innerHTML = `<div class="panel__criteria">${esc(String(v))}</div>`;
@@ -340,6 +329,9 @@ export async function openPanel(t, board) {
 
   /* ---------- T3.7: ficha del Plan por secciones ---------- */
   if (plan) body.appendChild(renderPlanSections(t, plan));
+
+  /* ---------- #1349: dependencias (solo si la tarea es de un workflow) ---------- */
+  body.appendChild(renderDepsSection(t, { me: handlers.me }));
 
   /* ---------- criterio de verificación (sin Plan: el del ticket) ---------- */
   if (t.verify_criteria && !(plan && plan.criterio)) {
