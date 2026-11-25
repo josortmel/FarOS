@@ -241,17 +241,22 @@ def test_un_bloque_real_de_6000_caracteres_conserva_su_formato_y_el_peor_caso_es
     assert "<strong>" not in L.md_a_html("**x** " + "y" * 10001)
 
 
-def _escritor(mundo, parar, esperas, errores):
+def _escritor(mundo, parar, esperas, errores, turno=None):
+    """Otro escritor que coge el candado cada 4 ms. Con `turno` (un threading.Lock), cada
+    transacción suya va entera dentro del turno: quien coja el turno sabe que este escritor
+    no está a mitad de una."""
     c = db.connect(mundo.t / "faros.db")
     n = 0
+    turno = turno or threading.Lock()
     while not parar.is_set():
         n += 1
         t0 = time.perf_counter()
-        try:
-            c.execute("INSERT INTO projects (name, created_at) VALUES (?, 'x')", (f"q{n}",))
-            c.commit()
-        except sqlite3.OperationalError as e:
-            errores.append(str(e))
+        with turno:
+            try:
+                c.execute("INSERT INTO projects (name, created_at) VALUES (?, 'x')", (f"q{n}",))
+                c.commit()
+            except sqlite3.OperationalError as e:
+                errores.append(str(e))
         esperas.append(time.perf_counter() - t0)
         time.sleep(0.004)
     c.close()
@@ -271,22 +276,24 @@ def test_mezcla_de_cambiados_y_sin_cambios_no_lee_con_el_candado_cogido(mundo, m
     # another connection take the write lock at once? A yes or a no. (An open deferred
     # transaction is fine: registrar reads inside a SAVEPOINT and only writes afterwards.)
     candado_libre_al_leer = []
+    turno = threading.Lock()
 
     def leer(p, t=None):
         if str(p).endswith("f060.md"):
-            # timeout 0.25 s, not 0 (#1361, 20-nov): the background writer below takes the write lock
-            # every 4 ms for a few ms, and with timeout=0 the probe sometimes caught IT (CI on main,
-            # Python 3.11: [False]). Its transactions end within the wait; if recorrer held the lock,
-            # it would hold it for the whole slow read (0.5 s, after this probe) and the probe fails.
-            otra = sqlite3.connect(mundo.t / "faros.db", timeout=0.25)
-            try:
-                otra.execute("BEGIN IMMEDIATE")
-                otra.rollback()
-                candado_libre_al_leer.append(True)
-            except sqlite3.OperationalError:
-                candado_libre_al_leer.append(False)
-            finally:
-                otra.close()
+            # The probe takes the background writer's turn first (25-nov): with it held, that writer
+            # is never in the middle of a transaction, so a busy write lock can only be recorrer's.
+            # Before, a 0.25 s timeout raced the writer and lost on the slow CI machine (main,
+            # Python 3.11, 25-nov: [True, True, True, False]), which said nothing about recorrer.
+            with turno:
+                otra = sqlite3.connect(mundo.t / "faros.db", timeout=0)
+                try:
+                    otra.execute("BEGIN IMMEDIATE")
+                    otra.rollback()
+                    candado_libre_al_leer.append(True)
+                except sqlite3.OperationalError:
+                    candado_libre_al_leer.append(False)
+                finally:
+                    otra.close()
             time.sleep(0.5)
         return real(p, t)
 
@@ -294,7 +301,7 @@ def test_mezcla_de_cambiados_y_sin_cambios_no_lee_con_el_candado_cogido(mundo, m
     real_stat = os.stat
     monkeypatch.setattr(L.os, "stat", lambda p, *a, **k: (time.sleep(0.002), real_stat(p, *a, **k))[1])
     parar, esperas, errores = threading.Event(), [], []
-    hilo = threading.Thread(target=_escritor, args=(mundo, parar, esperas, errores))
+    hilo = threading.Thread(target=_escritor, args=(mundo, parar, esperas, errores, turno))
     hilo.start()
     time.sleep(0.05)
     L.recorrer(mundo.conn, mundo.env)
