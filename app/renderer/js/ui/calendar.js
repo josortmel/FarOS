@@ -18,6 +18,7 @@ import { initYear, renderYear } from './calendar_year.js';
 export { flashDayItem };
 
 let handlers = null; // { onNavigate(dateISO), onOpen(ticketId), onSchedule(item, patch) }
+let propsAbiertas = false; // #1394: la banda de propuestas nace plegada; al recargar, otra vez
 
 export const CAL_VIEWS = [
   { view: 'day', title: 'Día' },
@@ -222,14 +223,30 @@ export function renderCalendar(state, root = document.getElementById('cal-root')
      decisión, no una fecha: en la rejilla solo salía el día en que cae, y las de otra semana no se
      veían hasta navegar hasta ellas. Aquí salen todas, en cualquier rango; se abren y se deciden en
      su ficha. Solo en el calendario del tablero: el de Agentes enseña jobs. */
+  /* #1394 (Pepe, 23-nov): «que yo vea "propuesta por decidir" y la abra manualmente». Siempre
+     abierta se comía la cabecera de la rejilla, sobre todo en móvil e iPad: de base es una línea
+     con su número; lo abierto dura mientras la app está abierta y al recargar vuelve plegada. */
   const props = root.id === 'cal-root' ? (state.board?.columns?.proposed ?? []) : [];
   if (props.length) {
     const strip = document.createElement('div');
     strip.className = 'cal__props';
-    const lab = document.createElement('span');
+    const lab = document.createElement('button');
+    lab.type = 'button';
     lab.className = 'cal__props-label';
-    lab.textContent = `${tr('Propuestas por decidir')} · ${props.length}`;
+    lab.setAttribute('aria-expanded', String(propsAbiertas));
+    lab.setAttribute('aria-controls', 'cal-props-list');
+    lab.innerHTML = `<span>${esc(tr('Propuestas por decidir'))} · ${props.length}</span><span class="cal__props-chev" aria-hidden="true">▸</span>`;
     strip.appendChild(lab);
+    const list = document.createElement('div');
+    list.className = 'cal__props-list';
+    list.id = 'cal-props-list';
+    list.hidden = !propsAbiertas;
+    lab.addEventListener('click', () => {
+      propsAbiertas = !propsAbiertas;
+      lab.setAttribute('aria-expanded', String(propsAbiertas));
+      list.hidden = !propsAbiertas;
+    });
+    strip.appendChild(list);
     for (const t of props) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -238,7 +255,7 @@ export function renderCalendar(state, root = document.getElementById('cal-root')
       const when = fmtWhenScheduled(t) || tr('sin fecha');
       b.innerHTML = `<b>${esc(t.title)}</b><span>${esc(when)}${t.owner ? ' · ' + esc(t.owner) : ''}</span>`;
       b.addEventListener('click', () => handlers.onOpen(t.id));
-      strip.appendChild(b);
+      list.appendChild(b);
     }
     root.appendChild(strip);
   }

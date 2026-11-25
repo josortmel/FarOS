@@ -52,18 +52,21 @@
   /* #604: la banda de propuestas del calendario. En una fila, el rótulo se comía los 390 px y las
      propuestas quedaban fuera; aquí el rótulo va en su línea y las propuestas debajo, enteras. */
   .cal__props {
+    padding: 0 var(--sp-4);
+  }
+  .cal__props-list {
     flex-wrap: wrap;
-    padding: var(--sp-2) var(--sp-4);
   }
   /* #924: en varias líneas y sin tope, cada propuesta sin fecha (se enseñan en todos los días)
-     se comía ~66 px de la rejilla: con varias, a las horas no les quedaba sitio para arrastrar */
-  .cal__props {
+     se comía ~66 px de la rejilla: con varias, a las horas no les quedaba sitio para arrastrar.
+     #1394: el tope va en la lista abierta; plegada, la banda es solo la línea del botón. */
+  .cal__props-list {
     max-height: 24vh;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
   .cal__props-label {
-    flex-basis: 100%;
+    min-height: 44px; /* dedo, no ratón */
   }
   .cal__prop {
     max-width: 100%;

@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import re
 
+from . import piezas as _piezas
+
 # Un comando concreto: algo entre comillas invertidas o un ejecutable conocido seguido de algo.
 _COMANDO = re.compile(
     r"`[^`]+`|\b(?:python|pytest|npm|npx|node|uv|make|bash|sh|cargo|go|dotnet|gradle|mvn|"
@@ -49,6 +51,12 @@ def revisar(criterio: str | None, nivel: str | None = "self") -> list[dict]:
             ]
         return []
     avisos = []
+    sin_piezas = _piezas.aviso_sin_piezas(texto)
+    if sin_piezas:  # #1346 (C10): avisa, no bloquea
+        avisos.append({"punto": "piezas", "aviso": sin_piezas})
+    escondidas = _piezas.aviso_escondidas(texto)
+    if escondidas:  # Prima, 25-nov: lo que partir() no ve no lo ve nadie
+        avisos.append({"punto": "piezas", "aviso": escondidas})
     if _SUITE.search(texto) and not _COMANDO.search(texto):
         avisos.append(
             {

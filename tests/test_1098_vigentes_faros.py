@@ -81,7 +81,7 @@ def test_una_base_v14_llega_a_la_17_con_la_fts_nueva(tmp_path):
     c.commit()
     c.close()
     c = db.connect(str(ruta))
-    assert db.schema_version(c) == db.SCHEMA_VERSION == 17
+    assert db.schema_version(c) == db.SCHEMA_VERSION
     assert c.execute("SELECT name FROM sqlite_master WHERE name = 'decisions_fts'").fetchone() is None
     assert _ids(dec.vigentes_faros(c, "nano")) == [d]
     c.close()
@@ -103,7 +103,7 @@ def test_la_casa_v16_pierde_la_fts_vieja_temporal(tmp_path):
     c.commit()
     c.close()
     c = db.connect(str(ruta))
-    assert db.schema_version(c) == 17
+    assert db.schema_version(c) == db.SCHEMA_VERSION
     assert (
         c.execute(
             "SELECT name FROM sqlite_master WHERE name IN ('decisions_fts', 'decisions_fts_ai', 'decisions_fts_au')"

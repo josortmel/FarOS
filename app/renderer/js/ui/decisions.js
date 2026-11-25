@@ -50,6 +50,9 @@ export function pendingCount(list) {
   return (list ?? []).filter((d) => d.status !== 'decided').length;
 }
 
+let decididasAbiertas = false; // #1394
+let vigAbierto = false; // #1394
+
 /* pendientes y aplazadas arriba (aplazadas al final del grupo), decididas debajo */
 export function renderDecisionsPane(pane, state, handlers) {
   const list = state.wfDecisions;
@@ -102,11 +105,17 @@ export function renderDecisionsPane(pane, state, handlers) {
     }
   }
   if (vivas.length) {
-    const g = document.createElement('div');
-    g.className = 'dec__group';
-    g.textContent = `Decididas · ${vivas.length}`;
-    pane.appendChild(g);
-    for (const d of vivas) pane.appendChild(renderDecided(d, sustituye.get(d.id)));
+    /* #1394 (Pepe, 23-nov): lo decidido es historial; lo principal de Preguntas es lo pendiente.
+       Plegadas de base; si se abren, siguen abiertas en los repintados hasta recargar. */
+    const box = document.createElement('details');
+    box.className = 'dec__decididas';
+    box.open = decididasAbiertas;
+    box.innerHTML = `<summary class="dec__group">Decididas · ${vivas.length}</summary>`;
+    box.addEventListener('toggle', () => {
+      decididasAbiertas = box.open;
+    });
+    for (const d of vivas) box.appendChild(renderDecided(d, sustituye.get(d.id)));
+    pane.appendChild(box);
   }
   if (superadas.length) {
     /* plegadas por defecto: es el filtro; se abren para auditar */
@@ -406,14 +415,19 @@ function renderDecided(d, reemplaza) {
 const vig = { tema: '', superadas: false, estado: 'quieto', res: null, err: null, seq: 0, buscado: '', foco: null };
 
 function vigBlock(handlers) {
-  const box = document.createElement('section');
+  /* #1394: plegado de base (abierto se comía ~200 px del móvil antes de la primera pregunta). Si hay una
+     búsqueda en marcha o escrita, se queda abierto en los repintados. */
+  const box = document.createElement('details');
   box.className = 'dec-vig';
-  box.setAttribute('aria-label', tr('Lo que vale hoy'));
+  box.open = vigAbierto || Boolean(vig.tema) || vig.estado !== 'quieto';
+  box.addEventListener('toggle', () => {
+    vigAbierto = box.open;
+  });
   box.innerHTML = `
+    <summary class="dec-vig__k">${tr('Lo que vale hoy')}</summary>
     <form class="dec-vig__form">
-      <label for="dec-vig-tema" class="dec-vig__k">${tr('Lo que vale hoy')}</label>
       <div class="dec-vig__row">
-        <input type="search" id="dec-vig-tema" autocomplete="off" value="${esc(vig.tema)}">
+        <input type="search" id="dec-vig-tema" autocomplete="off" aria-label="${esc(tr('Lo que vale hoy'))}" value="${esc(vig.tema)}">
         <button type="submit" class="btn btn--primary btn--sm">${tr('Buscar')}</button>
       </div>
       <label class="dec-vig__sup"><input type="checkbox"${vig.superadas ? ' checked' : ''}> <span>${tr('Incluir las superadas')}</span></label>

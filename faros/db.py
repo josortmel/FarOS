@@ -45,7 +45,7 @@ def _fichero_db(d: Path) -> Path:
 DATA_DIR = _env.data_dir()
 DEFAULT_DB = _fichero_db(DATA_DIR)
 
-SCHEMA_VERSION = 17  # v17 (#1098, 18-nov): fuera la decisions_fts vieja y sus triggers (temporales de la v16), la vigentes usa los tramos sobre decisions_fts2 tras pasar el set ciego de Prima (70f0dc57); v16 (#1098, 18-nov, Prima): vuelve decisions_fts (title, context) al lado de la nueva, para que la vigentes de FarOS sea la de la 3.3.41 mientras el arreglo se mide a ciegas; v15 (#1098, 18-nov): decisions_fts2 indexa también la respuesta y su motivo; v14 (#1279, 17-nov): library_items.clase admite 'informe' (tabla reconstruida); v13 (#1078, 11-nov): credential_changes (quién cambió qué de una clave, nunca el valor); v12 (#919, 9-nov): decisions.superseded_by/supersede_kind/supersede_reason/marked_by/decidido_por/valid_until; v11 (#866, 4-nov): Biblioteca (library_items, library_links, library_fts), copia previa forzada; v10 (#666, 29-oct): las rechazadas no guardan fecha; v9 (#657, 22-oct): decision_history.surface; v8 (#377, 16-oct): ticket_history.provenance; v7 (#451, 8-oct): runs.verdict admite 'uncertain'; v6 (#460, 7-oct): credentials (Claves); v5 (T1.1, 7-sep): tickets.weekday
+SCHEMA_VERSION = 19  # v19 (#1346, 25-nov): la huella de las tareas con etiquetas en la misma línea se vuelve a tomar con la partición nueva, sin contar como cambio de criterio; v18 (#1346, 23-nov): tickets.piezas_huella, la huella del criterio en piezas al pasar a in_progress (y la de las que ya estaban en curso, al migrar); v17 (#1098, 18-nov): fuera la decisions_fts vieja y sus triggers (temporales de la v16), la vigentes usa los tramos sobre decisions_fts2 tras pasar el set ciego de Prima (70f0dc57); v16 (#1098, 18-nov, Prima): vuelve decisions_fts (title, context) al lado de la nueva, para que la vigentes de FarOS sea la de la 3.3.41 mientras el arreglo se mide a ciegas; v15 (#1098, 18-nov): decisions_fts2 indexa también la respuesta y su motivo; v14 (#1279, 17-nov): library_items.clase admite 'informe' (tabla reconstruida); v13 (#1078, 11-nov): credential_changes (quién cambió qué de una clave, nunca el valor); v12 (#919, 9-nov): decisions.superseded_by/supersede_kind/supersede_reason/marked_by/decidido_por/valid_until; v11 (#866, 4-nov): Biblioteca (library_items, library_links, library_fts), copia previa forzada; v10 (#666, 29-oct): las rechazadas no guardan fecha; v9 (#657, 22-oct): decision_history.surface; v8 (#377, 16-oct): ticket_history.provenance; v7 (#451, 8-oct): runs.verdict admite 'uncertain'; v6 (#460, 7-oct): credentials (Claves); v5 (T1.1, 7-sep): tickets.weekday
 
 # Definición v3 de las dos tablas que se RECONSTRUYEN al migrar desde v2
 # (SQLite no permite quitar NOT NULL con ALTER). Se usan tanto en SCHEMA
@@ -215,6 +215,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   verified_by        TEXT,
   verify_claimed_by  TEXT,
   verify_claimed_at  TEXT,
+  piezas_huella      TEXT,
   expires_at         TEXT,
   cadence_days       INTEGER,
   last_done_at       TEXT,
@@ -557,6 +558,8 @@ _ADDED_COLUMNS = {
         # v8 (#481, decisión 47): quién se ha apuntado a verificarla (el segundo recibe «ya la tiene X»)
         "verify_claimed_by": "TEXT",
         "verify_claimed_at": "TEXT",
+        # v18 (#1346): huella del criterio en piezas al pasar a in_progress (JSON {etiqueta: sha256})
+        "piezas_huella": "TEXT",
     },
     # v4 (T5.6): nombres del registro MCP que usa el job (JSON lista)
     "agent_jobs": {
@@ -743,6 +746,8 @@ def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = Fa
             _v10_rechazadas_sin_fecha(conn)
             _v15_decisions_fts2(conn)
             _v17_sin_fts_vieja(conn)
+            _v18_huella_en_curso(conn)
+            _v19_huella_en_linea(conn)
             conn.execute(
                 "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")),
@@ -783,6 +788,8 @@ def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = Fa
         _v10_rechazadas_sin_fecha(conn)
         _v15_decisions_fts2(conn)
         _v17_sin_fts_vieja(conn)
+        _v18_huella_en_curso(conn)
+        _v19_huella_en_linea(conn)
         conn.execute(
             "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
             (SCHEMA_VERSION, datetime.now().isoformat(timespec="seconds")),
@@ -797,6 +804,67 @@ def _migrate(conn: sqlite3.Connection, path: Path | None, copia_hecha: bool = Fa
     except Exception:
         conn.execute("ROLLBACK")
         raise
+
+
+def _v18_huella_en_curso(conn) -> None:
+    """v18 (#1346, duda 1a acordada con Prima): las tareas que ya estaban en curso cuando llega la
+    regla de las piezas se quedan con la huella de su criterio de ahora, apuntada en su historial;
+    así un cambio posterior también se ve. Idempotente: solo las que no la tienen."""
+    import json
+
+    from .piezas import PiezasError, huella
+
+    filas = conn.execute(
+        "SELECT id, verify_criteria FROM tickets WHERE status = 'in_progress' AND piezas_huella IS NULL"
+        " AND verify_criteria IS NOT NULL AND TRIM(verify_criteria) != ''"
+    ).fetchall()
+    ahora = datetime.now().isoformat(timespec="seconds")
+    for r in filas:
+        try:
+            h = huella(r["verify_criteria"])
+        except PiezasError:
+            continue  # etiquetas repetidas: sin huella; el verify dará el error al llegar
+        conn.execute("UPDATE tickets SET piezas_huella = ? WHERE id = ?", (json.dumps(h), r["id"]))
+        conn.execute(
+            "INSERT INTO ticket_history (ticket_id, old_status, new_status, changed_by, changed_at, note)"
+            " VALUES (?, 'in_progress', 'in_progress', 'system', ?, ?)",
+            (r["id"], ahora, f"[piezas] huella del criterio tomada al instalar la regla (#1346): {', '.join(h)}"),
+        )
+
+
+def _v19_huella_en_linea(conn) -> None:
+    """v19 (#1346, 25-nov, Prima e Hilo): partir() reconoce ahora etiquetas detrás de «. » o «; ». Las
+    tareas que tomaron la huella con la partición de la 3.3.54 la vuelven a tomar, SOLO si su texto
+    sigue siendo el que era al empezar (su huella coincide con huella_v18 del criterio de ahora): así
+    no cuenta como «el criterio cambió» y nadie tiene que escribir un porqué falso. Si el texto sí
+    cambió, la huella vieja se queda y el pass pedirá sus porqués, como antes. Idempotente."""
+    import json
+
+    from .piezas import PiezasError, huella, huella_v18
+
+    filas = conn.execute(
+        "SELECT id, verify_criteria, piezas_huella FROM tickets WHERE piezas_huella IS NOT NULL"
+        " AND verify_criteria IS NOT NULL AND TRIM(verify_criteria) != ''"
+    ).fetchall()
+    ahora = datetime.now().isoformat(timespec="seconds")
+    for r in filas:
+        try:
+            vieja = json.loads(r["piezas_huella"])
+            nueva = huella(r["verify_criteria"])
+            if nueva == vieja or huella_v18(r["verify_criteria"]) != vieja:
+                continue
+        except (PiezasError, ValueError):
+            continue
+        conn.execute("UPDATE tickets SET piezas_huella = ? WHERE id = ?", (json.dumps(nueva), r["id"]))
+        conn.execute(
+            "INSERT INTO ticket_history (ticket_id, old_status, new_status, changed_by, changed_at, note)"
+            " SELECT id, status, status, 'system', ?, ? FROM tickets WHERE id = ?",
+            (
+                ahora,
+                f"[piezas] criterio partida de nuevo (etiquetas en la misma línea, #1346): {', '.join(nueva)}",
+                r["id"],
+            ),
+        )
 
 
 def _fill_repo_root(conn) -> None:

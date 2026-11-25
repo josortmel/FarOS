@@ -157,6 +157,32 @@ def test_semanal_un_codigo_http_citado_no_cuenta_como_cifra():
     assert comprobar_linea(l, HOY, pagina())["resultado"] == "hecho"
 
 
+def test_semanal_los_numeros_de_una_url_secundaria_no_cuentan_como_cifras():
+    # Prima, 24-nov: el id de arXiv de la segunda fuente se exigía en la página principal
+    l = (
+        "[SE QUEDÓ] DeepSeek V4.1 Flash — https://the-decoder.com/deepseek-flash/ — señal: segunda fuente "
+        "independiente, https://arxiv.org/abs/2611.30185 , dice lo mismo"
+    )
+    assert comprobar_linea(l, HOY, pagina())["resultado"] == "hecho"
+
+
+def test_las_urls_sin_esquema_tampoco_ponen_cifras():
+    l = linea(
+        texto="qué cambia para nosotros: 77,0 % en DeepSWE; lo cuenta theregister.com/2026/11/23/flash/ "
+        "y github.com/deepseek-ai/flash/issues/123"
+    )
+    assert comprobar_linea(l, HOY, pagina())["resultado"] == "hecho"
+
+
+def test_una_cifra_de_verdad_sigue_contando_aunque_la_linea_lleve_una_url():
+    l = (
+        "[SE QUEDÓ] DeepSeek V4.1 Flash — https://the-decoder.com/deepseek-flash/ — señal: 88,5 % según "
+        "https://arxiv.org/abs/2611.30185"
+    )
+    r = comprobar_linea(l, HOY, pagina())
+    assert r["resultado"] == "no_hecho" and r["motivo"].endswith(": 88.5"), r
+
+
 def test_linea_que_no_es_item_se_ignora_y_recuento():
     nota = "\n".join(
         ["# Revista I+D — 2026-10-19", linea(), linea(url="https://the-decoder.com/"), "Fuentes consultadas"]
