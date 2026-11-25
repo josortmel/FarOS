@@ -71,7 +71,9 @@ def test_avisa_al_crear_una_self_cuyo_criterio_pide_a_otro(conn):
 
 def test_avisa_al_completar_una_self_cuyo_criterio_pide_a_otro(conn):
     t = _tarea(conn, criterio="Lo verifica Prima reproduciéndolo.")["ticket"]
-    r = s.complete_ticket(conn, "alice", t["id"], "command_output", "tests verdes")
+    r = s.complete_ticket(
+        conn, "alice", t["id"], "command_output", "tests verdes", piezas={"C1": {"estado": "cumple", "prueba": "#1"}}
+    )
     assert r["status"] == "verified" and "otra persona" in r["warning"]
     notas = [h["note"] or "" for h in s.ticket_history(conn, t["id"])["history"]]
     assert any("AVISO" in n for n in notas)

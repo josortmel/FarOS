@@ -12,6 +12,9 @@ import { esc } from '../util.js';
 import { t as tr, locale } from '../i18n.js';
 
 let handlers = null; // { onTimbre(bool), onFecha('YYYY-MM-DD'), onQuitarSilencio(agente) }
+/* #1394 (Pepe, 23-nov): el historial del día es secundario y en un día normal son decenas de filas que
+   empujan las Claves hacia abajo. Plegado de base con su número; abierto, sigue abierto al cambiar de día. */
+let histAbierto = false;
 export function initTimbreSettings(h) {
   handlers = h;
 }
@@ -87,19 +90,25 @@ export function renderTimbreSetting(body, state) {
     ${tb.apagado_por_entorno ? `<p class="timbre__aviso" role="note">${esc(tr('Este FarOS tiene el timbre apagado desde fuera (FAROS_TIMBRE=0): el interruptor no manda.'))}</p>` : ''}
     ${tb.ultima_vuelta ? `<p class="timbre__vuelta"><span>${esc(tr('Última comprobación:'))}</span> <time class="mono" datetime="${esc(tb.ultima_vuelta)}">${esc(hhmm(tb.ultima_vuelta))}</time></p>` : ''}
     ${silenciados(tb.silencios)}
-    <div class="timbre__dia">
-      <h4 class="timbre__titulo">${esc(esHoy ? tr('Lo que ha sonado hoy') : tr('Lo que sonó ese día'))}</h4>
-      <label class="timbre__fecha">
-        <span>${esc(tr('Día'))}</span>
-        <input type="date" id="timbre-fecha" value="${esc(fecha)}" max="${esc(hoy())}">
-      </label>
-    </div>
-    ${
-      avisos.length
-        ? `<ol class="timbre__lista">${avisos.map(fila).join('')}</ol>`
-        : `<p class="timbre__vacio">${esc(esHoy ? tr('Hoy no ha sonado nada todavía.') : tr('Ese día no sonó nada.'))}</p>`
-    }`;
+    <details class="timbre__hist"${histAbierto ? ' open' : ''}>
+      <summary class="timbre__titulo">${esc(esHoy ? tr('Lo que ha sonado hoy') : tr('Lo que sonó ese día'))} · ${avisos.length}</summary>
+      <div class="timbre__dia">
+        <label class="timbre__fecha">
+          <span>${esc(tr('Día'))}</span>
+          <input type="date" id="timbre-fecha" value="${esc(fecha)}" max="${esc(hoy())}">
+        </label>
+      </div>
+      ${
+        avisos.length
+          ? `<ol class="timbre__lista">${avisos.map(fila).join('')}</ol>`
+          : `<p class="timbre__vacio">${esc(esHoy ? tr('Hoy no ha sonado nada todavía.') : tr('Ese día no sonó nada.'))}</p>`
+      }
+    </details>`;
 
+  const hist = root.querySelector('.timbre__hist');
+  hist.addEventListener('toggle', () => {
+    histAbierto = hist.open;
+  });
   const sw = root.querySelector('#timbre-sw');
   sw.addEventListener('change', () => handlers?.onTimbre(sw.checked));
   const fe = root.querySelector('#timbre-fecha');

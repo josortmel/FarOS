@@ -1962,26 +1962,58 @@ details.advanced[open] summary {
   align-items: center;
   gap: var(--sp-1);
 }
-/* #604: las propuestas pendientes, siempre a la vista, caigan en la semana que caigan */
+/* #604: las propuestas pendientes, caigan en la semana que caigan. #1394: de base, una sola línea
+   con su número; la lista sale al pulsarla. */
 .cal__props {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
   flex: none;
-  padding: var(--sp-2) var(--sp-5);
-  overflow-x: auto;
-  scrollbar-width: thin;
+  padding: var(--sp-1) var(--sp-5);
   border-bottom: 1px solid var(--color-rule);
   background: var(--color-orange-wash);
 }
 .cal__props-label {
-  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  margin-left: calc(-1 * var(--sp-2));
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--text-meta);
   font-weight: 600;
   color: var(--color-orange-deep);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+.cal__props-label:hover,
+.cal__props-label:focus-visible {
+  background: var(--color-card);
+}
+.cal__props-chev {
+  display: inline-block;
+  transition: transform 160ms var(--ease-out, ease-out);
+}
+.cal__props-label[aria-expanded='true'] .cal__props-chev {
+  transform: rotate(90deg);
+}
+.cal__props-list {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0 var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.cal__props-list[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cal__props-chev {
+    transition: none;
+  }
 }
 .cal__prop {
   flex: none;
@@ -3922,14 +3954,19 @@ body.is-dragging-cal .week__mini {
   box-shadow: none;
   border: 1px dashed var(--color-rule-strong);
 }
-.dec__superadas > summary {
+.dec__superadas > summary,
+.dec__decididas > summary {
   cursor: pointer;
   list-style: revert;
+  min-height: 32px;
+  display: list-item;
 }
-.dec__superadas[open] > summary {
+.dec__superadas[open] > summary,
+.dec__decididas[open] > summary {
   margin-bottom: var(--sp-2);
 }
-.dec__superadas > .dec {
+.dec__superadas > .dec,
+.dec__decididas > .dec {
   margin-bottom: var(--sp-2);
 }
 .dec__super,
@@ -3988,6 +4025,19 @@ body.is-dragging-cal .week__mini {
   font-weight: 700;
   display: block;
   margin-bottom: 0.3rem;
+}
+/* #1394: el buscador nace plegado; la línea del título es el botón */
+summary.dec-vig__k {
+  display: list-item;
+  list-style: revert;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+.dec-vig[open] > summary.dec-vig__k {
+  margin-bottom: 0.3rem;
+}
+.dec-vig:not([open]) {
+  padding-block: var(--sp-3);
 }
 .dec-vig__row {
   display: flex;
@@ -5992,6 +6042,19 @@ body.is-dragging-cal .week__mini {
   font-size: var(--text-body);
   font-weight: 600;
   margin: 0;
+}
+/* #1394: el historial, plegado; la línea del título es el botón */
+.timbre__hist {
+  margin-top: var(--sp-4);
+}
+.timbre__hist > summary {
+  display: list-item;
+  list-style: revert;
+  cursor: pointer;
+  min-height: 32px;
+}
+.timbre__hist .timbre__dia {
+  margin-top: var(--sp-2);
 }
 .timbre__fecha {
   display: inline-flex;

@@ -688,6 +688,8 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
                 body.get("evidence_type"),
                 body.get("evidence"),
                 provenance=body.get("provenance"),
+                piezas=body.get("piezas"),
+                cambios=body.get("cambios"),
             )
         elif action == "verify":
             t = s.verify_ticket(
@@ -697,6 +699,8 @@ def create_app(conn, bus: EventBus | None = None, biblioteca=None) -> FastAPI:
                 body.get("verdict", "pass"),
                 note=body.get("note", ""),
                 provenance=body.get("provenance"),
+                piezas=body.get("piezas"),
+                cambios=body.get("cambios"),
             )
         elif action == "pause":
             # #482: en curso → aceptada, con nota obligatoria.

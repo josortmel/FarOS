@@ -422,6 +422,8 @@ def transition_ticket(
     reason: str | None = None,
     note: str = "",
     provenance: str | None = None,
+    piezas: dict | None = None,
+    cambios: dict | None = None,
 ) -> dict:
     """State transition: accept | start | block | complete | verify | reject | pause | claim | unclaim.
     claim (#481): put your name on a task's verification BEFORE saying it in the room; if
@@ -434,7 +436,14 @@ def transition_ticket(
     self-level one) and paused by anyone of the house; the history says «en nombre de …».
     provenance (#377), only on a verification (verify, or complete of a self-level task):
     'deterministic:<tool>' when a test/grep/script did the check. Leave it empty otherwise:
-    FarOS records 'external' (the household owner) or 'same-family' (a Claude) by itself."""
+    FarOS records 'external' (the household owner) or 'same-family' (a Claude) by itself.
+    piezas (#1346): a verify (or the complete that seals a self-level task) of a task WITH criteria
+    answers every piece of it: {"C1": {"estado": "cumple", "prueba": "…"}, …}, estado one of
+    cumple | no_cumple | no_comprobable | incierto. A pass needs every piece «cumple»; verdict
+    «incierto» leaves the task in done with the piece and why. A criteria without labels is split
+    by FarOS one piece per line (C1, C2…). Marks are checked by FORM only: [salida] = pasted output
+    not empty, [fichero] = a path that exists (a folder too), [persona: X] = only X closes it.
+    cambios: {"C2": "why it changed"} for each piece that changed since the task started."""
     body = {
         "agent": agent,
         "action": action,
@@ -446,6 +455,10 @@ def transition_ticket(
     }
     if provenance is not None:
         body["provenance"] = provenance
+    if piezas is not None:
+        body["piezas"] = piezas
+    if cambios is not None:
+        body["cambios"] = cambios
     return _call("POST", f"/api/tickets/{ticket_id}/transition", json=body)
 
 

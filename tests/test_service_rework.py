@@ -110,12 +110,14 @@ def test_rework_verified_fix_reopens_finding_as_dispatched(conn):
     t1 = wf["tickets_by_phase"]["core"][0]["id"]
     s.start_ticket(conn, "code", t1)
     s.complete_ticket(conn, "code", t1, "file_path", "a.py")
-    s.verify_ticket(conn, "bob", t1, "pass", "ok")
+    s.verify_ticket(conn, "bob", t1, "pass", "ok", piezas={"C1": {"estado": "cumple", "prueba": "#1346"}})
     f = w.add_finding(conn, "adv-code", wf["id"], "high", "bug", ticket_id=t1)
     fix_id = w.dispatch_finding(conn, "alice", f["id"])["correction_ticket_id"]
     s.start_ticket(conn, "code", fix_id)
     s.complete_ticket(conn, "code", fix_id, "file_path", "fix.py")
-    s.verify_ticket(conn, "bob", fix_id, "pass", "ya no reproduce")
+    s.verify_ticket(
+        conn, "bob", fix_id, "pass", "ya no reproduce", piezas={"C1": {"estado": "cumple", "prueba": "#1346"}}
+    )
     assert w.get_finding(conn, f["id"])["status"] == "fixed"
     s.rework_ticket(conn, "owner", fix_id, "in_progress", "sigue reproduciendo en la app instalada")
     fnd = w.get_finding(conn, f["id"])

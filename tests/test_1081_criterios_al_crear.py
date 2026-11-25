@@ -14,7 +14,8 @@ H = {"X-FarOS-Token": TOKEN}
 
 
 def _puntos(criterio, nivel="peer"):
-    return [a["punto"] for a in criterios.revisar(criterio, nivel)]
+    # #1346: el aviso «sin piezas» (C10) es de otra regla y tiene sus tests en test_1346_verify.py
+    return [a["punto"] for a in criterios.revisar(criterio, nivel) if a["punto"] != "piezas"]
 
 
 def test_g1_la_suite_sin_comando_avisa_y_con_el_comando_no():
@@ -69,7 +70,7 @@ def test_crear_por_la_api_devuelve_el_aviso_sin_bloquear(cli):
         json={"agent": "alice", "title": "x", "verification_level": "peer", "verify_criteria": "la suite en verde"},
     )
     assert r.status_code == 200
-    assert [a["punto"] for a in r.json()["criterion_warnings"]] == [4]
+    assert [a["punto"] for a in r.json()["criterion_warnings"] if a["punto"] != "piezas"] == [4]
     assert r.json()["ticket"]["verify_criteria"] == "la suite en verde"  # se guarda igual
     bueno = cli.post(
         "/api/tickets",
@@ -81,12 +82,14 @@ def test_crear_por_la_api_devuelve_el_aviso_sin_bloquear(cli):
             "verify_criteria": "`pytest -q tests/test_y.py` en verde",
         },
     )
-    assert bueno.json()["criterion_warnings"] == []
+    assert [a for a in bueno.json()["criterion_warnings"] if a["punto"] != "piezas"] == []
 
 
 def test_cambiar_el_criterio_tambien_lo_revisa(cli):
     t = cli.post("/api/tickets", headers=H, json={"agent": "alice", "title": "z"}).json()["ticket"]
     r = cli.patch(f"/api/tickets/{t['id']}", headers=H, json={"agent": "alice", "verify_criteria": "tests pasan"})
-    assert r.status_code == 200 and [a["punto"] for a in r.json()["criterion_warnings"]] == [4]
+    assert r.status_code == 200 and [a["punto"] for a in r.json()["criterion_warnings"] if a["punto"] != "piezas"] == [
+        4
+    ]
     sin = cli.patch(f"/api/tickets/{t['id']}", headers=H, json={"agent": "alice", "title": "z2"})
     assert "criterion_warnings" not in sin.json()

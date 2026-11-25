@@ -16,6 +16,7 @@ import unicodedata
 from datetime import date, datetime, timedelta
 
 from . import harness as _harness  # registro de adapters; harness solo depende de procutil (sin ciclo)
+from . import piezas as _piezas  # #1346: la regla de las piezas (puro, sin base)
 from . import roster  # #1186: roster.WORKFLOW_EXTRA se lee en caliente
 
 # Roster de la casa: configuración, no código (roster.py). El público no trae
@@ -113,6 +114,33 @@ def _now() -> str:
 
 def _days_since(iso: str) -> int:
     return (date.today() - date.fromisoformat(iso[:10])).days
+
+
+def _criterio_en_piezas(criterio) -> None:
+    """#1346 (C4): crear o editar un criterio con una etiqueta repetida es un error."""
+    try:
+        _piezas.partir(criterio)
+    except _piezas.PiezasError as e:
+        raise TicketError(str(e), field=e.field, code=e.code)
+
+
+def _validar_piezas(t, agent, verdict, piezas, cambios) -> dict:
+    """#1346: valida un verify (o el complete que sella una self) contra las piezas del criterio.
+    Los agentes de sistema y el dueño de la casa sin piezas: ver piezas.validar (C14, C15)."""
+    huella_vieja = json.loads(t["piezas_huella"]) if t["piezas_huella"] else None
+    try:
+        return _piezas.validar(
+            t["verify_criteria"],
+            verdict,
+            piezas,
+            agent,
+            HOUSE_OWNER,
+            huella_vieja=huella_vieja,
+            porque=cambios,
+            sistema=SYSTEM_AGENTS,
+        )
+    except _piezas.PiezasError as e:
+        raise TicketError(str(e), field=e.field, code=e.code)
 
 
 def _append_history(conn, ticket_id, old_status, new_status, changed_by, note=None, provenance=None):
@@ -595,6 +623,7 @@ def propose_ticket(
             raise TicketError(str(exc), field="owner")
     if cadence_days is not None and cadence_days < 1:
         raise TicketError("cadence_days debe ser >= 1", field="cadence_days")
+    _criterio_en_piezas(verify_criteria)
     if cadence_days is not None and verification_level != "self":
         raise TicketError(
             "las recurrentes son verification_level=self — con peer/auto nunca"
@@ -884,6 +913,13 @@ def start_ticket(conn, agent, ticket_id, note="") -> dict:
         # #640: y cualquiera de la casa arranca una tarea DEL dueño, en su nombre.
         raise TicketError(f"start solo puede hacerlo el owner ({t['owner']}), no {agent}", code="transition.not_owner")
     conn.execute("UPDATE tickets SET status='in_progress', blocked_reason=NULL WHERE id=?", (ticket_id,))
+    if not t["piezas_huella"] and (t["verify_criteria"] or "").strip():
+        # #1346 (C5): la huella del criterio se toma al empezar; un cambio posterior exige su porqué.
+        try:
+            h = _piezas.huella(t["verify_criteria"])
+            conn.execute("UPDATE tickets SET piezas_huella=? WHERE id=?", (json.dumps(h), ticket_id))
+        except _piezas.PiezasError:
+            pass  # etiquetas repetidas de antes de la regla: el verify dará el error
     _append_history(conn, ticket_id, t["status"], "in_progress", agent, _con_marca(note, marca))
     conn.commit()
     return _as_dict(conn, _get(conn, ticket_id))
@@ -947,7 +983,9 @@ def pause_ticket(conn, agent, ticket_id, note) -> dict:
     return _as_dict(conn, _get(conn, ticket_id))
 
 
-def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=None) -> dict:
+def complete_ticket(
+    conn, agent, ticket_id, evidence_type, evidence, provenance=None, piezas=None, cambios=None
+) -> dict:
     """Completa con evidencia obligatoria. Sin evidencia no hay done (SPEC §4)."""
     _validate_agent(agent, allow_system=True)
     if evidence_type not in EVIDENCE_TYPES:
@@ -1011,6 +1049,10 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=
         )
     now = _now()
     aviso = _pide_otro(t["verification_level"], t["cadence_days"], t["verify_criteria"])
+    sello = None
+    if not t["cadence_days"] and t["verification_level"] == "self":
+        # #1346 (C9): el complete de una self sella, así que es una verificación: piezas.
+        sello = _validar_piezas(t, agent, "pass", piezas, cambios)
 
     if t["cadence_days"]:
         # Recurrente: estampa y sigue viva. La cronología queda en history.
@@ -1039,7 +1081,10 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=
             "verified",
             agent,
             _con_marca(
-                f"self-verified [{evidence_type}] {evidence}" + (f" — {AVISO_PIDE_OTRO}" if aviso else ""), marca
+                f"self-verified [{evidence_type}] {evidence}"
+                + (f" — {AVISO_PIDE_OTRO}" if aviso else "")
+                + (f" — [piezas] {sello['historial']}" if sello and sello["historial"] else ""),
+                marca,
             ),
             provenance=_provenance(agent, t, provenance),
         )
@@ -1055,6 +1100,8 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=
     out = _as_dict(conn, _get(conn, ticket_id))
     if aviso:
         out["warning"] = AVISO_PIDE_OTRO  # #414: se sella igual (es un aviso), pero lo dice
+    if sello and sello["avisos"]:
+        out["avisos_piezas"] = sello["avisos"]  # #1346: la [persona] ajena, la referencia que no se abre
     try:  # Biblioteca (#850): DESPUÉS del commit; cerrar nunca falla ni cambia por esto
         from . import library
 
@@ -1064,12 +1111,14 @@ def complete_ticket(conn, agent, ticket_id, evidence_type, evidence, provenance=
     return out
 
 
-def verify_ticket(conn, agent, ticket_id, verdict, note="", provenance=None) -> dict:
+def verify_ticket(conn, agent, ticket_id, verdict, note="", provenance=None, piezas=None, cambios=None) -> dict:
     """peer: humano que no sea el owner. auto: verifier-bot (o humano no-owner).
     #377: provenance solo admite 'deterministic:<herramienta>'; si no viene, se deduce."""
     _validate_agent(agent, allow_system=True)
-    if verdict not in {"pass", "fail"}:
-        raise TicketError(f"verdict inválido: {verdict!r} (pass|fail)", field="verdict", code="verify.verdict_invalid")
+    if verdict not in {"pass", "fail", "incierto"}:
+        raise TicketError(
+            f"verdict inválido: {verdict!r} (pass|fail|incierto)", field="verdict", code="verify.verdict_invalid"
+        )
     provenance = _check_provenance(provenance, agent)
     _expire_lazy(conn)
     t = _get(conn, ticket_id)
@@ -1111,13 +1160,31 @@ def verify_ticket(conn, agent, ticket_id, verdict, note="", provenance=None) -> 
         raise TicketError(
             f"el verificador no puede ser quien lo completó ({agent})", code="verify.completer_cannot_verify"
         )
+    r = _validar_piezas(t, agent, verdict, piezas, cambios)
+    con_piezas = _con_marca(note, f"[piezas] {r['historial']}" if r["historial"] else None)
+    if verdict == "incierto":
+        # #1346 (C3): se queda en done; decide la dueña. Ni sube sola a external ni llama a DeepSeek.
+        _append_history(
+            conn,
+            ticket_id,
+            "done",
+            "done",
+            agent,
+            f"[incierto] {con_piezas}",
+            provenance=_provenance(agent, t, provenance),
+        )
+        conn.commit()
+        out = _as_dict(conn, _get(conn, ticket_id))
+        if r["avisos"]:
+            out["avisos_piezas"] = r["avisos"]
+        return out
     if verdict == "pass":
         now = _now()
         conn.execute(
             "UPDATE tickets SET status='verified', verified_by=?, closed_at=? WHERE id=?", (agent, now, ticket_id)
         )
         _append_history(
-            conn, ticket_id, "done", "verified", agent, note or None, provenance=_provenance(agent, t, provenance)
+            conn, ticket_id, "done", "verified", agent, con_piezas, provenance=_provenance(agent, t, provenance)
         )
         for hook in VERIFIED_HOOKS:
             hook(conn, ticket_id)
@@ -1131,11 +1198,14 @@ def verify_ticket(conn, agent, ticket_id, verdict, note="", provenance=None) -> 
             "done",
             "in_progress",
             agent,
-            f"verify FAIL: {note}",
+            f"verify FAIL: {con_piezas}",
             provenance=_provenance(agent, t, provenance),
         )
     conn.commit()
-    return _as_dict(conn, _get(conn, ticket_id))
+    out = _as_dict(conn, _get(conn, ticket_id))
+    if r["avisos"]:
+        out["avisos_piezas"] = r["avisos"]  # #1346 (C14, duda 2): que se vea en el momento
+    return out
 
 
 def claim_verification(conn, agent, ticket_id) -> dict:
@@ -1466,6 +1536,8 @@ def update_ticket(conn, agent, ticket_id, **fields) -> dict:
         raise TicketError(f"priority inválida: {fields['priority']!r}")
     if "verification_level" in fields:
         _validate_level_change(t, agent, fields["verification_level"])
+    if "verify_criteria" in fields:
+        _criterio_en_piezas(fields["verify_criteria"])
     if "owner" in fields and fields["owner"] is not None:
         _validate_agent(fields["owner"])
     if "project_id" in fields:

@@ -406,16 +406,46 @@ function syncLanes() {
   off([...day.querySelectorAll('.day__grid > .day__lane')]);
 }
 
-function start() {
-  if (!MQ.matches || document.querySelector('.mob-tabs')) return;
+/* #1370: la pestaña de abajo que corresponde a lo que la app tiene abierto (null en Ajustes: no tiene pestaña) */
+function desdeLaApp() {
+  if ($('#btn-settings')?.classList.contains('is-active')) return null;
+  const s = getState();
+  if (s.surface === 'board') return s.boardMode === 'calendar' ? 'cal' : 'board';
+  return { workflow: 'wf', agents: 'ag', library: 'lib', decisions: 'dec' }[s.surface] ?? 'board';
+}
+
+/* #1370: cuando la capa se enciende a mitad de uso (una ventana que se estrecha), sigue a la app: marca
+   la pestaña de lo que hay abierto y no navega. Ir al Tablero es solo para el arranque en frío. */
+function seguirALaApp() {
+  const k = desdeLaApp();
+  if (k === 'dec') return go('dec');
+  marcar(k);
+  if (k === 'board') syncStates();
+  if (k === 'cal') syncLanes();
+}
+
+function start(ev) {
+  if (!MQ.matches) {
+    /* de vuelta al escritorio: Preguntas del móvil es suya; la del escritorio es su superficie */
+    if (ev && current === 'dec') document.querySelector('#surface-tabs [data-surface="decisions"]')?.click();
+    return;
+  }
+  if (document.querySelector('.mob-tabs')) {
+    if (ev) seguirALaApp();
+    return;
+  }
   build();
   /* la app pinta después de conectar; se espera a que haya columnas */
   const wait = setInterval(() => {
     /* la app ha pintado algo (tablero o calendario, según el modo que recuerde) */
     if ($('#board .col, #cal-root .cal__bar')) {
       clearInterval(wait);
-      /* #851: un enlace a la Biblioteca abre en frío también aquí */
-      go(location.hash.startsWith('#/biblioteca') ? 'lib' : new URLSearchParams(location.search).get('m') || 'board');
+      if (ev) {
+        seguirALaApp();
+      } else {
+        /* #851: un enlace a la Biblioteca abre en frío también aquí */
+        go(location.hash.startsWith('#/biblioteca') ? 'lib' : new URLSearchParams(location.search).get('m') || 'board');
+      }
       loadDecisions(); /* después de conectar: antes, api() aún no existe */
     }
   }, 100);

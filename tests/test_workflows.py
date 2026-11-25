@@ -125,7 +125,9 @@ def test_deps_gate_start_and_dispatch(conn):
     fresh = s.list_tickets(conn)[0]
     s.start_ticket(conn, "code", t1)
     s.complete_ticket(conn, "code", t1, "command_output", "pytest 10 passed")
-    s.verify_ticket(conn, "verificador", t1, "pass", "comprobado")
+    s.verify_ticket(
+        conn, "verificador", t1, "pass", "comprobado", piezas={"C1": {"estado": "cumple", "prueba": "#1346"}}
+    )
     # ahora T2 está ready y despachable
     st = w.workflow_status(conn, wf["id"])
     t2_card = [t for t in st["tickets_by_phase"]["fundacion"] if t["id"] == t2][0]
@@ -162,7 +164,7 @@ def _verify_t1(conn, wf):
     w.dispatch_ticket(conn, "alice", t1, "code")
     s.start_ticket(conn, "code", t1)
     s.complete_ticket(conn, "code", t1, "command_output", "ok")
-    s.verify_ticket(conn, "verificador", t1, "pass")
+    s.verify_ticket(conn, "verificador", t1, "pass", piezas={"C1": {"estado": "cumple", "prueba": "#1346"}})
     return t1
 
 
@@ -180,7 +182,9 @@ def test_finding_full_cycle_open_dispatched_fixed(conn):
     # corrección verificada → finding fixed AUTOMÁTICO
     s.start_ticket(conn, "code", fix_id)
     s.complete_ticket(conn, "code", fix_id, "file_path", "fixed.py")
-    s.verify_ticket(conn, "adv-code", fix_id, "pass", "ya no reproduce")
+    s.verify_ticket(
+        conn, "adv-code", fix_id, "pass", "ya no reproduce", piezas={"C1": {"estado": "cumple", "prueba": "#1346"}}
+    )
     assert w.get_finding(conn, f["id"])["status"] == "fixed"
 
 
@@ -217,7 +221,7 @@ def test_phase_milestone_and_memory_draft(conn):
     w.dispatch_ticket(conn, "alice", t2, "code")
     s.start_ticket(conn, "code", t2)
     s.complete_ticket(conn, "code", t2, "command_output", "verde")
-    s.verify_ticket(conn, "verificador", t2, "pass")
+    s.verify_ticket(conn, "verificador", t2, "pass", piezas={"C1": {"estado": "cumple", "prueba": "#1346"}})
     st = w.workflow_status(conn, wf["id"])
     ms = st["milestones"]
     assert len(ms) == 1 and ms[0]["kind"] == "phase_done" and ms[0]["phase"] == "fundacion"
@@ -350,7 +354,9 @@ def test_memory_draft_prose(conn):
     w.dispatch_ticket(conn, "alice", t2, "code")
     s.start_ticket(conn, "code", t2)
     s.complete_ticket(conn, "code", t2, "command_output", "verde")
-    s.verify_ticket(conn, "verificador", t2, "pass", "decisión: usamos WAL")
+    s.verify_ticket(
+        conn, "verificador", t2, "pass", "decisión: usamos WAL", piezas={"C1": {"estado": "cumple", "prueba": "#1346"}}
+    )
     ms = w.workflow_status(conn, wf["id"])["milestones"]
     draft = w.memory_draft(conn, wf["id"], ms[0]["id"])
     c = draft["content"]

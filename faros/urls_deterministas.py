@@ -291,6 +291,9 @@ def comprobar_linea(linea, hoy=None, abrir_url=None, desde=None, urls_previas=No
         texto = re.split(r"(?i)fuente que nos falta:", resto[semanal.end() :], maxsplit=1)[0]
         # un código HTTP citado en la señal («devolvió 404», «HTTP 403») no es una cifra de la página
         texto = re.sub(r"(?i)\b(?:HTTP|error|devolvi[óo]|dio|da)\s+[45]\d\d\b", "", texto)
+    # Prima, 24-nov: las URL citadas (las secundarias, con o sin esquema) no ponen cifras: el id de arXiv, un
+    # /issues/123 o el /2026/11/23/ de un periódico no son datos de la página principal
+    texto = _URL_EN_TEXTO.sub(" ", texto)
     if fecha_item is None and not semanal:
         r.update(resultado="no_hecho", motivo="el ítem no lleva fecha de publicación AAAA-MM-DD")
     elif fecha_item is not None and fecha_item > hoy:

@@ -2,6 +2,22 @@
 
 Notable changes to FarOS. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 3.3.55 — 2026-11-25
+
+### Fixed
+- **Pieces written on one line.** A label such as `C2 [output]:` now opens its piece also after «. » or «; », not only at the start of a line. Before, a criterion with «C1: … C2: … C3: …» on one line was read as a single piece C1, so the others were never answered one by one and a `[person: X]` among them was not enforced. A mention such as «(C1:, C2:…)» or «case C14 stays» is not split. When something still looks like a label inside a piece, the criterion warnings say so. Database schema 19: tasks already in progress take the new split without counting as «the criterion changed», but only when their text is the same as when they started.
+
+## 3.3.54 — 2026-11-25
+
+### Added
+- **Verifying piece by piece.** When a task's criterion is split into labelled pieces (`C1:`, `C11a [output]:`, `C12 [person: X]:`, or one piece per line when there are no labels), verifying or completing it now answers each piece (meets / does not meet / not checkable / uncertain) in a structured field, not in the free note; a pass needs every piece met, and the new «uncertain» verdict has to say which piece could not be checked. FarOS takes a fingerprint of the criterion when the task starts; if a piece changed, was removed or was added afterwards, a pass has to say why, and that goes to the history. A piece marked `[person: X]` is closed only by X; the household owner may close it and gets a warning in the reply. The household owner can verify without pieces, and so can the system agents for now. Database schema 18 (fingerprint taken on migration for the tasks already in progress).
+
+### Changed
+- **Secondary lists are born folded.** Calendar › «Proposals to decide · N», Questions › «What holds today» and «Decided · N», and Settings › Bell › «What has rung today · N» open on tap and stay open while the screen repaints.
+
+### Fixed
+- **The phone layer no longer throws you out.** When the window narrows in the middle of use, the phone layer marks the tab of what is already open instead of jumping to the board; widening from Questions on the phone opens Questions on the desktop.
+
 ## 3.3.53 — 2026-11-23
 
 ### Fixed
