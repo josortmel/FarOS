@@ -5,7 +5,6 @@ Fuera de un bucle (scripts, tests) sigue esperando la respuesta. El error de red
 import asyncio
 import logging
 import threading
-import time
 
 import httpx
 import pytest
@@ -23,18 +22,24 @@ def conn():
     c.close()
 
 
+TOPE = 5.0  # solo para no colgar un test si el envío sí para el bucle: no es la aserción
+
+
 class Lento:
-    def __init__(self, segundos):
-        self.segundos, self.hecho = segundos, threading.Event()
+    """Un post de Telegram que no contesta hasta que el test lo suelta (#1372: sin reloj)."""
+
+    def __init__(self):
+        self.dentro, self.soltar, self.hecho = threading.Event(), threading.Event(), threading.Event()
 
     def __call__(self, url, **kw):
-        time.sleep(self.segundos)
+        self.dentro.set()
+        self.soltar.wait(TOPE)
         self.hecho.set()
         return type("R", (), {"status_code": 200, "text": "ok"})()
 
 
 def test_dentro_del_bucle_no_para_al_daemon(conn, monkeypatch):
-    lento = Lento(2.0)
+    lento = Lento()
     monkeypatch.setattr(notify.httpx, "post", lento)
 
     async def daemon():
@@ -42,32 +47,41 @@ def test_dentro_del_bucle_no_para_al_daemon(conn, monkeypatch):
 
         async def latir():
             for _ in range(10):
-                latidos.append(time.monotonic())
-                await asyncio.sleep(0.05)
+                latidos.append(1)
+                await asyncio.sleep(0)
 
-        t0 = time.monotonic()
         latido = asyncio.create_task(latir())
         assert notify.on_run_failed(conn, "revista", 7, "error") is True
-        tarda = time.monotonic() - t0
+        volvio_sin_esperar = not lento.hecho.is_set()
         await latido
-        return tarda, latidos
+        late_con_el_post_colgado = len(latidos) == 10 and not lento.hecho.is_set()
+        return volvio_sin_esperar, late_con_el_post_colgado
 
-    tarda, latidos = asyncio.run(daemon())
-    assert tarda < 0.3  # antes: 2 s con el bucle parado
-    assert max(b - a for a, b in zip(latidos, latidos[1:])) < 0.5
-    assert lento.hecho.wait(5)  # y el mensaje sale igual
+    volvio_sin_esperar, late_con_el_post_colgado = asyncio.run(daemon())
+    lento.soltar.set()
+    assert volvio_sin_esperar, "on_run_failed esperó al post de Telegram dentro del bucle"
+    assert late_con_el_post_colgado, "el bucle no latió mientras el post seguía colgado"
+    assert lento.hecho.wait(TOPE)  # y el mensaje sale igual
 
 
 def test_fuera_de_un_bucle_espera_la_respuesta(conn, monkeypatch):
-    lento = Lento(0.3)
+    lento = Lento()
     monkeypatch.setattr(notify.httpx, "post", lento)
-    t0 = time.monotonic()
-    assert notify.telegram(conn, "hola") is True
-    # The proof that it waited: the slow post had finished when telegram() returned.
-    # The time only backs it up, with a margin: Windows' clock resolution (~15 ms) can
-    # measure a 0.3 s sleep as 0.297 s (it did on the first CI run, 19-nov, #1354).
-    assert lento.hecho.is_set()
-    assert time.monotonic() - t0 >= 0.25
+    volvio, visto = threading.Event(), {}
+
+    def ayudante():  # con el post ya dentro, apunta si telegram() ha vuelto, y solo entonces lo suelta
+        lento.dentro.wait(TOPE)
+        visto["volvio_con_el_post_colgado"] = volvio.is_set()
+        lento.soltar.set()
+
+    a = threading.Thread(target=ayudante)
+    a.start()
+    r = notify.telegram(conn, "hola")  # en el hilo de la conexión (SQLite no se comparte entre hilos)
+    volvio.set()
+    a.join(TOPE)
+    # #1372: la prueba de que espera, sin el «>= 0,25 s»: no volvió mientras el post seguía colgado.
+    assert visto.get("volvio_con_el_post_colgado") is False, "fuera de un bucle, telegram() no esperó la respuesta"
+    assert r is True and lento.hecho.is_set()
 
 
 def test_el_error_de_red_no_escribe_la_url(conn, monkeypatch, caplog):
