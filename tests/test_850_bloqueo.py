@@ -228,17 +228,23 @@ def test_un_fallo_en_un_fichero_no_le_cuesta_una_falta(mundo, monkeypatch):
     assert (fila["estado"], fila["faltas"]) == ("presente", 0)
 
 
-def test_un_bloque_real_de_6000_caracteres_conserva_su_formato_y_el_peor_caso_es_rapido():
+def test_un_bloque_real_de_6000_caracteres_conserva_su_formato():
     bloque = "**negrita** y *cursiva* y [enlace](https://a.test/x) " * 120  # ~6 KB
     assert 6000 < len(bloque) < 10000
     h = L.md_a_html(bloque)
     assert "<strong>negrita</strong>" in h and "<em>cursiva</em>" in h and '<a href="https://a.test/x"' in h
     for p in ("[a](", "**a ", "*a ", "_a ", "[", "__a "):
-        c = (p * 3000)[:9900]
-        t0 = time.time()
-        L.md_a_html(c)
-        assert time.time() - t0 < 0.3, p
+        L.md_a_html((p * 3000)[:9900])  # los peores casos terminan; lo rápido que van se mide en el de stress
     assert "<strong>" not in L.md_a_html("**x** " + "y" * 10001)
+
+
+@pytest.mark.stress  # #1372: mide rendimiento (depende de la máquina): fuera del CI, se corre en casa
+def test_el_peor_caso_de_md_a_html_es_rapido():
+    for p in ("[a](", "**a ", "*a ", "_a ", "[", "__a "):
+        c = (p * 3000)[:9900]
+        t0 = time.perf_counter()
+        L.md_a_html(c)
+        assert time.perf_counter() - t0 < 0.3, p
 
 
 def _escritor(mundo, parar, esperas, errores, turno=None):
@@ -402,10 +408,8 @@ def test_new_b_parar_el_worker_vacia_la_cola_y_no_pierde_el_hilo_vivo(m, monkeyp
         L.al_cerrar(m.conn, t["id"], "file_path", " ".join(rutas), m.env)  # 6 rutas: va al worker
     hilo = L._worker_hilo[0]
     assert hilo is not None and hilo.is_alive()
-    t0 = time.perf_counter()
     with caplog.at_level(logging.WARNING):
-        L.parar_worker(timeout=0.3)  # no da tiempo a todo (24 x 0,15 s)
-    assert time.perf_counter() - t0 < 1.0  # el plazo se aplica UNA vez
+        L.parar_worker(timeout=0.3)  # no da tiempo a todo (24 x 0,15 s); que el plazo es UNO lo mide el de stress
     assert "quedan" in caplog.text and str(tickets[-1]) in caplog.text  # cuántos y qué tickets
     assert L._worker_hilo[0] is hilo and hilo.is_alive()  # no se olvida un hilo vivo
     n = threading.active_count()
@@ -421,6 +425,23 @@ def test_new_b_parar_el_worker_vacia_la_cola_y_no_pierde_el_hilo_vivo(m, monkeyp
     L.parar_worker(timeout=15)
     assert not hilo.is_alive()
     assert len(_filas(m.conn, origen="cierre")) == 24 + 6  # nada se perdió
+
+
+@pytest.mark.stress  # #1372: el plazo de parar_worker es una promesa de DURACIÓN: se mide en casa, fuera del CI
+def test_new_b_el_plazo_de_parar_el_worker_se_aplica_una_vez(m, monkeypatch):
+    L.parar_worker()
+    real = L.registrar
+    monkeypatch.setattr(L, "registrar", lambda *a, **k: (time.sleep(0.15), real(*a, **k))[1])
+    for k in range(4):
+        t = _ticket(m.conn, title=f"plazo {k}")
+        L.al_cerrar(
+            m.conn, t["id"], "file_path", " ".join(str(_w(m.ses / "plazo" / f"k{k}_{i}.md")) for i in range(6)), m.env
+        )
+    t0 = time.perf_counter()
+    L.parar_worker(timeout=0.3)  # no da tiempo a todo (24 x 0,15 s)
+    assert time.perf_counter() - t0 < 1.0  # el plazo se aplica UNA vez
+    monkeypatch.setattr(L, "registrar", real)
+    L.parar_worker(timeout=15)
 
 
 def test_new_b_con_tiempo_suficiente_se_drena_todo(m, monkeypatch, caplog):

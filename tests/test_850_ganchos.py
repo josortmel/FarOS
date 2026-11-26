@@ -112,7 +112,10 @@ def test_cierre_con_50_rutas_no_espera_y_acaba_registrando_las_50(m, monkeypatch
     # Python 3.11) and could not tell a slow runner from the bug. Now the first registration in the
     # background is held for 6 s: if closing waited for it, closing takes at least 6 s; it does not, so
     # closing takes what it always takes (0.5 s on the slowest runner seen). 3 s sits between the two.
+    # #1372 (26-nov): and now without the 3 s threshold either: a flag says whether the held registration had
+    # already been let go when closing returned. Held → closing did not wait. Yes or no.
     soltar = threading.Event()
+    salido = threading.Event()
     real = L.registrar
     primera = []
 
@@ -120,18 +123,17 @@ def test_cierre_con_50_rutas_no_espera_y_acaba_registrando_las_50(m, monkeypatch
         if not primera:
             primera.append(True)
             soltar.wait(6)
+            salido.set()
         return real(*a, **k)
 
     monkeypatch.setattr(L, "registrar", registrar_retenido)
     rutas = [str(_w(m.ses / "masa" / f"n{i}.md", f"# Nota {i}")) for i in range(50)]
     t = _ticket(m.conn)
-    t0 = time.perf_counter()
     s.complete_ticket(m.conn, "owner", t["id"], "file_path", " ".join(rutas))
-    dt = time.perf_counter() - t0
+    volvio_con_el_registro_retenido = not salido.is_set()
     soltar.set()
     L.esperar_pendientes()
-    print(f"cierre con 50 rutas: la peticion {dt * 1000:.0f} ms con el registro de fondo retenido")
-    assert dt < 3, f"el cierre esperó al registro en segundo plano ({dt:.1f} s)"
+    assert volvio_con_el_registro_retenido, "el cierre esperó al registro en segundo plano"
     assert len(_filas(m.conn, origen="cierre")) == 50
     assert m.conn.execute("SELECT count(*) FROM library_links WHERE ticket_id=?", (t["id"],)).fetchone()[0] == 50
 
@@ -218,18 +220,27 @@ def test_barredor_arranca_en_segundo_plano_con_su_conexion_y_para_limpio(m, monk
     monkeypatch.setattr(
         db, "connect", lambda *a, **k: conexiones.append(threading.current_thread().name) or real(*a, **k)
     )
-    b = L.Barredor(m.t / "faros.db", cada_s=3600, entorno=lambda: m.env)
-    t0 = time.perf_counter()
+    # #1372 (26-nov): sin reloj. El entorno del recorrido se queda retenido hasta que el test lo suelta:
+    # si start() esperara al recorrido, no volvería con él retenido (antes: «start() < 0,5 s»).
+    dentro, soltar = threading.Event(), threading.Event()
+
+    def entorno_retenido():
+        dentro.set()
+        soltar.wait(5)  # tope para no colgar el test; no es la aserción
+        return m.env
+
+    b = L.Barredor(m.t / "faros.db", cada_s=3600, entorno=entorno_retenido)
     b.start()
-    assert time.perf_counter() - t0 < 0.5  # start() no espera al recorrido
+    volvio_con_el_recorrido_retenido = dentro.wait(5) and b.pasadas == 0
+    soltar.set()
+    assert volvio_con_el_recorrido_retenido, "start() esperó al recorrido"
     for _ in range(100):
         if b.pasadas:
             break
         time.sleep(0.1)
     assert b.pasadas == 1 and conexiones == ["biblioteca-recorrido"]
-    t1 = time.perf_counter()
     b.stop()
-    assert time.perf_counter() - t1 < 3 and not b._hilo.is_alive()
+    assert not b._hilo.is_alive()  # stop() espera al hilo con su propio tope; lo que importa es que ha parado
     assert len(L.buscar(m.conn, limite=500)) > 10  # y lo registró en la base compartida
 
 
@@ -253,14 +264,29 @@ def test_barredor_sobrevive_a_un_fallo_y_repite(m):
 
 
 def test_barredor_para_a_media_pasada(m, monkeypatch):
+    # #1372 (26-nov): sin reloj ni «stop() < 3 s». El registro del fichero 20 se queda retenido: con la pasada
+    # a medias de verdad se pide parar y se suelta. Parar a medias = no registrar los 300.
     for i in range(300):
         _w(m.ses / "muchos" / f"f{i}.md", f"# f{i}")
+    a_media, soltar, llamadas = threading.Event(), threading.Event(), []
+    real = L.registrar
+
+    def registrar_contando(*a, **k):
+        llamadas.append(1)
+        if len(llamadas) == 20:
+            a_media.set()
+            soltar.wait(5)  # tope para no colgar el test; no es la aserción
+        return real(*a, **k)
+
+    monkeypatch.setattr(L, "registrar", registrar_contando)
     b = L.Barredor(m.t / "faros.db", cada_s=3600, entorno=lambda: m.env)
     b.start()
-    time.sleep(0.15)
-    t0 = time.perf_counter()
+    assert a_media.wait(5)
+    b._parar.set()  # lo primero que hace stop(): con el fichero 20 todavía retenido
+    soltar.set()
     b.stop()
-    assert time.perf_counter() - t0 < 3 and not b._hilo.is_alive()
+    assert not b._hilo.is_alive()
+    assert len(llamadas) < 300, f"no paró a medias: registró {len(llamadas)} de 300"
     assert all(r["estado"] == "presente" for r in _filas(m.conn))
 
 
